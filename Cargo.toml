@@ -19,7 +19,7 @@ futures = "0.3"
 async-trait = "0.1"
 
 # Browser automation
-headless_chrome = "1.0"
+chromiumoxide = { version = "0.5", features = ["tokio-runtime"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -54,6 +54,7 @@ tempfile = "3.0"
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tower-test = "0.4"

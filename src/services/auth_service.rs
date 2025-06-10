@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use headless_chrome::Tab;
+use chromiumoxide::page::Page;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -33,28 +33,25 @@ impl AuthService {
         }
     }
 
-    /// Get tab from browser service
-    async fn get_tab(&self) -> Result<Arc<Tab>> {
-        self.browser_service.get_or_create_tab("https://web.whatsapp.com").await
+    /// Get page from browser service
+    async fn get_page(&self) -> Result<Page> {
+        self.browser_service.get_or_create_page("https://web.whatsapp.com").await
     }
 
     /// Wait for QR code to be visible and extract it
-    async fn extract_qr_code(&self, tab: &Arc<Tab>) -> Result<String> {
-        let _locators = LocatorDictionary::new(tab.clone());
+    async fn extract_qr_code(&self, page: &Page) -> Result<String> {
+        let _locators = LocatorDictionary::new();
 
         // Wait for QR code canvas to be visible
-        tab.wait_for_element("canvas")?;
+        page.find_element("canvas").await?;
 
         // Extract QR code from canvas
-        let canvas_result = tab.evaluate("document.getElementsByTagName('canvas')[0].toDataURL('image/png');", false)?;
+        let canvas_result = page.evaluate("document.getElementsByTagName('canvas')[0].toDataURL('image/png');").await?;
         
-        let canvas_data = canvas_result.value.ok_or_else(|| {
-            anyhow::anyhow!("Failed to get QR code canvas data")
-        })?;
-        
-        let canvas_string = canvas_data.as_str().ok_or_else(|| {
-            anyhow::anyhow!("Canvas data is not a string")
-        })?;
+        let canvas_string = match canvas_result.into_value()? {
+            serde_json::Value::String(data) => data,
+            _ => return Err(anyhow::anyhow!("Failed to get QR code canvas data")),
+        };
 
         if canvas_string.is_empty() {
             return Err(anyhow::anyhow!("Failed to get QR code canvas"));
@@ -73,11 +70,11 @@ impl AuthService {
 #[async_trait]
 impl AuthServiceTrait for AuthService {
     async fn is_authorized(&self) -> Result<bool> {
-        let tab = self.get_tab().await?;
-        let _locators = LocatorDictionary::new(tab.clone());
+        let page = self.get_page().await?;
+        let _locators = LocatorDictionary::new();
 
         // Check if we're authorized by looking for the side pane
-        let is_authorized = match tab.find_element("#pane-side") {
+        let is_authorized = match page.find_element("#pane-side").await {
             Ok(_) => true,
             Err(_) => false,
         };
@@ -87,20 +84,21 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn get_sender_id(&self) -> Result<Option<String>> {
-        let tab = self.get_tab().await?;
+        let page = self.get_page().await?;
 
         if !self.is_authorized().await? {
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
         // Try to get sender ID from localStorage
-        let sender_result = tab.evaluate("window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';", false)?;
+        let sender_result = page.evaluate("window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';").await?;
         
-        let sender_string = sender_result.value
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string();
+        let sender_string = match sender_result.into_value()? {
+            serde_json::Value::String(s) => s,
+            _ => String::new(),
+        }
+        .trim_matches('"')
+        .to_string();
 
         if sender_string.is_empty() {
             return Ok(None);
@@ -118,80 +116,79 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn get_auth_qr_code(&self) -> Result<String> {
-        let tab = self.get_tab().await?;
-        let _locators = LocatorDictionary::new(tab.clone());
+        let page = self.get_page().await?;
+        let _locators = LocatorDictionary::new();
 
         if self.is_authorized().await? {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
         // Check if we need to switch to QR code mode
-        let phone_number_visible = tab.find_element("text='Enter phone number'").is_ok();
-        let enter_code_visible = tab.find_element("text='Enter code on phone'").is_ok();
+        let phone_number_visible = page.find_element("text='Enter phone number'").await.is_ok();
+        let enter_code_visible = page.find_element("text='Enter code on phone'").await.is_ok();
         
         if phone_number_visible || enter_code_visible {
             debug!("Switching to QR code login");
-            if let Ok(qr_link) = tab.find_element("text='Log in with QR code'") {
-                qr_link.click()?;
+            if let Ok(qr_link) = page.find_element("text='Log in with QR code'").await {
+                qr_link.click().await?;
             }
         }
 
         // Wait for QR loading to complete
-        if tab.find_element("svg[role='status']").is_ok() {
+        if page.find_element("svg[role='status']").await.is_ok() {
             debug!("Waiting for QR code to load");
-            // Wait a bit for QR to load
-            std::thread::sleep(std::time::Duration::from_millis(2000));
+            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
         }
 
         // Check if we need to reload the QR code
-        if tab.find_element("text='Click to reload QR code'").is_ok() {
+        if page.find_element("text='Click to reload QR code'").await.is_ok() {
             debug!("Reloading QR code");
-            if let Ok(reload_button) = tab.find_element("text='Click to reload QR code'") {
-                reload_button.click()?;
+            if let Ok(reload_button) = page.find_element("text='Click to reload QR code'").await {
+                reload_button.click().await?;
             }
         }
 
         // Extract and return QR code
-        self.extract_qr_code(&tab).await
+        self.extract_qr_code(&page).await
     }
 
     async fn login_with_phone_number(&self, phone_number: &str) -> Result<Option<String>> {
-        let tab = self.get_tab().await?;
-        let _locators = LocatorDictionary::new(tab.clone());
+        let page = self.get_page().await?;
+        let _locators = LocatorDictionary::new();
 
         if self.is_authorized().await? {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
         // Switch to phone number login if needed
-        if tab.find_element("[aria-label='Scan this QR code to link a device!']").is_ok() {
+        if page.find_element("[aria-label='Scan this QR code to link a device!']").await.is_ok() {
             debug!("Switching to phone number login");
-            if let Ok(phone_link) = tab.find_element("text='Log in with phone number'") {
-                phone_link.click()?;
+            if let Ok(phone_link) = page.find_element("text='Log in with phone number'").await {
+                phone_link.click().await?;
             }
         }
 
         // Wait for phone input to be visible
-        tab.wait_for_element("[aria-label='Type your phone number.']")?;
+        page.find_element("[aria-label='Type your phone number.']").await?;
 
         // Enter phone number
         debug!("Entering phone number: {}", phone_number);
-        let phone_input = tab.find_element("[aria-label='Type your phone number.']")?;
+        let phone_input = page.find_element("[aria-label='Type your phone number.']").await?;
         
         // Clear the input using JavaScript
-        tab.evaluate("document.querySelector('[aria-label=\"Type your phone number.\"]').value = '';", false)?;
-        phone_input.type_into(phone_number)?;
+        page.evaluate("document.querySelector('[aria-label=\"Type your phone number.\"]').value = '';").await?;
+        phone_input.type_str(phone_number).await?;
         
-        if let Ok(submit_button) = tab.find_element("text='Next'") {
-            submit_button.click()?;
+        if let Ok(submit_button) = page.find_element("text='Next'").await {
+            submit_button.click().await?;
         }
 
         // Wait for code to appear
-        tab.wait_for_element("[aria-label='Enter code on phone:']")?;
+        page.find_element("[aria-label='Enter code on phone:']").await?;
 
         // Extract the code using the locators
-        let locators = LocatorDictionary::new(tab.clone());
-        if let Ok(Some(code)) = locators.data_link_code() {
+        let locators = LocatorDictionary::new();
+        if let Ok(Some(code)) = locators.data_link_code(&page).await {
             let formatted_code = code.replace(",", "");
             info!("Phone authentication code generated: {}", formatted_code);
             Ok(Some(formatted_code))
@@ -201,8 +198,8 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn logout(&self) -> Result<()> {
-        let tab = self.get_tab().await?;
-        let _locators = LocatorDictionary::new(tab.clone());
+        let page = self.get_page().await?;
+        let _locators = LocatorDictionary::new();
 
         if !self.is_authorized().await? {
             return Err(anyhow::anyhow!("Not authorized"));
@@ -211,14 +208,14 @@ impl AuthServiceTrait for AuthService {
         debug!("Logging out");
 
         // Click menu
-        if let Ok(menu) = tab.find_element("[aria-label='Menu']") {
-            menu.click()?;
+        if let Ok(menu) = page.find_element("[aria-label='Menu']").await {
+            menu.click().await?;
         }
 
         // Wait for menu to open and click logout
-        tab.wait_for_element("[aria-label='Log out']")?;
-        if let Ok(logout) = tab.find_element("[aria-label='Log out']") {
-            logout.click()?;
+        page.find_element("[aria-label='Log out']").await?;
+        if let Ok(logout) = page.find_element("[aria-label='Log out']").await {
+            logout.click().await?;
         }
 
         info!("Logout completed");

@@ -49,6 +49,11 @@ impl WhatsAppService {
         Ok(())
     }
 
+    /// Get the API token from configuration
+    pub fn get_api_token(&self) -> &str {
+        &self.config.auth.api_token
+    }
+
     /// Get reference to auth service
     pub fn auth_service(&self) -> &Arc<dyn AuthServiceTrait> {
         &self.auth_service
@@ -100,17 +105,18 @@ impl WhatsAppService {
 
     /// Check authentication status directly without busy flag
     pub async fn check_auth_status_directly(&self) -> Result<bool> {
-        let tab = self.browser_service.get_or_create_tab("https://web.whatsapp.com").await?;
+        let page = self.browser_service.get_or_create_page("https://web.whatsapp.com").await?;
 
         let script = r#"
             document.querySelector('#pane-side') !== null
         "#;
 
-        match tab.evaluate(script, false) {
+        match page.evaluate(script).await {
             Ok(result) => {
-                let is_authorized = result.value
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let is_authorized = match result.into_value()? {
+                    serde_json::Value::Bool(b) => b,
+                    _ => false,
+                };
                 debug!("Direct auth check result: {}", is_authorized);
                 Ok(is_authorized)
             }

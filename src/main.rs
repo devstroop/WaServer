@@ -1,5 +1,5 @@
 use axum::{
-    extract::DefaultBodyLimit,
+    extract::{DefaultBodyLimit, State},
     http::Method,
     middleware,
     routing::{get, post},
@@ -69,13 +69,13 @@ impl Modify for SecurityAddon {
 }
 
 async fn auth_middleware(
+    State(whatsapp_service): State<Arc<WhatsAppService>>,
     headers: axum::http::HeaderMap,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, axum::http::StatusCode> {
-    // Get API token from environment or config
-    let expected_token = std::env::var("WHATSAPP_AUTH__API_TOKEN")
-        .unwrap_or_else(|_| "your-secure-api-token-change-this".to_string());
+    // Get API token from configuration through the WhatsApp service
+    let expected_token = whatsapp_service.get_api_token();
 
     // Extract the Authorization header
     let auth_header = headers
@@ -155,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/auth/phone/:phone_number", post(auth::login_with_phone))
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/chat/send", post(chat::send_message))
-        .layer(middleware::from_fn(auth_middleware))
+        .layer(middleware::from_fn_with_state(whatsapp_service.clone(), auth_middleware))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(
             ServiceBuilder::new()

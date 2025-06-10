@@ -4,7 +4,6 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use std::collections::HashMap;
 
 /// API Key authentication middleware
 pub async fn auth_middleware(

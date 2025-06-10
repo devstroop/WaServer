@@ -19,7 +19,7 @@ args = [
 
 [auth]
 # Set your secure API token here
-api_token = "your-secure-api-token-change-this"
+api_token = "test-api-token-123456789"
 
 [logging]
 level = "info"

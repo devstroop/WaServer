@@ -53,12 +53,21 @@ pub async fn get_auth_status(
         }
         Err(e) => {
             error!("Error checking auth status: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("Error checking WhatsApp authorization status: {}", e),
-                }),
-            ))
+            
+            // If browser is not initialized, return a specific response
+            if e.to_string().contains("Browser not initialized") {
+                Ok(Json(AuthStatusResponse {
+                    authorized: false,
+                    sender_id: None,
+                }))
+            } else {
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("Error checking WhatsApp authorization status: {}", e),
+                    }),
+                ))
+            }
         }
     }
 }
@@ -95,6 +104,13 @@ pub async fn get_qr_code(
                 Err((
                     StatusCode::BAD_REQUEST,
                     Json(ErrorResponse { error: error_msg }),
+                ))
+            } else if error_msg.contains("Browser not initialized") {
+                Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ErrorResponse { 
+                        error: "Browser service is not available. Cannot generate QR code.".to_string() 
+                    }),
                 ))
             } else {
                 Err((

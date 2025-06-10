@@ -1,15 +1,14 @@
-use headless_chrome::Tab;
-use std::sync::Arc;
+use chromiumoxide::page::Page;
+use anyhow::Result;
 
 /// WhatsApp Web element locators dictionary
 /// This struct provides type-safe access to all WhatsApp Web UI elements
 pub struct LocatorDictionary {
-    tab: Arc<Tab>,
 }
 
 impl LocatorDictionary {
-    pub fn new(tab: Arc<Tab>) -> Self {
-        Self { tab }
+    pub fn new() -> Self {
+        Self { }
     }
 
     // Dialog elements
@@ -117,10 +116,10 @@ impl LocatorDictionary {
     }
 
     /// Get the data-link-code attribute from the phone link element
-    pub fn data_link_code(&self) -> anyhow::Result<Option<String>> {
-        match self.tab.find_element(self.link_phone_number_code_element()) {
+    pub async fn data_link_code(&self, page: &Page) -> Result<Option<String>> {
+        match page.find_element(self.link_phone_number_code_element()).await {
             Ok(element) => {
-                match element.get_attribute_value("data-link-code") {
+                match element.attribute("data-link-code").await {
                     Ok(value) => Ok(value),
                     Err(_) => Ok(None),
                 }

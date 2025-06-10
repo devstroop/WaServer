@@ -2,25 +2,25 @@
 
 # Check authentication status
 GET http://localhost:3000/api/auth/status
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 
 ###
 
 # Get QR code for authentication
 GET http://localhost:3000/api/auth/qrcode
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 
 ###
 
 # Authenticate with phone number
 POST http://localhost:3000/api/auth/phone/1234567890
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 
 ###
 
 # Logout
 POST http://localhost:3000/api/auth/logout
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 
 ###
 
@@ -28,13 +28,13 @@ Authorization: Bearer your-secure-api-token-change-this
 
 # Send text message
 POST http://localhost:3000/api/chat/send?phone=1234567890&text=Hello%20from%20Rust%20WhatsApp%20Engine!
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 
 ###
 
 # Send message with file attachment
 POST http://localhost:3000/api/chat/send?phone=1234567890&text=Check%20this%20image
-Authorization: Bearer your-secure-api-token-change-this
+Authorization: Bearer test-api-token-123456789
 Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
 
 ------WebKitFormBoundary
