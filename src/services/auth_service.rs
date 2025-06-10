@@ -21,14 +21,14 @@ pub trait AuthServiceTrait: Send + Sync {
 
 /// WhatsApp authentication service
 pub struct AuthService {
-    config: Arc<AppConfig>,
+    _config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
 }
 
 impl AuthService {
     pub fn new(config: Arc<AppConfig>, browser_service: Arc<BrowserService>) -> Self {
         Self {
-            config,
+            _config: config,
             browser_service,
         }
     }

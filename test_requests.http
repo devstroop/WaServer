@@ -26,19 +26,60 @@ Authorization: Bearer test-api-token-123456789
 
 ### Chat Endpoints
 
-# Send text message
-POST http://localhost:3000/api/chat/send?phone=1234567890&text=Hello%20from%20Rust%20WhatsApp%20Engine!
-Authorization: Bearer test-api-token-123456789
-
-###
-
-# Send message with file attachment
-POST http://localhost:3000/api/chat/send?phone=1234567890&text=Check%20this%20image
+# Send text message using multipart form
+POST http://localhost:3000/api/chat/send
 Authorization: Bearer test-api-token-123456789
 Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
 
 ------WebKitFormBoundary
+Content-Disposition: form-data; name="phone"
+
+1234567890
+------WebKitFormBoundary
+Content-Disposition: form-data; name="text"
+
+Hello from Rust WhatsApp Engine with improved multipart API!
+------WebKitFormBoundary--
+
+###
+
+# Send message with file attachment
+POST http://localhost:3000/api/chat/send
+Authorization: Bearer test-api-token-123456789
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="phone"
+
+1234567890
+------WebKitFormBoundary
+Content-Disposition: form-data; name="text"
+
+Check this image attachment!
+------WebKitFormBoundary
 Content-Disposition: form-data; name="file"; filename="test.jpg"
+Content-Type: image/jpeg
+
+(binary file content would go here)
+------WebKitFormBoundary--
+
+###
+
+# Send only file without text
+POST http://localhost:3000/api/chat/send
+Authorization: Bearer test-api-token-123456789
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="phone"
+
+1234567890
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="document.pdf"
+Content-Type: application/pdf
+
+(binary file content would go here)
+------WebKitFormBoundary--
 Content-Type: image/jpeg
 
 < /path/to/your/test/image.jpg

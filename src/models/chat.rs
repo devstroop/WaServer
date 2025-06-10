@@ -10,6 +10,23 @@ pub struct SendMessageRequest {
     pub text: Option<String>,
 }
 
+/// Multipart form schema for Swagger documentation
+#[derive(Debug, ToSchema)]
+#[schema(title = "SendMessageForm")]
+pub struct SendMessageMultipartForm {
+    /// Recipient phone number (required)
+    #[schema(example = "1234567890")]
+    pub phone: String,
+    
+    /// Message text (optional if file is provided)
+    #[schema(example = "Hello from Rust WhatsApp Engine!")]
+    pub text: Option<String>,
+    
+    /// File attachment (optional if text is provided)  
+    #[schema(format = "binary")]
+    pub file: Option<String>,
+}
+
 /// Response for sending a message
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SendMessageResponse {
