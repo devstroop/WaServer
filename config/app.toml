@@ -1,0 +1,42 @@
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[browser]
+headless = true
+timeout_ms = 30000
+# Browser arguments for better performance and compatibility
+args = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--disable-popup-blocking",
+    "--disable-gpu",
+    "--disable-software-rasterizer"
+]
+
+[auth]
+# Set your secure API token here
+api_token = "your-secure-api-token-change-this"
+
+[logging]
+level = "info"
+# Available levels: trace, debug, info, warn, error
+
+[cache]
+default_ttl_minutes = 15
+
+[cors]
+allow_origins = ["*"]
+allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allow_headers = ["authorization", "content-type"]
+
+[limits]
+# Maximum concurrent requests
+max_concurrent_requests = 10
+# Request timeout in milliseconds
+request_timeout_ms = 60000
+# Maximum file upload size in bytes (10MB)
+max_upload_size = 10485760

@@ -1,0 +1,47 @@
+### Authentication Endpoints
+
+# Check authentication status
+GET http://localhost:3000/api/auth/status
+Authorization: Bearer your-secure-api-token-change-this
+
+###
+
+# Get QR code for authentication
+GET http://localhost:3000/api/auth/qrcode
+Authorization: Bearer your-secure-api-token-change-this
+
+###
+
+# Authenticate with phone number
+POST http://localhost:3000/api/auth/phone/1234567890
+Authorization: Bearer your-secure-api-token-change-this
+
+###
+
+# Logout
+POST http://localhost:3000/api/auth/logout
+Authorization: Bearer your-secure-api-token-change-this
+
+###
+
+### Chat Endpoints
+
+# Send text message
+POST http://localhost:3000/api/chat/send?phone=1234567890&text=Hello%20from%20Rust%20WhatsApp%20Engine!
+Authorization: Bearer your-secure-api-token-change-this
+
+###
+
+# Send message with file attachment
+POST http://localhost:3000/api/chat/send?phone=1234567890&text=Check%20this%20image
+Authorization: Bearer your-secure-api-token-change-this
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="test.jpg"
+Content-Type: image/jpeg
+
+< /path/to/your/test/image.jpg
+------WebKitFormBoundary--
+
+###

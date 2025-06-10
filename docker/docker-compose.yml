@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  whatsapp-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - WHATSAPP_BROWSER__HEADLESS=true
+      - WHATSAPP_AUTH__API_TOKEN=your-secure-api-token-change-this
+      - WHATSAPP_LOGGING__LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      # Mount config directory (optional - for easy config updates)
+      - ../config:/app/config:ro
+      # Mount temp directory for file uploads
+      - whatsapp_temp:/app/.temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/auth/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsapp-network
+
+  # Optional: Add a reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Add SSL certificates if needed
+      # - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - whatsapp-engine
+    networks:
+      - whatsapp-network
+
+volumes:
+  whatsapp_temp:
+
+networks:
+  whatsapp-network:
+    driver: bridge
