@@ -69,7 +69,7 @@ impl Default for AppConfig {
                 port: 3000,
             },
             browser: BrowserConfig {
-                headless: true,
+                headless: false,
                 timeout_ms: 30000,
                 args: vec![
                     "--disable-blink-features=AutomationControlled".to_string(),

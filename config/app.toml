@@ -3,7 +3,7 @@ host = "0.0.0.0"
 port = 3000
 
 [browser]
-headless = true
+headless = false
 timeout_ms = 30000
 # Browser arguments for better performance and compatibility
 args = [
