@@ -5,9 +5,9 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use playwright::api::Page;
+use headless_chrome::Tab;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// Authentication service trait
 #[async_trait]
@@ -20,7 +20,6 @@ pub trait AuthServiceTrait: Send + Sync {
 }
 
 /// WhatsApp authentication service
-#[derive(Debug)]
 pub struct AuthService {
     config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
@@ -34,27 +33,28 @@ impl AuthService {
         }
     }
 
-    /// Get page from browser service
-    async fn get_page(&self) -> Result<Page> {
-        self.browser_service.get_or_create_page("https://web.whatsapp.com").await
+    /// Get tab from browser service
+    async fn get_tab(&self) -> Result<Arc<Tab>> {
+        self.browser_service.get_or_create_tab("https://web.whatsapp.com").await
     }
 
     /// Wait for QR code to be visible and extract it
-    async fn extract_qr_code(&self, page: &Page) -> Result<String> {
-        let locators = LocatorDictionary::new(page);
+    async fn extract_qr_code(&self, tab: &Arc<Tab>) -> Result<String> {
+        let _locators = LocatorDictionary::new(tab.clone());
 
-        // Wait for QR code to be visible
-        let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-        wait_options.state = Some(playwright::api::WaitForSelectorState::Visible);
-        wait_options.timeout = Some(10000.0);
-
-        locators.scan_this_qr_element().wait_for(Some(wait_options)).await?;
+        // Wait for QR code canvas to be visible
+        tab.wait_for_element("canvas")?;
 
         // Extract QR code from canvas
-        let canvas_data = page.evaluate("document.getElementsByTagName('canvas')[0].toDataURL('image/png');", None).await?;
+        let canvas_result = tab.evaluate("document.getElementsByTagName('canvas')[0].toDataURL('image/png');", false)?;
         
-        let canvas_string = canvas_data.as_str()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get QR code canvas data"))?;
+        let canvas_data = canvas_result.value.ok_or_else(|| {
+            anyhow::anyhow!("Failed to get QR code canvas data")
+        })?;
+        
+        let canvas_string = canvas_data.as_str().ok_or_else(|| {
+            anyhow::anyhow!("Canvas data is not a string")
+        })?;
 
         if canvas_string.is_empty() {
             return Err(anyhow::anyhow!("Failed to get QR code canvas"));
@@ -73,32 +73,34 @@ impl AuthService {
 #[async_trait]
 impl AuthServiceTrait for AuthService {
     async fn is_authorized(&self) -> Result<bool> {
-        let page = self.get_page().await?;
-        let locators = LocatorDictionary::new(&page);
+        let tab = self.get_tab().await?;
+        let _locators = LocatorDictionary::new(tab.clone());
 
         // Check if we're authorized by looking for the side pane
-        let is_authorized = locators.authorized_side_pane()
-            .is_visible(None)
-            .await
-            .unwrap_or(false);
+        let is_authorized = match tab.find_element("#pane-side") {
+            Ok(_) => true,
+            Err(_) => false,
+        };
 
         debug!("Authorization status: {}", is_authorized);
         Ok(is_authorized)
     }
 
     async fn get_sender_id(&self) -> Result<Option<String>> {
-        let page = self.get_page().await?;
+        let tab = self.get_tab().await?;
 
         if !self.is_authorized().await? {
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
         // Try to get sender ID from localStorage
-        let sender_id = page.evaluate("window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';", None).await?;
+        let sender_result = tab.evaluate("window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';", false)?;
         
-        let sender_string = sender_id.as_str()
-            .unwrap_or("")
-            .trim_matches('"');
+        let sender_string = sender_result.value
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default()
+            .trim_matches('"')
+            .to_string();
 
         if sender_string.is_empty() {
             return Ok(None);
@@ -116,82 +118,80 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn get_auth_qr_code(&self) -> Result<String> {
-        let page = self.get_page().await?;
-        let locators = LocatorDictionary::new(&page);
+        let tab = self.get_tab().await?;
+        let _locators = LocatorDictionary::new(tab.clone());
 
         if self.is_authorized().await? {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
         // Check if we need to switch to QR code mode
-        if locators.enter_phone_number_label().is_visible(None).await.unwrap_or(false) ||
-           locators.enter_code_on_phone_label().is_visible(None).await.unwrap_or(false) {
+        let phone_number_visible = tab.find_element("text='Enter phone number'").is_ok();
+        let enter_code_visible = tab.find_element("text='Enter code on phone'").is_ok();
+        
+        if phone_number_visible || enter_code_visible {
             debug!("Switching to QR code login");
-            locators.login_with_qr_code_link().click(None).await?;
-        }
-
-        // Wait for QR loading to complete
-        if locators.qr_loading_indicator().is_visible(None).await.unwrap_or(false) {
-            debug!("Waiting for QR code to load");
-            let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-            wait_options.state = Some(playwright::api::WaitForSelectorState::Hidden);
-            wait_options.timeout = Some(10000.0);
-
-            if let Err(e) = locators.qr_loading_indicator().wait_for(Some(wait_options)).await {
-                warn!("Timeout waiting for QR code to load: {}", e);
+            if let Ok(qr_link) = tab.find_element("text='Log in with QR code'") {
+                qr_link.click()?;
             }
         }
 
+        // Wait for QR loading to complete
+        if tab.find_element("svg[role='status']").is_ok() {
+            debug!("Waiting for QR code to load");
+            // Wait a bit for QR to load
+            std::thread::sleep(std::time::Duration::from_millis(2000));
+        }
+
         // Check if we need to reload the QR code
-        if locators.click_to_reload_qr_button().is_visible(None).await.unwrap_or(false) {
+        if tab.find_element("text='Click to reload QR code'").is_ok() {
             debug!("Reloading QR code");
-            locators.click_to_reload_qr_button().click(None).await?;
+            if let Ok(reload_button) = tab.find_element("text='Click to reload QR code'") {
+                reload_button.click()?;
+            }
         }
 
         // Extract and return QR code
-        self.extract_qr_code(&page).await
+        self.extract_qr_code(&tab).await
     }
 
     async fn login_with_phone_number(&self, phone_number: &str) -> Result<Option<String>> {
-        let page = self.get_page().await?;
-        let locators = LocatorDictionary::new(&page);
+        let tab = self.get_tab().await?;
+        let _locators = LocatorDictionary::new(tab.clone());
 
         if self.is_authorized().await? {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
         // Switch to phone number login if needed
-        if locators.scan_this_qr_element().is_visible(None).await.unwrap_or(false) {
+        if tab.find_element("[aria-label='Scan this QR code to link a device!']").is_ok() {
             debug!("Switching to phone number login");
-            locators.login_with_phone_number_link().click(None).await?;
+            if let Ok(phone_link) = tab.find_element("text='Log in with phone number'") {
+                phone_link.click()?;
+            }
         }
 
         // Wait for phone input to be visible
-        let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-        wait_options.state = Some(playwright::api::WaitForSelectorState::Visible);
-        wait_options.timeout = Some(5000.0);
-
-        locators.enter_phone_number_input().wait_for(Some(wait_options)).await?;
+        tab.wait_for_element("[aria-label='Type your phone number.']")?;
 
         // Enter phone number
         debug!("Entering phone number: {}", phone_number);
-        locators.enter_phone_number_input().clear(None).await?;
-        locators.enter_phone_number_input().fill(phone_number, None).await?;
-        locators.submit_phone_number_button().click(None).await?;
-
-        // Wait for code to appear
-        let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-        wait_options.state = Some(playwright::api::WaitForSelectorState::Visible);
-        wait_options.timeout = Some(10000.0);
-
-        if let Err(e) = locators.enter_code_on_phone_value().wait_for(Some(wait_options)).await {
-            warn!("Timeout waiting for phone code: {}", e);
-            return Ok(None);
+        let phone_input = tab.find_element("[aria-label='Type your phone number.']")?;
+        
+        // Clear the input using JavaScript
+        tab.evaluate("document.querySelector('[aria-label=\"Type your phone number.\"]').value = '';", false)?;
+        phone_input.type_into(phone_number)?;
+        
+        if let Ok(submit_button) = tab.find_element("text='Next'") {
+            submit_button.click()?;
         }
 
-        // Extract the code
-        let code_element = locators.link_phone_number_code_element();
-        if let Ok(Some(code)) = code_element.get_attribute("data-link-code", None).await {
+        // Wait for code to appear
+        tab.wait_for_element("[aria-label='Enter code on phone:']")?;
+
+        // Extract the code using the locators
+        let locators = LocatorDictionary::new(tab.clone());
+        if let Ok(Some(code)) = locators.data_link_code() {
             let formatted_code = code.replace(",", "");
             info!("Phone authentication code generated: {}", formatted_code);
             Ok(Some(formatted_code))
@@ -201,8 +201,8 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn logout(&self) -> Result<()> {
-        let page = self.get_page().await?;
-        let locators = LocatorDictionary::new(&page);
+        let tab = self.get_tab().await?;
+        let _locators = LocatorDictionary::new(tab.clone());
 
         if !self.is_authorized().await? {
             return Err(anyhow::anyhow!("Not authorized"));
@@ -211,15 +211,15 @@ impl AuthServiceTrait for AuthService {
         debug!("Logging out");
 
         // Click menu
-        locators.menu().click(None).await?;
+        if let Ok(menu) = tab.find_element("[aria-label='Menu']") {
+            menu.click()?;
+        }
 
         // Wait for menu to open and click logout
-        let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-        wait_options.state = Some(playwright::api::WaitForSelectorState::Visible);
-        wait_options.timeout = Some(5000.0);
-
-        locators.menu_logout().wait_for(Some(wait_options)).await?;
-        locators.menu_logout().click(None).await?;
+        tab.wait_for_element("[aria-label='Log out']")?;
+        if let Ok(logout) = tab.find_element("[aria-label='Log out']") {
+            logout.click()?;
+        }
 
         info!("Logout completed");
         Ok(())

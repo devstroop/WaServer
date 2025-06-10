@@ -1,127 +1,131 @@
-use playwright::api::{Locator, Page};
+use headless_chrome::Tab;
+use std::sync::Arc;
 
 /// WhatsApp Web element locators dictionary
 /// This struct provides type-safe access to all WhatsApp Web UI elements
-#[derive(Debug)]
-pub struct LocatorDictionary<'a> {
-    page: &'a Page,
+pub struct LocatorDictionary {
+    tab: Arc<Tab>,
 }
 
-impl<'a> LocatorDictionary<'a> {
-    pub fn new(page: &'a Page) -> Self {
-        Self { page }
+impl LocatorDictionary {
+    pub fn new(tab: Arc<Tab>) -> Self {
+        Self { tab }
     }
 
     // Dialog elements
-    pub fn dialog(&self) -> Locator {
-        self.page.get_by_role(playwright::api::AriaRole::Dialog, None)
+    pub fn dialog(&self) -> &str {
+        "[role='dialog']"
     }
 
-    pub fn dialog_backdrop(&self) -> Locator {
-        self.page.locator("div[data-animate-modal-backdrop='true']")
+    pub fn dialog_backdrop(&self) -> &str {
+        "div[data-animate-modal-backdrop='true']"
     }
 
     // Authentication elements
-    pub fn login_with_phone_number_link(&self) -> Locator {
-        self.page.get_by_text("Log in with phone number", None)
+    pub fn login_with_phone_number_link(&self) -> &str {
+        "text='Log in with phone number'"
     }
 
-    pub fn login_with_qr_code_link(&self) -> Locator {
-        self.page.get_by_text("Log in with QR code", None)
+    pub fn login_with_qr_code_link(&self) -> &str {
+        "text='Log in with QR code'"
     }
 
-    pub fn enter_phone_number_label(&self) -> Locator {
-        self.page.get_by_text("Enter phone number", None)
+    pub fn enter_phone_number_label(&self) -> &str {
+        "text='Enter phone number'"
     }
 
-    pub fn enter_phone_number_input(&self) -> Locator {
-        self.page.get_by_label("Type your phone number.", None)
+    pub fn enter_phone_number_input(&self) -> &str {
+        "[aria-label='Type your phone number.']"
     }
 
-    pub fn submit_phone_number_button(&self) -> Locator {
-        self.page.get_by_text("Next", None)
+    pub fn submit_phone_number_button(&self) -> &str {
+        "text='Next'"
     }
 
-    pub fn enter_code_on_phone_label(&self) -> Locator {
-        self.page.get_by_text("Enter code on phone", None)
+    pub fn enter_code_on_phone_label(&self) -> &str {
+        "text='Enter code on phone'"
     }
 
-    pub fn enter_code_on_phone_value(&self) -> Locator {
-        self.page.get_by_label("Enter code on phone:", None)
+    pub fn enter_code_on_phone_value(&self) -> &str {
+        "[aria-label='Enter code on phone:']"
     }
 
-    pub fn login_to_whatsapp_web_label(&self) -> Locator {
-        self.page.get_by_text("Log into WhatsApp Web", None)
+    pub fn login_to_whatsapp_web_label(&self) -> &str {
+        "text='Log into WhatsApp Web'"
     }
 
     // QR Code elements
-    pub fn qr_loading_indicator(&self) -> Locator {
-        self.page.locator("svg[role='status']")
+    pub fn qr_loading_indicator(&self) -> &str {
+        "svg[role='status']"
     }
 
-    pub fn scan_this_qr_element(&self) -> Locator {
-        self.page.get_by_label("Scan this QR code to link a device!", None)
+    pub fn scan_this_qr_element(&self) -> &str {
+        "[aria-label='Scan this QR code to link a device!']"
     }
 
-    pub fn click_to_reload_qr_button(&self) -> Locator {
-        self.page.get_by_text("Click to reload QR code", None)
+    pub fn click_to_reload_qr_button(&self) -> &str {
+        "text='Click to reload QR code'"
     }
 
     // Loading and status elements
-    pub fn loading_progress_indicator(&self) -> Locator {
-        self.page.locator("progress[max='100']")
+    pub fn loading_progress_indicator(&self) -> &str {
+        "progress[max='100']"
     }
 
-    pub fn authorized_side_pane(&self) -> Locator {
-        self.page.locator("#pane-side")
+    pub fn authorized_side_pane(&self) -> &str {
+        "#pane-side"
     }
 
     // Menu elements
-    pub fn menu(&self) -> Locator {
-        self.page.get_by_label("Menu", None)
+    pub fn menu(&self) -> &str {
+        "[aria-label='Menu']"
     }
 
-    pub fn menu_logout(&self) -> Locator {
-        self.page.get_by_label("Log out", None)
+    pub fn menu_logout(&self) -> &str {
+        "[aria-label='Log out']"
     }
 
     // Phone linking elements
-    pub fn link_phone_number_code_element(&self) -> Locator {
-        self.page.locator("[aria-details='link-device-phone-number-code-screen-instructions']")
+    pub fn link_phone_number_code_element(&self) -> &str {
+        "[aria-details='link-device-phone-number-code-screen-instructions']"
     }
 
     // Chat elements
-    pub fn type_a_message_input(&self) -> Locator {
-        self.page.get_by_label("Type a message", None)
+    pub fn type_a_message_input(&self) -> &str {
+        "[aria-label='Type a message']"
     }
 
-    pub fn send_button(&self) -> Locator {
-        self.page.get_by_label("Send", None)
+    pub fn send_button(&self) -> &str {
+        "[aria-label='Send']"
     }
 
     // Attachment elements
-    pub fn attachment_button(&self) -> Locator {
-        self.page.locator("[data-icon='plus']")
+    pub fn attachment_button(&self) -> &str {
+        "[data-icon='plus']"
     }
 
-    pub fn photo_and_video_attachment_input(&self) -> Locator {
-        self.page.locator("input[accept='image/*,video/mp4,video/3gpp,video/quicktime']")
+    pub fn photo_and_video_attachment_input(&self) -> &str {
+        "input[accept='image/*,video/mp4,video/3gpp,video/quicktime']"
     }
 
-    pub fn attachment_caption_input(&self) -> Locator {
-        self.page.get_by_label("Add a caption", None)
+    pub fn attachment_caption_input(&self) -> &str {
+        "[aria-label='Add a caption']"
     }
 
-    pub fn document_attachment_input(&self) -> Locator {
-        self.page.locator("input[accept='*']")
+    pub fn document_attachment_input(&self) -> &str {
+        "input[accept='*']"
     }
-}
 
-impl<'a> LocatorDictionary<'a> {
     /// Get the data-link-code attribute from the phone link element
-    pub async fn data_link_code(&self) -> Result<Option<String>, playwright::Error> {
-        self.link_phone_number_code_element()
-            .get_attribute("data-link-code", None)
-            .await
+    pub fn data_link_code(&self) -> anyhow::Result<Option<String>> {
+        match self.tab.find_element(self.link_phone_number_code_element()) {
+            Ok(element) => {
+                match element.get_attribute_value("data-link-code") {
+                    Ok(value) => Ok(value),
+                    Err(_) => Ok(None),
+                }
+            },
+            Err(_) => Ok(None),
+        }
     }
 }

@@ -9,10 +9,9 @@ use crate::{
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Main WhatsApp service that coordinates all operations
-#[derive(Debug)]
 pub struct WhatsAppService {
     config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
@@ -101,15 +100,17 @@ impl WhatsAppService {
 
     /// Check authentication status directly without busy flag
     pub async fn check_auth_status_directly(&self) -> Result<bool> {
-        let page = self.browser_service.get_or_create_page("https://web.whatsapp.com").await?;
+        let tab = self.browser_service.get_or_create_tab("https://web.whatsapp.com").await?;
 
         let script = r#"
             document.querySelector('#pane-side') !== null
         "#;
 
-        match page.evaluate(script, None).await {
+        match tab.evaluate(script, false) {
             Ok(result) => {
-                let is_authorized = result.as_bool().unwrap_or(false);
+                let is_authorized = result.value
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 debug!("Direct auth check result: {}", is_authorized);
                 Ok(is_authorized)
             }

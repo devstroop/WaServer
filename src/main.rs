@@ -1,6 +1,6 @@
 use axum::{
     extract::DefaultBodyLimit,
-    http::{HeaderValue, Method},
+    http::Method,
     middleware,
     routing::{get, post},
     Router,

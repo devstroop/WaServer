@@ -6,11 +6,11 @@ use crate::{
 use anyhow::Result;
 use async_trait::async_trait;
 use mime_guess::MimeGuess;
-use playwright::api::Page;
+use headless_chrome::Tab;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// Chat service trait
 #[async_trait]
@@ -25,7 +25,6 @@ pub trait ChatServiceTrait: Send + Sync {
 }
 
 /// WhatsApp chat service
-#[derive(Debug)]
 pub struct ChatService {
     config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
@@ -42,12 +41,12 @@ impl ChatService {
     }
 
     /// Get page from browser service
-    async fn get_page(&self) -> Result<Page> {
-        self.browser_service.get_or_create_page("https://web.whatsapp.com").await
+    async fn get_tab(&self) -> Result<Arc<Tab>> {
+        self.browser_service.get_or_create_tab("https://web.whatsapp.com").await
     }
 
     /// Navigate to a specific chat by phone number
-    async fn navigate_to_chat(&self, page: &Page, phone: &str) -> Result<()> {
+    async fn navigate_to_chat(&self, tab: &Arc<Tab>, phone: &str) -> Result<()> {
         let phone_number = if phone.contains('@') || phone.contains(':') {
             phone.split('@').next()
                 .and_then(|part| part.split(':').next())
@@ -72,42 +71,38 @@ impl ChatService {
             phone_number
         );
 
-        page.evaluate(&script, None).await?;
+        tab.evaluate(&script, false)?;
 
         // Wait for any dialog to close
-        let locators = LocatorDictionary::new(page);
-        let mut wait_options = playwright::api::LocatorWaitForOptions::default();
-        wait_options.state = Some(playwright::api::WaitForSelectorState::Hidden);
-        wait_options.timeout = Some(10000.0);
-
-        if let Err(e) = locators.dialog().wait_for(Some(wait_options)).await {
-            debug!("No dialog to wait for or timeout: {}", e);
-        }
+        let _locators = LocatorDictionary::new(tab.clone());
+        
+        // Try to wait for dialog to close, but don't fail if it doesn't exist
+        std::thread::sleep(std::time::Duration::from_millis(2000));
 
         Ok(())
     }
 
     /// Send a text message
-    async fn send_text_message(&self, page: &Page, text: &str) -> Result<()> {
-        let locators = LocatorDictionary::new(page);
+    async fn send_text_message(&self, tab: &Arc<Tab>, text: &str) -> Result<()> {
+        let _locators = LocatorDictionary::new(tab.clone());
 
         debug!("Sending text message: {}", text);
 
-        // Clear and fill the message input
-        locators.type_a_message_input().clear(None).await?;
-        locators.type_a_message_input().fill(text, None).await?;
-
+        // Find message input and send text
+        let message_input = tab.find_element("[aria-label='Type a message']")?;
+        message_input.click()?;
+        message_input.type_into(text)?;
+        
         // Press Enter to send
-        let mut press_options = playwright::api::LocatorPressOptions::default();
-        locators.type_a_message_input().press("Enter", Some(press_options)).await?;
+        tab.press_key("Enter")?;
 
         info!("Text message sent successfully");
         Ok(())
     }
 
     /// Send a file attachment with optional caption
-    async fn send_attachment(&self, page: &Page, attachment_path: &str, caption: Option<&str>) -> Result<()> {
-        let locators = LocatorDictionary::new(page);
+    async fn send_attachment(&self, tab: &Arc<Tab>, attachment_path: &str, caption: Option<&str>) -> Result<()> {
+        let _locators = LocatorDictionary::new(tab.clone());
 
         debug!("Sending attachment: {}", attachment_path);
 
@@ -116,34 +111,29 @@ impl ChatService {
         let content_type = mime_type.to_string();
 
         // Click attach button
-        let attach_button = page.get_by_role(playwright::api::AriaRole::Button, Some(playwright::api::PageGetByRoleOptions {
-            name: Some("Attach".to_string()),
-            ..Default::default()
-        }));
-        attach_button.click(None).await?;
+        let attach_button = tab.find_element("[data-icon='plus']")?;
+        attach_button.click()?;
 
         // Choose appropriate input based on file type
         if content_type.starts_with("image/") || content_type.starts_with("video/") {
             debug!("Uploading as photo/video");
-            locators.photo_and_video_attachment_input()
-                .set_input_files(Some(vec![attachment_path.into()]), None)
-                .await?;
+            let file_input = tab.find_element("input[accept='image/*,video/mp4,video/3gpp,video/quicktime']")?;
+            file_input.set_input_files(&[attachment_path.into()])?;
         } else {
             debug!("Uploading as document");
-            locators.document_attachment_input()
-                .set_input_files(Some(vec![attachment_path.into()]), None)
-                .await?;
+            let file_input = tab.find_element("input[accept='*']")?;
+            file_input.set_input_files(&[attachment_path.into()])?;
         }
 
         // Add caption if provided
         if let Some(caption_text) = caption {
             debug!("Adding caption: {}", caption_text);
-            locators.attachment_caption_input().fill(caption_text, None).await?;
+            let caption_input = tab.find_element("[aria-label='Add a caption']")?;
+            caption_input.type_into(caption_text)?;
         }
 
         // Send the attachment
-        let mut press_options = playwright::api::LocatorPressOptions::default();
-        locators.attachment_caption_input().press("Enter", Some(press_options)).await?;
+        tab.press_key("Enter")?;
 
         info!("Attachment sent successfully");
         Ok(())
@@ -169,7 +159,7 @@ impl ChatServiceTrait for ChatService {
 
         debug!("Acquired message queue lock");
 
-        let page = self.get_page().await?;
+        let tab = self.get_tab().await?;
 
         // Validate inputs
         if phone.is_empty() {
@@ -187,15 +177,15 @@ impl ChatServiceTrait for ChatService {
         }
 
         // Navigate to the chat
-        self.navigate_to_chat(&page, phone).await?;
+        self.navigate_to_chat(&tab, phone).await?;
 
         // Send message based on type
         if let Some(attachment) = attachment_path {
             // Send attachment with optional caption
-            self.send_attachment(&page, attachment, text).await?;
+            self.send_attachment(&tab, attachment, text).await?;
         } else if let Some(message_text) = text {
             // Send text message
-            self.send_text_message(&page, message_text).await?;
+            self.send_text_message(&tab, message_text).await?;
         }
 
         info!("Message sent successfully to {}", phone);
