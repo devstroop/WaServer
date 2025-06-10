@@ -2,7 +2,7 @@
 name = "whatsapp-engine-rust"
 version = "0.1.0"
 edition = "2021"
-authors = ["DevStroop <devstroop@example.com>"]
+authors = ["Devstroop Technologies <info@devstroop.com>"]
 description = "A high-performance WhatsApp Web automation engine built in Rust with parallel processing capabilities"
 license = "MIT"
 repository = "https://github.com/devstroop/whatsapp-engine-rust"
