@@ -43,15 +43,20 @@ impl BrowserService {
         // Add Chrome args
         for arg in &self.config.browser.args {
             browser_config = browser_config.arg(arg);
-        }
-
-        // Generate a unique user data directory to avoid singleton lock issues
+        }        // Generate a unique user data directory to avoid singleton lock issues
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        // TODO: Implement platform specific support
-        let user_data_dir = format!("/tmp/chromiumoxide-whatsapp-{}-{}", std::process::id(), timestamp);
+        
+        // Platform-specific temporary directory
+        let temp_dir = if cfg!(target_os = "windows") {
+            std::env::var("TEMP").unwrap_or_else(|_| std::env::var("TMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string()))
+        } else {
+            "/tmp".to_string()
+        };
+        
+        let user_data_dir = format!("{}/chromiumoxide-whatsapp-{}-{}", temp_dir, std::process::id(), timestamp);
 
         // Add essential args for stability
         browser_config = browser_config
@@ -116,27 +121,29 @@ impl BrowserService {
                 Ok(())
             }
         }
-    }
-
-    /// Clean up any existing Chrome processes that might be holding locks
+    }    /// Clean up any existing Chrome processes that might be holding locks
     async fn cleanup_existing_chrome_processes(&self) {
         debug!("Checking for existing Chrome processes...");
         
-        // Try to kill any Chrome processes that might be using our user data directory
-        let _ = tokio::process::Command::new("pkill")
-            .args(&["-f", "chromium-browser"])
-            .output()
-            .await;
-            
-        let _ = tokio::process::Command::new("pkill")
-            .args(&["-f", "chrome"])
-            .output()
-            .await;
-            
-        let _ = tokio::process::Command::new("pkill")
-            .args(&["-f", "google-chrome"])
-            .output()
-            .await;
+        if cfg!(target_os = "windows") {
+            // Windows process cleanup using taskkill
+            let chrome_processes = ["chrome.exe", "msedge.exe", "chromium.exe"];
+            for process in chrome_processes {
+                let _ = tokio::process::Command::new("taskkill")
+                    .args(&["/F", "/IM", process])
+                    .output()
+                    .await;
+            }
+        } else {
+            // Unix/Linux process cleanup using pkill
+            let chrome_processes = ["chromium-browser", "chrome", "google-chrome"];
+            for process in chrome_processes {
+                let _ = tokio::process::Command::new("pkill")
+                    .args(&["-f", process])
+                    .output()
+                    .await;
+            }
+        }
 
         // Wait a moment for processes to terminate
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
