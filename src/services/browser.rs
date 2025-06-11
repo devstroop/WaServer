@@ -50,6 +50,7 @@ impl BrowserService {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
+        // TODO: Implement platform specific support
         let user_data_dir = format!("/tmp/chromiumoxide-whatsapp-{}-{}", std::process::id(), timestamp);
 
         // Add essential args for stability
