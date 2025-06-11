@@ -19,7 +19,7 @@ use utoipa::{
 };
 use utoipa_swagger_ui::SwaggerUi;
 
-use whatsapp_engine_rust::{
+use wae_rust::{
     config::AppConfig,
     handlers::{auth, chat},
     models::{auth::*, chat::*},
@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("whatsapp_engine_rust={}", log_level).into()),
+                .unwrap_or_else(|_| format!("wae_rust={}", log_level).into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();

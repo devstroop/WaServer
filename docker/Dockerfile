@@ -67,7 +67,7 @@ WORKDIR /app
 RUN mkdir -p .temp && chown -R appuser:appuser /app
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/whatsapp-engine-rust /app/
+COPY --from=builder /app/target/release/wae-rust /app/
 
 # Copy configuration
 COPY config/ ./config/
@@ -86,4 +86,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/api/auth/status || exit 1
 
 # Run the application
-CMD ["./whatsapp-engine-rust"]
+CMD ["./wae-rust"]

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
-use whatsapp_engine_rust::config::AppConfig;
-use whatsapp_engine_rust::services::browser::BrowserService;
+use wae_rust::config::AppConfig;
+use wae_rust::services::browser::BrowserService;
 
 #[cfg(test)]
 mod browser_tests {

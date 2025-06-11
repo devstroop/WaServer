@@ -31,8 +31,8 @@ A high-performance WhatsApp Web automation engine built in Rust with parallel pr
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/devstroop/whatsapp-engine-rust.git
-   cd whatsapp-engine-rust
+   git clone https://github.com/devstroop/wae-rust.git
+   cd wae-rust
    ```
 
 2. Install dependencies:
@@ -70,14 +70,14 @@ cargo run -- --config config/app.toml
 cargo build --release
 
 # Run release binary
-./target/release/whatsapp-engine-rust
+./target/release/wae-rust
 ```
 
 ### Docker Deployment
 
 ```bash
 # Build Docker image
-docker build -t whatsapp-engine-rust .
+docker build -t wae-rust .
 
 # Run with Docker Compose
 docker-compose up -d
@@ -190,7 +190,7 @@ FROM debian:bookworm-slim
 ```yaml
 version: '3.8'
 services:
-  whatsapp-engine:
+  wae:
     build: .
     ports:
       - "3000:3000"
@@ -240,7 +240,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- Create an [Issue](https://github.com/devstroop/whatsapp-engine-rust/issues) for bug reports or feature requests
+- Create an [Issue](https://github.com/devstroop/wae-rust/issues) for bug reports or feature requests
 - Join our [Discord](https://discord.gg/your-discord) for community support
 
 ---

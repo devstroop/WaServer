@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  whatsapp-engine:
+  wae:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -38,7 +38,7 @@ services:
       # Add SSL certificates if needed
       # - ./ssl:/etc/nginx/ssl:ro
     depends_on:
-      - whatsapp-engine
+      - wae
     networks:
       - whatsapp-network
 

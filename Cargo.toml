@@ -1,11 +1,11 @@
 [package]
-name = "whatsapp-engine-rust"
+name = "wae-rust"
 version = "0.1.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
 description = "A high-performance WhatsApp Web automation engine built in Rust with parallel processing capabilities"
 license = "MIT"
-repository = "https://github.com/devstroop/whatsapp-engine-rust"
+repository = "https://github.com/devstroop/wae-rust"
 
 [dependencies]
 # Web framework
