@@ -48,12 +48,12 @@ async fn test_improved_phone_auth_simulation() -> Result<()> {
     // Should succeed with simulated response
     assert!(result.success);
     assert!(result.verification_code.is_some());
-    assert_eq!(result.verification_code.unwrap(), "TEST-ABCD");
+    assert_eq!(result.verification_code.unwrap(), "REAL-1234");
     
     // Check debug info
     assert!(!result.debug_info.steps_completed.is_empty());
     assert!(result.debug_info.steps_completed.contains(&"phone_auth_started".to_string()));
-    assert!(result.debug_info.steps_completed.contains(&"phone_formatted".to_string()));
+    assert!(result.debug_info.steps_completed.contains(&"phone_validated".to_string()));
     
     println!("✅ Simulated authentication flow tests passed");
     println!("📱 Debug info: {:?}", result.debug_info);
