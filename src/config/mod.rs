@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
+
+use environment::EnvironmentConfig;
+
+pub mod environment;
 
 /// Application configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -10,6 +15,7 @@ pub struct AppConfig {
     pub cache: CacheConfig,
     pub cors: CorsConfig,
     pub limits: LimitsConfig,
+    pub environment: EnvironmentConfig,
 }
 
 /// Server configuration
@@ -110,6 +116,7 @@ impl Default for AppConfig {
                 request_timeout_ms: 60000,
                 max_upload_size: 10 * 1024 * 1024, // 10MB
             },
+            environment: EnvironmentConfig::default(),
         }
     }
 }
@@ -117,6 +124,9 @@ impl Default for AppConfig {
 impl AppConfig {
     /// Load configuration from file and environment variables
     pub fn load() -> Result<Self, config::ConfigError> {
+        // First load environment config
+        let env_config = EnvironmentConfig::from_env();
+        
         let mut builder = config::Config::builder()
             .add_source(config::File::with_name("config/app").required(false))
             .add_source(config::Environment::with_prefix("WHATSAPP").separator("__"));
@@ -127,7 +137,12 @@ impl AppConfig {
         }
 
         let config = builder.build()?;
-        config.try_deserialize()
+        let mut app_config: AppConfig = config.try_deserialize()?;
+        
+        // Override with environment config
+        app_config.environment = env_config;
+        
+        Ok(app_config)
     }
 
     /// Validate configuration values

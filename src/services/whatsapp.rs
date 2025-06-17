@@ -5,6 +5,8 @@ use crate::{
         browser::BrowserService,
         chat_service::{ChatService, ChatServiceTrait},
     },
+    utils::metrics::{ServiceMetrics, MetricsSnapshot},
+    models::auth::AuthStatusResponse,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -19,6 +21,8 @@ pub struct WhatsAppService {
     chat_service: Arc<dyn ChatServiceTrait>,
     busy_flag: Arc<Mutex<bool>>,
     operation_semaphore: Arc<Semaphore>,
+    metrics: ServiceMetrics,
+    initialized: Arc<Mutex<bool>>,
 }
 
 impl WhatsAppService {
@@ -35,6 +39,8 @@ impl WhatsAppService {
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             busy_flag: Arc::new(Mutex::new(false)),
             operation_semaphore: Arc::new(Semaphore::new(config.limits.max_concurrent_requests)),
+            metrics: ServiceMetrics::new(),
+            initialized: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -44,6 +50,12 @@ impl WhatsAppService {
         
         // Initialize browser service
         self.browser_service.initialize().await?;
+        
+        // Mark as initialized
+        {
+            let mut initialized = self.initialized.lock().await;
+            *initialized = true;
+        }
         
         info!("WhatsApp service initialized successfully");
         Ok(())
@@ -178,10 +190,68 @@ impl WhatsAppService {
     pub async fn close(&self) -> Result<()> {
         info!("Closing WhatsApp service");
 
+        // Mark as not initialized
+        {
+            let mut initialized = self.initialized.lock().await;
+            *initialized = false;
+        }
+
         // Close browser service
         self.browser_service.close().await?;
 
         info!("WhatsApp service closed successfully");
         Ok(())
+    }
+
+    /// Check if the service is initialized and ready
+    pub async fn is_initialized(&self) -> bool {
+        *self.initialized.lock().await
+    }
+
+    /// Health check for the WhatsApp service
+    pub async fn health_check(&self) -> Result<()> {
+        // Check if service is initialized
+        if !self.is_initialized().await {
+            return Err(anyhow::anyhow!("Service not initialized"));
+        }
+
+        // Check if browser service is healthy
+        match self.browser_service.get_whatsapp_page().await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.metrics.increment_error_count();
+                Err(anyhow::anyhow!("Browser service unhealthy: {}", e))
+            }
+        }
+    }
+
+    /// Get service metrics snapshot
+    pub async fn get_metrics(&self) -> MetricsSnapshot {
+        self.metrics.snapshot()
+    }
+
+    /// Get authentication status with metrics tracking
+    pub async fn get_auth_status(&self) -> Result<AuthStatusResponse> {
+        self.metrics.increment_auth_attempts();
+        match self.auth_service.get_auth_status().await {
+            Ok(response) => {
+                self.metrics.update_last_activity();
+                Ok(response)
+            }
+            Err(e) => {
+                self.metrics.increment_error_count();
+                Err(e)
+            }
+        }
+    }
+
+    /// Track message sending with metrics
+    pub fn track_message_sent(&self) {
+        self.metrics.increment_messages_sent();
+    }
+
+    /// Track errors
+    pub fn track_error(&self) {
+        self.metrics.increment_error_count();
     }
 }

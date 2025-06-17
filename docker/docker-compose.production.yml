@@ -1,0 +1,153 @@
+# WhatsApp Engine - Production Docker Compose
+#
+# Complete production environment with monitoring and logging
+
+version: '3.8'
+
+services:
+  whatsapp-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.production
+    container_name: whatsapp-engine-prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - ENVIRONMENT=production
+      - RUST_LOG=warn
+      - WHATSAPP__SERVER__HOST=0.0.0.0
+      - WHATSAPP__SERVER__PORT=3000
+      - WHATSAPP__AUTH__API_TOKEN=${WHATSAPP_API_TOKEN:-your-secure-production-token}
+      - WHATSAPP__BROWSER__HEADLESS=true
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_INTERVAL=30
+    volumes:
+      - whatsapp_data:/app/data
+      - /dev/shm:/dev/shm
+    networks:
+      - whatsapp-network
+    depends_on:
+      - prometheus
+      - grafana
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Reverse proxy
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: whatsapp-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - whatsapp-network
+    depends_on:
+      - whatsapp-engine
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: whatsapp-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - whatsapp-network
+
+  # Monitoring - Grafana
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: whatsapp-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - whatsapp-network
+    depends_on:
+      - prometheus
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: whatsapp-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/tmp/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - whatsapp-network
+
+  # Log shipping
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: whatsapp-promtail
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log:ro
+      - ./promtail.yml:/etc/promtail/config.yml:ro
+      - promtail_data:/tmp/promtail
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - whatsapp-network
+    depends_on:
+      - loki
+
+volumes:
+  whatsapp_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  promtail_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  whatsapp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

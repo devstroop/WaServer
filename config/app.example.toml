@@ -18,7 +18,7 @@ args = [
 ]
 
 [auth]
-# Set your secure API token here
+# Set your secure API token here - CHANGE THIS IN PRODUCTION!
 api_token = "your-secure-api-token-change-this"
 
 [logging]
@@ -35,8 +35,18 @@ allow_headers = ["authorization", "content-type"]
 
 [limits]
 # Maximum concurrent requests
-max_concurrent_requests = 10
+max_concurrent_requests = 50
 # Request timeout in milliseconds
-request_timeout_ms = 60000
+request_timeout_ms = 30000
 # Maximum file upload size in bytes (10MB)
 max_upload_size = 10485760
+
+# Environment Configuration (can be overridden by environment variables)
+[environment]
+# Environment: "development", "staging", or "production"
+environment = "development"
+log_level = "info"
+rust_log = "wae_rust=info"
+debug_mode = true
+metrics_enabled = true
+health_check_interval = 30
