@@ -3,7 +3,7 @@
 // Production-ready logging utilities with request correlation and metrics
 
 use serde::{Deserialize, Serialize};
-use std::{fmt, time::SystemTime};
+use std::fmt;
 use tracing::{info, warn};
 use uuid::Uuid;
 

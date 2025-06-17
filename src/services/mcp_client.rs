@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// MCP Playwright client for browser automation
 #[derive(Debug, Clone)]

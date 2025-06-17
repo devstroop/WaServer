@@ -84,8 +84,8 @@ utoipa-swagger-ui = { version = "6.0", features = ["axum"], optional = true }
 
 # File handling (for API server mode)
 mime_guess = { version = "2.0", optional = true }
-tempfile = { version = "3.0", optional = true }
 
 [dev-dependencies]
 tower-test = "0.4"
 tokio-test = "0.4"
+tempfile = "3.0"

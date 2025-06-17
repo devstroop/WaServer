@@ -75,6 +75,16 @@ pub enum WhatsAppError {
     
     #[error("Internal error: {0}")]
     Internal(String),
+    
+    #[error("File operation failed: {details}")]
+    FileError {
+        details: String,
+    },
+    
+    #[error("Serialization error: {details}")]
+    SerializationError {
+        details: String,
+    },
 }
 
 impl WhatsAppError {

@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, error};
+use base64::Engine;
 
 /// Chat service trait
 #[async_trait]
@@ -248,10 +249,20 @@ impl ChatService {
     }
 
     /// Send a file attachment with optional caption
-    async fn send_attachment(&self, page: &Page, attachment_path: &str, _caption: Option<&str>) -> Result<()> {
+    async fn send_attachment(&self, page: &Page, attachment_path: &str, caption: Option<&str>) -> Result<()> {
         let locators = LocatorDictionary::new();
 
         debug!("Sending attachment: {}", attachment_path);
+
+        // Validate file exists and get absolute path
+        let path = Path::new(attachment_path);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("File does not exist: {}", attachment_path));
+        }
+        
+        let absolute_path = path.canonicalize()
+            .map_err(|e| anyhow::anyhow!("Failed to get absolute path: {}", e))?;
+        let absolute_path_str = absolute_path.to_string_lossy();
 
         // Determine file type  
         let mime_type = MimeGuess::from_path(attachment_path).first_or_octet_stream();
@@ -261,40 +272,138 @@ impl ChatService {
         let attach_button = page.find_element(locators.attachment_button()).await?;
         attach_button.click().await?;
 
-        // Wait a moment for the attachment menu to appear
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        // Wait for the attachment menu to appear
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
-        // Note: File uploads with chromiumoxide are limited
-        // The set_input_files method may not be available or work as expected
-        // This is a known limitation of chromiumoxide compared to Playwright
-        
-        if content_type.contains("image") || content_type.contains("video") {
-            // Try to find and use the photo/video input
-            match page.find_element(locators.photo_and_video_attachment_input()).await {
-                Ok(_input_element) => {
-                    // This is a workaround - chromiumoxide doesn't have a direct equivalent to SetInputFilesAsync
-                    // We would need to use JavaScript to set the file input value, but this has security limitations
-                    error!("Photo/video file upload not fully supported with chromiumoxide");
-                    return Err(anyhow::anyhow!("Photo/video file uploads require Playwright for full functionality"));
-                },
-                Err(e) => {
-                    error!("Failed to find photo/video input: {}", e);
-                    return Err(anyhow::anyhow!("Failed to find photo/video input element"));
-                }
-            }
+        // Select the appropriate input based on file type
+        let input_selector = if content_type.contains("image") || content_type.contains("video") {
+            locators.photo_and_video_attachment_input()
         } else {
-            // Try to find and use the document input
-            match page.find_element(locators.document_attachment_input()).await {
-                Ok(_input_element) => {
-                    error!("Document file upload not fully supported with chromiumoxide");
-                    return Err(anyhow::anyhow!("Document file uploads require Playwright for full functionality"));
-                },
-                Err(e) => {
-                    error!("Failed to find document input: {}", e);
-                    return Err(anyhow::anyhow!("Failed to find document input element"));
+            locators.document_attachment_input()
+        };
+
+        // Try to upload the file using JavaScript
+        match self.upload_file_with_js(page, &input_selector, &absolute_path_str).await {
+            Ok(_) => {
+                info!("File uploaded successfully: {}", attachment_path);
+                
+                // Wait for file to be processed
+                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                
+                // Add caption if provided
+                if let Some(caption_text) = caption {
+                    match self.add_caption(page, caption_text).await {
+                        Ok(_) => debug!("Caption added successfully"),
+                        Err(e) => error!("Failed to add caption: {}", e),
+                    }
                 }
+                
+                // Click send button
+                self.click_send_button(page).await?;
+                
+                // Wait for message to be sent
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to upload file: {}", e);
+                Err(anyhow::anyhow!("File upload failed: {}", e))
             }
         }
+    }
+
+    /// Upload file using JavaScript injection
+    async fn upload_file_with_js(&self, page: &Page, input_selector: &str, file_path: &str) -> Result<()> {
+        // Read file content
+        let file_content = tokio::fs::read(file_path).await
+            .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))?;
+        
+        // Convert to base64
+        let base64_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
+        
+        // Get file name
+        let file_name = Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
+            
+        // Get MIME type
+        let mime_type = MimeGuess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
+
+        // JavaScript to create and upload file
+        let js_code = format!(r#"
+            (function() {{
+                const inputElement = document.querySelector('{}');
+                if (!inputElement) {{
+                    throw new Error('File input element not found');
+                }}
+                
+                // Create file from base64
+                const byteCharacters = atob('{}');
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                const byteArray = new Uint8Array(byteNumbers);
+                const file = new File([byteArray], '{}', {{ type: '{}' }});
+                
+                // Create FileList
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                inputElement.files = dataTransfer.files;
+                
+                // Trigger change event
+                const event = new Event('change', {{ bubbles: true }});
+                inputElement.dispatchEvent(event);
+                
+                return 'File uploaded successfully';
+            }})();
+        "#, input_selector, base64_content, file_name, mime_type);
+
+        // Execute JavaScript
+        let result = page.evaluate_expression(js_code).await
+            .map_err(|e| anyhow::anyhow!("JavaScript execution failed: {}", e))?;
+            
+        debug!("File upload result: {:?}", result);
+        Ok(())
+    }
+
+    /// Add caption to the file being sent
+    async fn add_caption(&self, page: &Page, caption: &str) -> Result<()> {
+        let locators = LocatorDictionary::new();
+        
+        // Find caption input field
+        match page.find_element(locators.attachment_caption_input()).await {
+            Ok(caption_input) => {
+                caption_input.click().await?;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                
+                caption_input.type_str(caption).await?;
+                debug!("Caption '{}' added successfully", caption);
+                Ok(())
+            },
+            Err(_) => {
+                // Caption input might not be available for all file types
+                debug!("Caption input not found, skipping caption");
+                Ok(())
+            }
+        }
+    }
+
+    /// Click the send button after file upload
+    async fn click_send_button(&self, page: &Page) -> Result<()> {
+        let locators = LocatorDictionary::new();
+        
+        // Find and click send button
+        let send_button = page.find_element(locators.send_button()).await
+            .map_err(|e| anyhow::anyhow!("Send button not found: {}", e))?;
+            
+        send_button.click().await?;
+        debug!("Send button clicked");
+        Ok(())
     }
 }
 

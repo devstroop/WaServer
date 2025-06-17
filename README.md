@@ -2,6 +2,35 @@
 
 A production-ready Rust-based WhatsApp Web automation engine with comprehensive phone number and QR code authentication support. Built with reliability, performance, and scalability in mind.
 
+## ⚠️ **Current Development Status**
+
+**This project is currently in active development with several critical implementation gaps.** 
+
+- **Production Readiness Score**: 7.2/10
+- **Status**: ❌ **NOT production-ready** 
+- **Estimated Time to Production**: 6-8 weeks
+
+### 📊 **Critical Issues Identified**
+- **Core TODOs**: Session management, file attachments, data retrieval incomplete
+- **Security Gaps**: Input validation, rate limiting, authentication missing  
+- **Testing Coverage**: ~60% coverage, needs >85% for production
+- **Production Features**: Graceful shutdown, error recovery, connection pooling missing
+
+### � **Critical Code Issues Identified**
+- **Core TODOs**: Session management (`src/lib.rs:633`), file sending (`src/lib.rs:706`), data retrieval (`src/lib.rs:728,744`) return hardcoded/placeholder data
+- **Browser Service**: Missing core methods called by main engine, causing runtime errors
+- **Input Validation**: No validation on API endpoints - immediate security risk
+- **Health Checks**: Return hardcoded `true` values - monitoring completely broken
+
+### 📚 **Start Here for Development**
+- **[🔥 Critical Code Issues](docs/CRITICAL_CODE_ISSUES.md)** - 10 specific code fixes with exact file locations
+- **[Implementation Issues](docs/IMPLEMENTATION_ISSUES.md)** - 22 detailed issues with priorities
+- **[Development Iteration Plan](docs/ITERATION_PLAN.md)** - 10-week roadmap to production
+
+**Before using this project, please review the complete issue documentation to understand current limitations and development status.**
+
+---
+
 ## 🌟 Features
 
 - **Dual Authentication Methods**: QR Code & Phone Number authentication

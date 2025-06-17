@@ -275,7 +275,7 @@ impl AuthServiceTrait for AuthService {
         }
 
         // Enter phone number
-        let phone_entered = if page.find_element("text='Enter phone number'").await.is_ok() {
+        let _phone_entered = if page.find_element("text='Enter phone number'").await.is_ok() {
             debug!("Found phone number input screen, entering: {}", formatted_phone);
             
             // Wait for the input field to be ready

@@ -1,10 +1,9 @@
 use anyhow::Result;
-use async_trait::async_trait;
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, info, warn, error};
+use tracing::{info, warn, error};
 
-use super::mcp_client::{McpPlaywrightClient, BrowserSnapshot};
+use super::mcp_client::McpPlaywrightClient;
 
 /// Improved phone authentication service
 /// 
@@ -148,7 +147,7 @@ impl ImprovedPhoneAuthService {
     }
 
     /// Production authentication flow using existing BrowserService/chromiumoxide
-    async fn perform_production_authentication(&self, phone_number: &str, debug_info: &mut PhoneAuthDebugInfo) -> Result<String> {
+    async fn perform_production_authentication(&self, _phone_number: &str, debug_info: &mut PhoneAuthDebugInfo) -> Result<String> {
         // TODO: Integrate with existing BrowserService for production
         // For now, return a simulated success for production mode
         info!("📱 Production phone auth flow - integrating with existing BrowserService");

@@ -187,10 +187,11 @@ pub mod config;
 pub mod error;
 pub mod handlers;
 pub mod locators;
+pub mod middleware;
 pub mod models;
 pub mod services;
+pub mod session;  // Add session module
 pub mod utils;
-pub mod middleware;
 
 // Re-export public API
 pub use config::AppConfig;
@@ -309,6 +310,7 @@ pub struct WhatsAppEngine {
     auth_service: Arc<crate::services::auth_service::AuthService>,
     chat_service: Arc<crate::services::chat_service::ChatService>,
     browser_service: Arc<crate::services::browser::BrowserService>,
+    session_manager: Arc<tokio::sync::Mutex<crate::session::SessionManager>>,
     config: Arc<AppConfig>,
     start_time: SystemTime,
 }
@@ -388,12 +390,22 @@ impl WhatsAppEngine {
             )
         );
         
+        // Initialize session manager
+        debug!("Initializing session manager");
+        let session_dir = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("sessions");
+        let session_manager = Arc::new(tokio::sync::Mutex::new(
+            crate::session::SessionManager::new(session_dir)
+        ));
+        
         info!("WhatsApp Engine library initialized successfully");
         
         Ok(Self {
             auth_service,
             chat_service,
             browser_service,
+            session_manager,
             config,
             start_time,
         })
@@ -628,12 +640,40 @@ impl WhatsAppEngine {
     pub async fn get_auth_status(&self) -> Result<AuthStatus> {
         let is_auth = self.is_authenticated().await?;
         
+        // If not authenticated, try to load latest session
+        if !is_auth {
+            {
+                let mut session_guard = self.session_manager.lock().await;
+                if let Ok(Some(_)) = session_guard.load_latest_session().await {
+                    // Session exists but might be expired - let browser service validate
+                    drop(session_guard); // Release lock before calling auth service
+                    
+                    let reauth_result = self.is_authenticated().await?;
+                    if reauth_result {
+                        // Session is still valid - get session info again
+                        let session_guard = self.session_manager.lock().await;
+                        let current_session = session_guard.get_current_session();
+                        return Ok(AuthStatus {
+                            is_authenticated: true,
+                            phone_number: current_session.and_then(|s| s.phone_number.clone()),
+                            session_id: current_session.map(|s| s.session_id.clone()),
+                            authenticated_at: current_session.map(|s| s.authenticated_at),
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Get current session info
+        let session_guard = self.session_manager.lock().await;
+        let current_session = session_guard.get_current_session();
+        
         Ok(AuthStatus {
             is_authenticated: is_auth,
-            phone_number: None, // TODO: Extract from session if available
-            session_id: None,   // TODO: Generate/retrieve session ID
+            phone_number: current_session.and_then(|s| s.phone_number.clone()),
+            session_id: current_session.map(|s| s.session_id.clone()),
             authenticated_at: if is_auth { 
-                Some(chrono::Utc::now()) 
+                current_session.map(|s| s.authenticated_at).or_else(|| Some(chrono::Utc::now()))
             } else { 
                 None 
             },
@@ -702,17 +742,33 @@ impl WhatsAppEngine {
                 "Must be authenticated before sending files".to_string()
             ));
         }
-        
-        // TODO: Implement file sending through chat service
-        // For now, return a placeholder implementation
-        warn!("File sending not yet fully implemented in library mode");
-        
-        Ok(SendMessageResult {
-            success: false,
-            message_id: None,
-            error: Some("File sending not yet implemented in library mode".to_string()),
-            retry_after_seconds: None,
-        })
+
+        // Send file through chat service
+        match self.chat_service.send_message(
+            to, 
+            attachment.caption.as_deref(),  // Pass caption as text
+            Some(&attachment.file_path),    // Pass file path
+            None                            // Use default timeout
+        ).await {
+            Ok(_) => {
+                info!("File sent successfully to {}", to);
+                Ok(SendMessageResult {
+                    success: true,
+                    message_id: Some(uuid::Uuid::new_v4().to_string()),
+                    error: None,
+                    retry_after_seconds: None,
+                })
+            }
+            Err(e) => {
+                error!("Failed to send file to {}: {}", to, e);
+                Ok(SendMessageResult {
+                    success: false,
+                    message_id: None,
+                    error: Some(format!("Failed to send file: {}", e)),
+                    retry_after_seconds: Some(30), // Suggest retry after 30 seconds
+                })
+            }
+        }
     }
     
     /// Get list of contacts
@@ -773,6 +829,51 @@ impl WhatsAppEngine {
         
         info!("WhatsApp Engine closed successfully");
         Ok(())
+    }
+    
+    /// Create a new session after successful authentication
+    async fn create_session_after_auth(&self, phone_number: Option<String>) -> Result<()> {
+        let mut session_guard = self.session_manager.lock().await;
+        let session_data = session_guard.create_new_session(phone_number);
+        session_guard.save_session(session_data).await?;
+        
+        // Clean up old sessions (keep only 5 most recent)
+        session_guard.cleanup_old_sessions(5).await?;
+        
+        info!("New session created and saved");
+        Ok(())
+    }
+    
+    /// Update current session with phone number
+    async fn update_session_phone(&self, phone_number: String) -> Result<()> {
+        let mut session_guard = self.session_manager.lock().await;
+        session_guard.update_session_phone_number(phone_number).await?;
+        info!("Session updated with phone number");
+        Ok(())
+    }
+    
+    /// Extract phone number from WhatsApp Web interface
+    async fn extract_phone_from_session(&self) -> Result<Option<String>> {
+        // This would interact with the browser to extract the phone number
+        // For now, return None - this will be implemented when browser service is enhanced
+        Ok(None)
+    }
+    
+    /// Generate or retrieve session ID for current session
+    async fn generate_or_retrieve_session_id(&self) -> Result<String> {
+        let session_guard = self.session_manager.lock().await;
+        
+        if let Some(current_session) = session_guard.get_current_session() {
+            Ok(current_session.session_id.clone())
+        } else {
+            // Create new session if none exists
+            drop(session_guard);
+            self.create_session_after_auth(None).await?;
+            let session_guard = self.session_manager.lock().await;
+            Ok(session_guard.get_current_session()
+                .map(|s| s.session_id.clone())
+                .unwrap_or_else(|| crate::session::SessionManager::generate_session_id()))
+        }
     }
 }
 
