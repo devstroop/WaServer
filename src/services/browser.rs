@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 use futures_util::stream::StreamExt;
+use uuid;
 
 /// Browser service for managing Chrome browser instances
 pub struct BrowserService {
@@ -49,6 +50,9 @@ impl BrowserService {
             .unwrap()
             .as_millis();
         
+        // Generate a UUID for uniqueness
+        let unique_id = uuid::Uuid::new_v4().to_string().replace("-", "");
+        
         // Platform-specific temporary directory
         let temp_dir = if cfg!(target_os = "windows") {
             std::env::var("TEMP").unwrap_or_else(|_| std::env::var("TMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string()))
@@ -56,7 +60,11 @@ impl BrowserService {
             "/tmp".to_string()
         };
         
-        let user_data_dir = format!("{}/chromiumoxide-whatsapp-{}-{}", temp_dir, std::process::id(), timestamp);
+        let user_data_dir = format!("{}/chromiumoxide-whatsapp-{}-{}-{}", temp_dir, std::process::id(), timestamp, unique_id);
+        
+        // Ensure the directory doesn't exist and clean up any old directories
+        let _ = std::fs::remove_dir_all(&user_data_dir);
+        std::fs::create_dir_all(&user_data_dir).map_err(|e| anyhow::anyhow!("Failed to create user data directory: {}", e))?;
 
         // Add essential args for stability
         browser_config = browser_config
@@ -85,7 +93,7 @@ impl BrowserService {
         info!("Launching Chrome browser with chromiumoxide...");
         
         match tokio::time::timeout(
-            std::time::Duration::from_secs(15),
+            std::time::Duration::from_secs(30), // Increased timeout to 30 seconds
             Browser::launch(config)
         ).await {
             Ok(Ok((browser, mut handler))) => {
@@ -112,13 +120,11 @@ impl BrowserService {
             }
             Ok(Err(e)) => {
                 tracing::error!("Failed to launch browser: {}", e);
-                tracing::warn!("Continuing without browser - browser-dependent features will not work");
-                Ok(())
+                return Err(anyhow::anyhow!("Browser initialization failed: {}", e));
             }
             Err(_) => {
-                tracing::error!("Browser launch timed out after 15 seconds");
-                tracing::warn!("Continuing without browser - browser-dependent features will not work");
-                Ok(())
+                tracing::error!("Browser launch timed out after 30 seconds");
+                return Err(anyhow::anyhow!("Browser launch timeout - please ensure Chrome is installed and system has sufficient resources"));
             }
         }
     }    /// Clean up any existing Chrome processes that might be holding locks
@@ -135,13 +141,41 @@ impl BrowserService {
                     .await;
             }
         } else {
-            // Unix/Linux process cleanup using pkill
-            let chrome_processes = ["chromium-browser", "chrome", "google-chrome"];
+            // First try graceful termination
+            let chrome_processes = ["Google Chrome", "chromium-browser", "chrome", "google-chrome", "Chromium"];
             for process in chrome_processes {
                 let _ = tokio::process::Command::new("pkill")
                     .args(&["-f", process])
                     .output()
                     .await;
+            }
+            
+            // Wait for graceful termination
+            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+            
+            // Force kill if still running
+            for process in chrome_processes {
+                let _ = tokio::process::Command::new("pkill")
+                    .args(&["-9", "-f", process])
+                    .output()
+                    .await;
+            }
+        }
+
+        // Also clean up any leftover temp directories
+        let temp_dir = if cfg!(target_os = "windows") {
+            std::env::var("TEMP").unwrap_or_else(|_| std::env::var("TMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string()))
+        } else {
+            "/tmp".to_string()
+        };
+        
+        if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.starts_with("chromiumoxide-whatsapp") {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
             }
         }
 
@@ -187,9 +221,19 @@ impl BrowserService {
 
     /// Create a new page for any URL
     async fn create_new_page(&self, url: &str) -> Result<Page> {
-        // Ensure browser is initialized
-        if self.browser.lock().await.is_none() {
-            self.initialize().await?;
+        // Ensure browser is initialized with retry logic
+        let mut retries = 0;
+        while self.browser.lock().await.is_none() && retries < 3 {
+            info!("Browser not initialized, attempting initialization (attempt {})", retries + 1);
+            if let Err(e) = self.initialize().await {
+                retries += 1;
+                if retries >= 3 {
+                    return Err(anyhow::anyhow!("Failed to initialize browser after {} attempts: {}", retries, e));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                continue;
+            }
+            break;
         }
 
         // Create new page

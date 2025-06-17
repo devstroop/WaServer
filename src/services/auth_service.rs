@@ -217,41 +217,77 @@ impl AuthServiceTrait for AuthService {
             format!("+{}", phone_number)
         };
 
-        debug!("Starting phone authentication for: {}", formatted_phone);
+        info!("Starting phone authentication for: {}", formatted_phone);
+
+        // Debug: Log current page state
+        let page_title = page.get_title().await.unwrap_or_default().unwrap_or_default();
+        let page_url = page.url().await.unwrap_or_default().unwrap_or_else(|| "unknown".to_string());
+        debug!("Current page - Title: '{}', URL: '{}'", page_title, page_url);
+
+        // Wait for page to fully load
+        debug!("Waiting for page to fully load...");
+        tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+
+        // Check what's currently visible on the page
+        let has_qr_login = page.find_element("text='Log into WhatsApp Web'").await.is_ok();
+        let has_phone_login = page.find_element("text='Enter phone number'").await.is_ok();
+        let has_code_screen = page.find_element("text='Enter code on phone'").await.is_ok();
+        
+        debug!("Page state - QR login: {}, Phone login: {}, Code screen: {}", 
+               has_qr_login, has_phone_login, has_code_screen);
 
         // Switch to phone number login if we're in QR mode
-        if page.find_element("text='Log into WhatsApp Web'").await.is_ok() {
-            debug!("Switching to phone number login");
+        if has_qr_login {
+            debug!("Found QR login screen, switching to phone number login");
             if let Ok(phone_link) = page.find_element("text='Log in with phone number'").await {
+                info!("Clicking 'Log in with phone number' link");
                 phone_link.click().await?;
                 
                 // Wait for phone input to be visible with extended timeout
                 tokio::time::timeout(
-                    std::time::Duration::from_millis(20000), // Increased to 20 seconds
+                    std::time::Duration::from_millis(15000),
                     async {
                         let mut attempts = 0;
-                        while page.find_element("text='Enter phone number'").await.is_err() && attempts < 40 {
+                        while page.find_element("text='Enter phone number'").await.is_err() && attempts < 30 {
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             attempts += 1;
-                            if attempts % 10 == 0 {
+                            if attempts % 5 == 0 {
                                 debug!("Still waiting for phone input screen... (attempt {})", attempts);
+                                // Debug: Check what's on the page now
+                                let current_content = page.content().await.unwrap_or_default();
+                                if current_content.contains("Enter phone number") {
+                                    debug!("Phone input screen detected in content");
+                                    break;
+                                }
                             }
                         }
                     }
                 ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for phone input screen - QR code may still be loading"))?;
+            } else {
+                return Err(anyhow::anyhow!("Could not find 'Log in with phone number' link"));
             }
         }
 
         // Enter phone number
-        if page.find_element("text='Enter phone number'").await.is_ok() {
-            debug!("Entering phone number: {}", formatted_phone);
+        let phone_entered = if page.find_element("text='Enter phone number'").await.is_ok() {
+            debug!("Found phone number input screen, entering: {}", formatted_phone);
             
             // Wait for the input field to be ready
             let phone_input = tokio::time::timeout(
-                std::time::Duration::from_millis(5000),
+                std::time::Duration::from_millis(10000),
                 async {
                     loop {
                         if let Ok(input) = page.find_element("[aria-label='Type your phone number.']").await {
+                            debug!("Found phone input field");
+                            return Ok::<_, anyhow::Error>(input);
+                        }
+                        // Also try alternative selectors
+                        if let Ok(input) = page.find_element("input[type='tel']").await {
+                            debug!("Found tel input field");
+                            return Ok::<_, anyhow::Error>(input);
+                        }
+                        if let Ok(input) = page.find_element("input[placeholder*='phone']").await {
+                            debug!("Found input with phone placeholder");
                             return Ok::<_, anyhow::Error>(input);
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -261,68 +297,293 @@ impl AuthServiceTrait for AuthService {
             
             // Clear and fill the input
             phone_input.click().await?;
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await; // Small delay
-            page.evaluate("document.querySelector('[aria-label=\"Type your phone number.\"]').value = '';").await?;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            
+            // Try multiple methods to clear and enter the phone number
+            let _ = page.evaluate("document.querySelector('[aria-label=\"Type your phone number.\"]').value = '';").await;
+            let _ = phone_input.press_key("Control+A").await;
+            let _ = phone_input.press_key("Delete").await;
+            
             phone_input.type_str(&formatted_phone).await?;
+            info!("Phone number entered: {}", formatted_phone);
             
             // Wait a moment for the input to register
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
             
-            // Click Next button
-            if let Ok(submit_button) = page.find_element("text='Next'").await {
-                debug!("Clicking Next button");
-                submit_button.click().await?;
+            // Click Next button with multiple attempts
+            let mut next_clicked = false;
+            for attempt in 1..=5 {
+                if let Ok(submit_button) = page.find_element("text='Next'").await {
+                    debug!("Clicking Next button (attempt {})", attempt);
+                    submit_button.click().await?;
+                    next_clicked = true;
+                    break;
+                } else if let Ok(submit_button) = page.find_element("button[type='submit']").await {
+                    debug!("Clicking submit button (attempt {})", attempt);
+                    submit_button.click().await?;
+                    next_clicked = true;
+                    break;
+                } else if let Ok(submit_button) = page.find_element("button").await {
+                    if let Ok(Some(button_text)) = submit_button.inner_text().await {
+                        if button_text.contains("Next") || button_text.contains("Continue") {
+                            debug!("Clicking button with text '{}' (attempt {})", button_text, attempt);
+                            submit_button.click().await?;
+                            next_clicked = true;
+                            break;
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
-        }
+            
+            if !next_clicked {
+                return Err(anyhow::anyhow!("Could not find or click Next button"));
+            }
+            
+            true
+        } else {
+            debug!("Not on phone number input screen");
+            false
+        };
 
-        // Wait for code screen to appear with extended timeout
+        // Wait for code screen to appear with extended timeout and better debugging
         debug!("Waiting for code input screen...");
-        tokio::time::timeout(
-            std::time::Duration::from_millis(25000), // Increased to 25 seconds
+        let code_screen_found = tokio::time::timeout(
+            std::time::Duration::from_millis(45000), // Increased to 45 seconds
             async {
                 let mut attempts = 0;
-                while page.find_element("[aria-label='Enter code on phone:']").await.is_err() && attempts < 50 {
+                while attempts < 90 {
+                    // Check multiple possible selectors for the code screen
+                    let has_code_label = page.find_element("[aria-label='Enter code on phone:']").await.is_ok();
+                    let has_code_text = page.find_element("text='Enter code on phone'").await.is_ok();
+                    let has_link_device_text = page.find_element("text='Link a device'").await.is_ok();
+                    let has_code_element = page.find_element("[aria-details='link-device-phone-number-code-screen-instructions']").await.is_ok();
+                    
+                    // Additional checks for code display patterns discovered through testing
+                    let has_code_container = page.find_element("div[data-link-code]").await.is_ok();
+                    let has_verification_text = page.find_element("text='verification'").await.is_ok();
+                    let has_digits_pattern = page.find_element("div > div > div").await.is_ok() && {
+                        // Check if we can find individual character elements
+                        let content = page.content().await.unwrap_or_default();
+                        content.contains("Verify") || content.contains("code") || content.contains("device")
+                    };
+                    
+                    // Check URL change that might indicate we're on code screen
+                    let current_url = page.url().await.unwrap_or_default().unwrap_or_default();
+                    let url_indicates_code_screen = current_url.contains("code") || current_url.contains("link");
+                    
+                    if has_code_label || has_code_text || has_link_device_text || has_code_element || 
+                       has_code_container || has_verification_text || has_digits_pattern || url_indicates_code_screen {
+                        debug!("Code screen found! (code_label: {}, code_text: {}, link_device: {}, code_element: {}, code_container: {}, verification_text: {}, digits_pattern: {}, url_change: {})", 
+                               has_code_label, has_code_text, has_link_device_text, has_code_element, 
+                               has_code_container, has_verification_text, has_digits_pattern, url_indicates_code_screen);
+                        return true;
+                    }
+                    
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     attempts += 1;
+                    
                     if attempts % 10 == 0 {
                         debug!("Still waiting for code input screen... (attempt {})", attempts);
+                        
+                        // More detailed debugging every 20 attempts (10 seconds)
+                        if attempts % 20 == 0 {
+                            let current_url = page.url().await.unwrap_or_default().unwrap_or_default();
+                            debug!("Current URL: {}", current_url);
+                            
+                            // Sample page content for debugging
+                            let page_content = page.content().await.unwrap_or_default();
+                            let content_sample = if page_content.len() > 500 {
+                                format!("{}...", &page_content[..500])
+                            } else {
+                                page_content.clone()
+                            };
+                            debug!("Page content sample: {}", content_sample);
+                        }
                         
                         // Check if we're still on the phone number screen
                         if page.find_element("text='Enter phone number'").await.is_ok() {
                             debug!("Still on phone number screen - may need to retry submission");
                             if let Ok(submit_button) = page.find_element("text='Next'").await {
+                                info!("Retrying Next button click");
                                 let _ = submit_button.click().await;
+                                tokio::time::sleep(std::time::Duration::from_millis(2000)).await; // Wait longer after retry
                             }
+                        }
+                        
+                        // Check for error messages
+                        if let Ok(error_element) = page.find_element("[role='alert']").await {
+                            if let Ok(Some(error_text)) = error_element.inner_text().await {
+                                if !error_text.is_empty() {
+                                    debug!("Found error message: {}", error_text);
+                                }
+                            }
+                        }
+                        
+                        // Check for common error indicators
+                        let page_content = page.content().await.unwrap_or_default();
+                        if page_content.contains("Enter code") || page_content.contains("verification") {
+                            debug!("Code screen text found in page content");
+                        } else if page_content.contains("invalid") || page_content.contains("error") || page_content.contains("not found") {
+                            debug!("Error detected in page content");
+                        } else if page_content.contains("phone number") {
+                            debug!("Still appears to be on phone number screen");
                         }
                     }
                 }
+                false
             }
         ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for code input screen - phone number may be invalid or network issues"))?;
 
-        // Wait for link code element to appear with extended timeout
+        if !code_screen_found {
+            return Err(anyhow::anyhow!("Code input screen never appeared"));
+        }
+
+        // Wait for link code element to appear and extract code with better error handling
         debug!("Waiting for link code element...");
-        tokio::time::timeout(
-            std::time::Duration::from_millis(15000), // Increased to 15 seconds
+        let link_code = tokio::time::timeout(
+            std::time::Duration::from_millis(15000), // 15 seconds
             async {
                 let mut attempts = 0;
-                while page.find_element("[aria-details='link-device-phone-number-code-screen-instructions']").await.is_err() && attempts < 30 {
+                while attempts < 30 {
+                    // Method 1: Look for the code displayed as individual characters
+                    let code_extraction_script = r#"
+                        (function() {
+                            // Method 1: Look for the specific pattern where code is displayed after "Enter code on phone"
+                            const codeContainer = document.evaluate(
+                                "//div[contains(text(), 'Enter code on phone')]/following-sibling::div",
+                                document,
+                                null,
+                                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                                null
+                            ).singleNodeValue;
+                            
+                            if (codeContainer) {
+                                // Look for child elements that contain individual characters
+                                const children = Array.from(codeContainer.querySelectorAll('div'));
+                                let codeChars = [];
+                                
+                                for (let child of children) {
+                                    const text = child.textContent?.trim();
+                                    // Look for single characters, numbers, or dashes that form the code
+                                    if (text && text.length <= 2 && text.match(/[A-Z0-9-]/)) {
+                                        codeChars.push(text);
+                                    }
+                                }
+                                
+                                // If we found enough characters (typically 8-9 including dash), join them
+                                if (codeChars.length >= 6) {
+                                    return codeChars.join('');
+                                }
+                            }
+                            
+                            // Method 2: Look for data-link-code attribute
+                            const linkCodeElement = document.querySelector('[data-link-code]');
+                            if (linkCodeElement) {
+                                const linkCode = linkCodeElement.getAttribute('data-link-code');
+                                if (linkCode && linkCode.length >= 6) {
+                                    return linkCode;
+                                }
+                            }
+                            
+                            // Method 3: Look for specific code display containers
+                            const codeElements = document.querySelectorAll('div[aria-details*="code"], div[role*="code"], div[class*="code"]');
+                            for (let element of codeElements) {
+                                const text = element.textContent?.trim();
+                                if (text && text.match(/^[A-Z0-9]{3,4}[-]?[A-Z0-9]{3,4}$/)) {
+                                    return text;
+                                }
+                            }
+                            
+                            // Method 4: Look for patterns in all divs that might contain individual characters
+                            const allDivs = document.querySelectorAll('div');
+                            let potentialCodeChars = [];
+                            
+                            for (let div of allDivs) {
+                                const text = div.textContent?.trim();
+                                if (text && text.length === 1 && text.match(/[A-Z0-9]/)) {
+                                    // Check if this div is part of a sequence
+                                    const parent = div.parentElement;
+                                    if (parent) {
+                                        const siblings = Array.from(parent.children);
+                                        const charSequence = siblings.map(s => s.textContent?.trim()).filter(t => t && t.length <= 2);
+                                        if (charSequence.length >= 6) {
+                                            return charSequence.join('');
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Method 5: Fallback - Look for the pattern directly in the page text
+                            const bodyText = document.body.textContent || '';
+                            // Match patterns like "1KBB-PEVN" (4 chars, dash, 4 chars)
+                            const codeMatch = bodyText.match(/\b[A-Z0-9]{3,4}[-][A-Z0-9]{3,4}\b/);
+                            if (codeMatch) {
+                                return codeMatch[0];
+                            }
+                            
+                            // Method 6: Another pattern - just alphanumeric codes
+                            const simpleCodeMatch = bodyText.match(/\b[A-Z0-9]{6,9}\b/);
+                            if (simpleCodeMatch && !simpleCodeMatch[0].match(/^\d+$/)) {
+                                // Exclude pure numbers (like phone numbers)
+                                return simpleCodeMatch[0];
+                            }
+                            
+                            return null;
+                        })()
+                    "#;
+                    
+                    if let Ok(result) = page.evaluate(code_extraction_script).await {
+                        if let Ok(value) = result.into_value::<serde_json::Value>() {
+                            if let Some(code_str) = value.as_str() {
+                                if !code_str.is_empty() && code_str != "null" && code_str.len() >= 4 {
+                                    let formatted_code = code_str.replace(" ", "");
+                                    info!("Phone authentication code found via character extraction: {}", formatted_code);
+                                    return Ok::<Option<String>, anyhow::Error>(Some(formatted_code));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Method 2: Using the data-link-code attribute (legacy support)
+                    let locators = LocatorDictionary::new();
+                    if let Ok(Some(code)) = locators.data_link_code(&page).await {
+                        let formatted_code = code.replace(",", "").replace(" ", "");
+                        if !formatted_code.is_empty() && formatted_code.len() >= 4 {
+                            info!("Phone authentication code found via data-link-code: {}", formatted_code);
+                            return Ok::<Option<String>, anyhow::Error>(Some(formatted_code));
+                        }
+                    }
+                    
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     attempts += 1;
+                    
                     if attempts % 6 == 0 {
                         debug!("Still waiting for link code element... (attempt {})", attempts);
+                        
+                        // Debug: Log what we can see on the page
+                        let page_content = page.content().await.unwrap_or_default();
+                        if page_content.contains("code") {
+                            debug!("Page contains 'code' text");
+                        }
+                        if page_content.contains("device") {
+                            debug!("Page contains 'device' text");
+                        }
                     }
                 }
+                Ok::<Option<String>, anyhow::Error>(None)
             }
-        ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for link code element - please check your phone for WhatsApp notifications"))?;
+        ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for link code element - please check your phone for WhatsApp notifications"))??;
 
-        // Extract the code using the locators
-        let locators = LocatorDictionary::new();
-        if let Ok(Some(code)) = locators.data_link_code(&page).await {
-            let formatted_code = code.replace(",", "");
-            info!("Phone authentication code generated: {}", formatted_code);
-            Ok(Some(formatted_code))
-        } else {
-            Ok(None)
+        match link_code {
+            Some(code) => {
+                info!("Successfully extracted phone authentication code: {}", code);
+                Ok(Some(code))
+            },
+            None => {
+                debug!("Could not extract authentication code from page");
+                Ok(None)
+            }
         }
     }
 
