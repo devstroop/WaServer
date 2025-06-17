@@ -59,8 +59,9 @@ pub use error::{WhatsAppError, Result};
 pub use models::domain::*;
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use tracing::{info, warn, error, debug};
+use crate::services::{auth_service::AuthServiceTrait, chat_service::ChatServiceTrait};
 
 /// Main WhatsApp Engine library interface
 /// 
@@ -82,8 +83,8 @@ use tracing::{info, warn, error, debug};
 /// }
 /// ```
 pub struct WhatsAppEngine {
-    auth_service: Arc<dyn crate::auth::AuthServiceTrait>,
-    chat_service: Arc<dyn crate::services::chat_service::ChatServiceTrait>,
+    auth_service: Arc<crate::services::auth_service::AuthService>,
+    chat_service: Arc<crate::services::chat_service::ChatService>,
     browser_service: Arc<crate::services::browser::BrowserService>,
     config: Arc<AppConfig>,
     start_time: SystemTime,
@@ -100,26 +101,25 @@ impl WhatsAppEngine {
         // Initialize browser service
         debug!("Initializing browser service");
         let browser_service = Arc::new(
-            crate::services::browser::BrowserService::new(config.clone()).await
-                .map_err(|e| WhatsAppError::BrowserInit(e.to_string()))?
+            crate::services::browser::BrowserService::new(config.clone())
         );
         
         // Initialize auth service
         debug!("Initializing auth service");
         let auth_service = Arc::new(
             crate::services::auth_service::AuthService::new(
-                browser_service.clone(),
-                config.clone()
-            ).await
+                config.clone(),
+                browser_service.clone()
+            )
         );
         
         // Initialize chat service
         debug!("Initializing chat service");
         let chat_service = Arc::new(
             crate::services::chat_service::ChatService::new(
-                browser_service.clone(),
-                config.clone()
-            ).await
+                config.clone(),
+                browser_service.clone()
+            )
         );
         
         info!("WhatsApp Engine library initialized successfully");
@@ -144,14 +144,15 @@ impl WhatsAppEngine {
     pub async fn authenticate_with_qr(&self) -> Result<QrCode> {
         info!("Starting QR code authentication");
         
-        let qr_data = self.auth_service.get_qr_code().await
+        let qr_data = self.auth_service.get_auth_qr_code().await
             .map_err(|e| WhatsAppError::QrCodeGeneration(e.to_string()))?;
         
         let expires_at = chrono::Utc::now() + chrono::Duration::minutes(5);
         
         Ok(QrCode {
-            data: qr_data,
-            expires_at,
+            data: qr_data.clone(),
+            expires_at: Some(expires_at),
+            image_url: qr_data, // For now, use the same data as image_url
             refresh_interval_seconds: 30,
         })
     }
@@ -170,10 +171,11 @@ impl WhatsAppEngine {
         
         match self.auth_service.login_with_phone_number(phone_number).await {
             Ok(code) => {
-                info!("Phone authentication successful, code: {}", code);
+                let code_str = code.clone().unwrap_or_else(|| "No code returned".to_string());
+                info!("Phone authentication successful, code: {}", code_str);
                 Ok(PhoneAuthResult {
                     success: true,
-                    verification_code: Some(code),
+                    verification_code: code,
                     message: "Authentication successful. Use the verification code in your WhatsApp app.".to_string(),
                     next_retry_in_seconds: None,
                 })
@@ -192,7 +194,7 @@ impl WhatsAppEngine {
     
     /// Check if the engine is authenticated
     pub async fn is_authenticated(&self) -> Result<bool> {
-        self.auth_service.is_authenticated().await
+        self.auth_service.is_authorized().await
             .map_err(|e| WhatsAppError::Authentication(e.to_string()))
     }
     
@@ -236,7 +238,7 @@ impl WhatsAppEngine {
             ));
         }
         
-        match self.chat_service.send_message(to, message).await {
+        match self.chat_service.send_message(to, Some(message), None, None).await {
             Ok(_) => {
                 info!("Message sent successfully to {}", to);
                 Ok(SendMessageResult {

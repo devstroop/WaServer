@@ -174,7 +174,7 @@ pub async fn get_metrics(
 
     // Get WhatsApp connection status
     let connection_status = match whatsapp_service.get_auth_status().await {
-        Ok(status) => status.status,
+        Ok(status) => if status.authorized { "connected".to_string() } else { "disconnected".to_string() },
         Err(_) => "disconnected".to_string(),
     };
 

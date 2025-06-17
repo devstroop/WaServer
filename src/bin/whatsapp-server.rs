@@ -4,7 +4,7 @@
 // It wraps the library functionality in HTTP endpoints.
 
 use axum::{
-    extract::{DefaultBodyLimit, State},
+    extract::DefaultBodyLimit,
     http::Method,
     middleware,
     routing::{get, post},
@@ -26,7 +26,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use wae_rust::{
     config::AppConfig,
     handlers::{auth, chat, health},
-    middleware,
+    middleware::{auth_middleware, correlation_id_middleware, request_metrics_middleware, security_headers_middleware},
     models::{auth::*, chat::*},
     services::whatsapp::WhatsAppService,
     utils::logging,
@@ -77,15 +77,6 @@ impl Modify for SecurityAddon {
             SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Authorization"))),
         )
     }
-}
-
-async fn auth_middleware(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
-    headers: axum::http::HeaderMap,
-    request: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Result<axum::response::Response, axum::http::StatusCode> {
-    middleware::auth_middleware(State(whatsapp_service), headers, request, next).await
 }
 
 #[tokio::main]
@@ -147,9 +138,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                .layer(middleware::from_fn(middleware::correlation_id_middleware))
-                .layer(middleware::from_fn(middleware::request_metrics_middleware))
-                .layer(middleware::from_fn(middleware::security_headers_middleware))
+                .layer(middleware::from_fn(correlation_id_middleware))
+                .layer(middleware::from_fn(request_metrics_middleware))
+                .layer(middleware::from_fn(security_headers_middleware))
                 .layer(cors)
                 .layer(DefaultBodyLimit::max(config.limits.max_upload_size))
         )

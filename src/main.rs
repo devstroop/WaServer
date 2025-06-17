@@ -21,7 +21,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use wae_rust::{
     config::AppConfig,
-    handlers::{auth, chat},
+    handlers::{auth, chat, health},
     models::{auth::*, chat::*},
     services::whatsapp::WhatsAppService,
 };
@@ -34,14 +34,19 @@ use wae_rust::{
         auth::login_with_phone,
         auth::logout,
         chat::send_message,
+        health::health_check,
+        health::readiness_check,
+        health::liveness_check,
+        health::get_metrics,
     ),
     components(
-        schemas(AuthStatusResponse, QrCodeResponse, PhoneAuthResponse, SuccessResponse, ErrorResponse, SendMessageResponse)
+        schemas(AuthStatusResponse, QrCodeResponse, PhoneAuthResponse, SuccessResponse, ErrorResponse, SendMessageResponse, health::HealthResponse, health::MetricsResponse, health::ServiceHealth)
     ),
     modifiers(&SecurityAddon),
     tags(
         (name = "Authentication", description = "WhatsApp authentication endpoints"),
-        (name = "Chat", description = "WhatsApp chat and messaging endpoints")
+        (name = "Chat", description = "WhatsApp chat and messaging endpoints"),
+        (name = "Health", description = "Health check and monitoring endpoints")
     ),
     info(
         title = "WhatsApp Engine - Rust Edition",
@@ -150,6 +155,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the application router
     let app = Router::new()
+        // Health endpoints (no auth required)
+        .route("/health", get(health::health_check))
+        .route("/ready", get(health::readiness_check))
+        .route("/live", get(health::liveness_check))
+        .route("/metrics", get(health::get_metrics))
+        // Auth protected endpoints
         .route("/api/auth/status", get(auth::get_auth_status))
         .route("/api/auth/qrcode", get(auth::get_qr_code))
         .route("/api/auth/phone/:phone_number", post(auth::login_with_phone))

@@ -70,13 +70,13 @@ regex = "1.10"
 # File handling utilities
 futures-util = "0.3.31"
 
+# HTTP client (used by MCP client)
+reqwest = { version = "0.11", features = ["json", "multipart"] }
+
 # API server dependencies (optional - only when api-server feature is enabled)
 axum = { version = "0.7", features = ["multipart"], optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
-
-# HTTP client (for API server mode)
-reqwest = { version = "0.11", features = ["json", "multipart"], optional = true }
 
 # OpenAPI documentation (for API server mode)
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"], optional = true }

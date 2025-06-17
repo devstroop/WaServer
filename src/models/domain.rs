@@ -64,7 +64,8 @@ pub struct AuthStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QrCode {
     pub data: String, // base64 encoded PNG
-    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub image_url: String,
     pub refresh_interval_seconds: u32,
 }
 
@@ -99,4 +100,12 @@ pub struct FileAttachment {
     pub file_name: Option<String>,
     pub mime_type: Option<String>,
     pub caption: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthenticationStatus {
+    pub is_authenticated: bool,
+    pub phone_number: Option<String>,
+    pub connection_state: String,
+    pub last_activity: Option<chrono::DateTime<chrono::Utc>>,
 }

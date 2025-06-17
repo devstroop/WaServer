@@ -9,7 +9,6 @@ use axum::{
     response::Response,
 };
 use std::{sync::Arc, time::SystemTime};
-use tracing::Span;
 
 use crate::{
     services::whatsapp::WhatsAppService,
@@ -33,9 +32,6 @@ pub async fn correlation_id_middleware(
         method = %request.method(),
         path = %request.uri().path(),
     );
-    
-    // Store correlation ID in span extensions for logging formatter
-    span.extensions_mut().insert(correlation_id.clone());
     
     // Execute request within the span
     let response = async move {

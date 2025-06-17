@@ -233,10 +233,13 @@ impl WhatsAppService {
     /// Get authentication status with metrics tracking
     pub async fn get_auth_status(&self) -> Result<AuthStatusResponse> {
         self.metrics.increment_auth_attempts();
-        match self.auth_service.get_auth_status().await {
-            Ok(response) => {
+        match self.auth_service.is_authorized().await {
+            Ok(is_authorized) => {
                 self.metrics.update_last_activity();
-                Ok(response)
+                Ok(AuthStatusResponse {
+                    authorized: is_authorized,
+                    sender_id: self.auth_service.get_sender_id().await.unwrap_or(None),
+                })
             }
             Err(e) => {
                 self.metrics.increment_error_count();
