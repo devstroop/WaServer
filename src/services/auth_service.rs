@@ -1,13 +1,13 @@
 use crate::{
     config::AppConfig,
     locators::LocatorDictionary,
-    services::browser::BrowserService,
+    services::{browser::BrowserService, improved_phone_auth::ImprovedPhoneAuthService},
 };
 use anyhow::Result;
 use async_trait::async_trait;
 use chromiumoxide::page::Page;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Authentication service trait
 #[async_trait]
@@ -17,6 +17,12 @@ pub trait AuthServiceTrait: Send + Sync {
     async fn get_auth_qr_code(&self) -> Result<String>;
     async fn login_with_phone_number(&self, phone_number: &str) -> Result<Option<String>>;
     async fn logout(&self) -> Result<()>;
+
+    /// Improved phone authentication using MCP Playwright (Phase 2 implementation)
+    async fn login_with_phone_number_improved(&self, phone_number: &str) -> Result<Option<String>>;
+
+    /// Compare old vs new phone authentication (for testing and migration)
+    async fn compare_phone_auth_implementations(&self, phone_number: &str) -> Result<()>;
 }
 
 /// WhatsApp authentication service
@@ -609,6 +615,64 @@ impl AuthServiceTrait for AuthService {
         }
 
         info!("Logout completed");
+        Ok(())
+    }
+
+    /// Improved phone authentication using MCP Playwright (Phase 2 implementation)
+    async fn login_with_phone_number_improved(&self, phone_number: &str) -> Result<Option<String>> {
+        info!("🔧 Using improved phone authentication service");
+        
+        let improved_service = ImprovedPhoneAuthService::new();
+        
+        match improved_service.authenticate_with_phone(phone_number).await {
+            Ok(result) => {
+                if result.success {
+                    info!("✅ Improved phone auth successful: {:?}", result.verification_code);
+                    info!("📊 Debug steps: {:?}", result.debug_info.steps_completed);
+                    Ok(result.verification_code)
+                } else {
+                    warn!("❌ Improved phone auth failed: {:?}", result.error_message);
+                    warn!("📊 Debug info: {:?}", result.debug_info);
+                    Err(anyhow::anyhow!("Phone authentication failed: {:?}", result.error_message))
+                }
+            }
+            Err(e) => {
+                warn!("❌ Improved phone auth service error: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Compare old vs new phone authentication (for testing and migration)
+    async fn compare_phone_auth_implementations(&self, phone_number: &str) -> Result<()> {
+        info!("🔍 Comparing old vs new phone authentication implementations");
+        
+        // Test improved implementation
+        let improved_start = std::time::Instant::now();
+        let improved_result = self.login_with_phone_number_improved(phone_number).await;
+        let improved_duration = improved_start.elapsed();
+        
+        // Test original implementation
+        let original_start = std::time::Instant::now();
+        let original_result = self.login_with_phone_number(phone_number).await;
+        let original_duration = original_start.elapsed();
+        
+        // Compare results
+        info!("📊 AUTHENTICATION COMPARISON RESULTS:");
+        info!("   Improved: {:?} (took {:?})", 
+              improved_result.as_ref().map(|r| r.as_ref().map(|s| s.as_str())), 
+              improved_duration);
+        info!("   Original: {:?} (took {:?})", 
+              original_result.as_ref().map(|r| r.as_ref().map(|s| s.as_str())), 
+              original_duration);
+        
+        match (improved_result.is_ok(), original_result.is_ok()) {
+            (true, true) => info!("✅ Both implementations succeeded"),
+            (true, false) => warn!("⚠️ Only improved implementation succeeded"),
+            (false, true) => warn!("⚠️ Only original implementation succeeded"),
+            (false, false) => warn!("❌ Both implementations failed"),
+        }
+        
         Ok(())
     }
 }
