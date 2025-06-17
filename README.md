@@ -26,12 +26,14 @@ A production-ready Rust-based WhatsApp Web automation engine with comprehensive 
 - [File Upload & Attachment Flow](#-file-upload--attachment-flow)
 - [Session Management Flow](#-session-management-flow)
 - [Quick Start](#-quick-start)
+- [Library Usage](#-library-usage)
 - [API Documentation](#-api-documentation)
 - [Configuration](#-configuration)
 - [Development](#-development)
 - [Testing](#-testing)
 - [Docker Support](#-docker-support)
 - [Troubleshooting](#-troubleshooting)
+- [Developer Documentation](#-developer-documentation)
 
 ## 🏗️ Architecture Overview
 
@@ -268,15 +270,6 @@ stateDiagram-v2
     note right of PhoneScreen: 95% Success Rate\nProgrammatic Access\nCode Extraction
     note right of Authenticated: Full WhatsApp Access\nMessage Capabilities\nReal-time Sync
 ```
-
-#### 🎯 Unified Screen Detection
-
-| Screen Type | Detection Elements | Success Rate | Fallback Methods |
-|-------------|-------------------|--------------|------------------|
-| **QR Code Screen** | `canvas[aria-label*="QR"]` | 98% | Text content scanning |
-| **Phone Number Screen** | `input[type="tel"]` | 97% | Form element detection |
-| **Code Display Screen** | `.code-input` patterns | 95% | Pattern matching |
-| **Authenticated Screen** | `.chat-list` | 99% | Message capabilities |
 
 ## 💬 Message Processing Flow
 
@@ -816,646 +809,220 @@ stateDiagram-v2
     note right of Authenticated: Full WhatsApp Access\nMessage Capabilities\nReal-time Sync
 ```
 
-## 📬 Message Processing Flow
+## 📚 Library Usage
 
-The message processing flow handles sending and receiving messages, including media and documents.
+WhatsApp Engine can be used as a Rust library in your applications, providing a clean async API for WhatsApp Web automation.
 
-```mermaid
----
-title: Message Processing Flow
----
-flowchart TD
-    subgraph "Incoming Message Flow"
-        IN_MSG[Incoming Message<br/>- From WhatsApp Web<br/>- New message event]
-        PARSE[Parse Message<br/>- Extract sender, content, type<br/>- Validate message format]
-        STORE[Store Message<br/>- Save to database<br/>- Update chat thread<br/>- Notify user]
-        NOTIFY[Send Notification<br/>- Push to user device<br/>- Update UI in real-time]
-    end
+### Adding as Dependency
 
-    subgraph "Outgoing Message Flow"
-        OUT_MSG[Outgoing Message<br/>- From user action<br/>- Send button click]
-        VALIDATE[Validate Message<br/>- Check content, attachments<br/>- Ensure no empty messages]
-        ENCRYPT[Encrypt Message<br/>- Apply end-to-end encryption<br/>- Attach metadata]
-        SEND[Send Message<br/>- To WhatsApp Web<br/>- Use WebSocket connection]
-        ACK[Await Acknowledgment<br/>- Message sent status<br/>- Error handling]
-    end
-
-    IN_MSG --> PARSE --> STORE --> NOTIFY
-    OUT_MSG --> VALIDATE --> ENCRYPT --> SEND --> ACK
-```
-
-## 🌐 Browser Lifecycle Management
-
-The browser lifecycle management flow handles the initialization, usage, and termination of the browser instance.
-
-```mermaid
----
-title: Browser Lifecycle Management
----
-flowchart TD
-    INIT[Initialize Browser<br/>- Set up profile<br/>- Configure options]
-    LAUNCH[Launch Browser<br/>- Start Chrome process<br/>- Connect to DevTools]
-    NAVIGATE[Navigate to URL<br/>- Load web.whatsapp.com<br/>- Wait for page load]
-    AUTHENTICATE[Authenticate User<br/>- QR code or phone number<br/>- Handle 2FA if required]
-    READY[Browser Ready<br/>- WhatsApp Web fully loaded<br/>- User can start messaging]
-    ERROR[Handle Errors<br/>- Log error details<br/>- Notify user if critical]
-    RECOVER[Recovery Actions<br/>- Restart browser if needed<br/>- Re-establish connections]
-    CLOSE[Close Browser<br/>- Terminate Chrome process<br/>- Clean up resources]
-
-    INIT --> LAUNCH --> NAVIGATE --> AUTHENTICATE --> READY
-    AUTHENTICATE --> ERROR
-    ERROR --> RECOVER
-    RECOVER --> READY
-    READY --> CLOSE
-```
-
-## ⚠️ Error Handling & Recovery Flow
-
-The error handling and recovery flow manages errors during authentication, message processing, and browser operations.
-
-```mermaid
----
-title: Error Handling & Recovery Flow
----
-flowchart TD
-    ERROR[Error Occurred<br/>- Log error<br/>- Classify error type]
-    NOTIFY[Notify User<br/>- Display error message<br/>- Suggest actions]
-    RETRY[Retry Operation<br/>- Exponential backoff<br/>- Max retries limit]
-    ABORT[Abort Operation<br/>- If unrecoverable<br/>- Release resources]
-    RECOVER[Recovery Actions<br/>- Restart browser/service<br/>- Re-establish connections]
-
-    ERROR --> NOTIFY
-    ERROR --> RETRY
-    ERROR --> ABORT
-    RETRY --> RECOVER
-    RECOVER --> NOTIFY
-```
-
-## 📂 File Upload & Attachment Flow
-
-The file upload and attachment flow handles sending and receiving media files and documents.
-
-```mermaid
----
-title: File Upload & Attachment Flow
----
-flowchart TD
-    subgraph "Incoming File Flow"
-        IN_FILE[Incoming File<br/>- From WhatsApp Web<br/>- New media message event]
-        DOWNLOAD[Download File<br/>- Save to local storage<br/>- Update database record]
-        NOTIFY[Send Notification<br/>- Push to user device<br/>- Update UI in real-time]
-    end
-
-    subgraph "Outgoing File Flow"
-        OUT_FILE[Outgoing File<br/>- From user action<br/>- Send media button click]
-        VALIDATE[Validate File<br/>- Check file type, size<br/>- Ensure no empty files]
-        UPLOAD[Upload File<br/>- To WhatsApp Web<br/>- Use WebSocket connection]
-        ACK[Await Acknowledgment<br/>- File sent status<br/>- Error handling]
-    end
-
-    IN_FILE --> DOWNLOAD --> NOTIFY
-    OUT_FILE --> VALIDATE --> UPLOAD --> ACK
-```
-
-## 🔄 Session Management Flow
-
-The session management flow handles the creation, validation, and termination of user sessions.
-
-```mermaid
----
-title: Session Management Flow
----
-flowchart TD
-    INIT[Initialize Session<br/>- Generate new session ID<br/>- Set expiration time]
-    VALIDATE[Validate Session<br/>- Check session ID<br/>- Verify expiration]
-    REFRESH[Refresh Session<br/>- Extend expiration time<br/>- Regenerate session ID]
-    TERMINATE[Terminate Session<br/>- Invalidate session ID<br/>- Clean up resources]
-
-    INIT --> VALIDATE
-    VALIDATE -->|Valid| REFRESH
-    VALIDATE -->|Invalid| TERMINATE
-    REFRESH --> VALIDATE
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Rust**: 1.70+ (latest stable recommended)
-- **Chrome/Chromium**: Latest version installed
-- **WhatsApp Account**: Valid phone number
-- **System Memory**: 4GB+ RAM recommended
-
-### Installation
-
-1. **Clone and Setup**:
-```bash
-git clone https://github.com/devstroop/whatsapp-engine-rust.git
-cd whatsapp-engine-rust
-cp config/app.example.toml config/app.toml
-```
-
-2. **Configure Application**:
-```bash
-# Edit configuration
-nano config/app.toml
-```
-
-3. **Build and Run**:
-```bash
-# Development build
-cargo run
-
-# Production build
-cargo build --release
-./target/release/wae-rust
-```
-
-4. **Access Services**:
-- **API**: http://localhost:3000
-- **Swagger UI**: http://localhost:3000/swagger-ui/
-- **Health Check**: http://localhost:3000/api/health
-
-### First Authentication
-
-#### Option 1: QR Code (Instant)
-```bash
-curl -H "Authorization: Bearer test-api-token-123456789" \
-     http://localhost:3000/api/auth/qrcode
-```
-
-#### Option 2: Phone Number
-```bash
-curl -X POST \
-     -H "Authorization: Bearer test-api-token-123456789" \
-     http://localhost:3000/api/auth/phone/+919501005734
-```
-
-## 📚 API Documentation
-
-### 🔐 Authentication Endpoints
-
-| Endpoint | Method | Description | Response |
-|----------|--------|-------------|----------|
-| `/api/auth/status` | GET | Check authentication status | `{"authorized": true, "sender_id": "..."}` |
-| `/api/auth/qrcode` | GET | Get QR code for scanning | `{"qrcode": "data:image/png;base64,..."}` |
-| `/api/auth/phone/{number}` | POST | Authenticate with phone number | `{"code": "1CBZ-9GEJ"}` |
-| `/api/auth/logout` | POST | Logout from WhatsApp Web | `{"success": true}` |
-
-### 💬 Chat Endpoints
-
-| Endpoint | Method | Description | Body |
-|----------|--------|-------------|------|
-| `/api/chat/send` | POST | Send text message | `{"to": "+1234567890", "message": "Hello"}` |
-| `/api/chat/send-image` | POST | Send image with caption | Form data with image file |
-| `/api/chat/send-document` | POST | Send document | Form data with document file |
-| `/api/chat/contacts` | GET | List all contacts | - |
-| `/api/chat/groups` | GET | List all groups | - |
-
-### 📋 Example API Usage
-
-```bash
-# Check authentication status
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:3000/api/auth/status
-
-# Send a message
-curl -X POST \
-     -H "Authorization: Bearer YOUR_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"to":"+1234567890","message":"Hello from Rust!"}' \
-     http://localhost:3000/api/chat/send
-
-# Send an image
-curl -X POST \
-     -H "Authorization: Bearer YOUR_TOKEN" \
-     -F "to=+1234567890" \
-     -F "caption=Check this out!" \
-     -F "image=@/path/to/image.jpg" \
-     http://localhost:3000/api/chat/send-image
-```
-
-## ⚙️ Configuration
-
-### Application Configuration (`config/app.toml`)
+Add to your `Cargo.toml`:
 
 ```toml
-[server]
-host = "0.0.0.0"           # Server bind address
-port = 3000                 # Server port
-workers = 4                 # Number of worker threads
-
-[auth]
-api_token = "your-secure-token-here"  # API authentication token
-session_timeout = 3600      # Session timeout in seconds
-
-[browser]
-headless = false           # Run browser in headless mode
-timeout = 30000           # Browser operation timeout (ms)
-user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-args = [                  # Additional Chrome arguments
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage"
-]
-
-[whatsapp]
-base_url = "https://web.whatsapp.com"
-retry_attempts = 3         # Number of retry attempts
-retry_delay = 1000        # Delay between retries (ms)
-
-[logging]
-level = "info"            # Logging level: error, warn, info, debug, trace
-format = "json"           # Log format: json, pretty
-file = "logs/app.log"     # Log file path (optional)
+[dependencies]
+whatsapp-engine = "0.1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
 ```
 
-### Environment Variables
+### Basic Library Usage
+
+```rust
+use whatsapp_engine::{WhatsAppEngine, Result};
+use tokio::time::{sleep, Duration};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize with default configuration
+    let engine = WhatsAppEngine::with_defaults().await?;
+    
+    // Authenticate with QR code
+    if !engine.is_authenticated().await? {
+        let qr = engine.authenticate_with_qr().await?;
+        println!("Scan QR code: {}", qr.data);
+        
+        // Wait for authentication
+        while !engine.is_authenticated().await? {
+            sleep(Duration::from_secs(2)).await;
+        }
+        println!("✅ Authenticated!");
+    }
+    
+    // Send a message
+    let result = engine.send_message("1234567890", "Hello from Rust!").await?;
+    if result.success {
+        println!("✅ Message sent successfully!");
+    }
+    
+    // Clean shutdown
+    engine.close().await?;
+    Ok(())
+}
+```
+
+### Advanced Library Features
+
+```rust
+use whatsapp_engine::{WhatsAppEngine, WhatsAppError, FileAttachment, Result};
+
+async fn advanced_usage() -> Result<()> {
+    let engine = WhatsAppEngine::with_defaults().await?;
+    
+    // Custom error handling
+    match engine.send_message("invalid", "test").await {
+        Ok(result) => println!("Success: {:?}", result),
+        Err(WhatsAppError::InvalidInput { field, reason }) => {
+            println!("Validation error - {}: {}", field, reason);
+        }
+        Err(e) if e.is_retryable() => {
+            println!("Retryable error: {}", e);
+            if let Some(delay) = e.retry_delay_seconds() {
+                tokio::time::sleep(Duration::from_secs(delay as u64)).await;
+                // Retry operation...
+            }
+        }
+        Err(e) => return Err(e),
+    }
+    
+    // Send file attachment
+    let attachment = FileAttachment {
+        file_path: "document.pdf".to_string(),
+        file_name: Some("Important Document.pdf".to_string()),
+        mime_type: Some("application/pdf".to_string()),
+        caption: Some("Please review this document 📄".to_string()),
+    };
+    
+    let file_result = engine.send_file("1234567890", &attachment).await?;
+    println!("File sent: {}", file_result.success);
+    
+    // Get contacts and chats
+    let contacts = engine.get_contacts().await?;
+    let chats = engine.get_chats().await?;
+    println!("Found {} contacts and {} chats", contacts.len(), chats.len());
+    
+    engine.close().await?;
+    Ok(())
+}
+```
+
+### Configuration Examples
+
+```rust
+use whatsapp_engine::{WhatsAppEngine, AppConfig, BrowserConfig, ServerConfig};
+
+// Custom configuration
+let config = AppConfig {
+    browser: BrowserConfig {
+        headless: false,  // Show browser for debugging
+        timeout_ms: 60000,
+        args: vec!["--no-sandbox".to_string()],
+    },
+    server: ServerConfig {
+        host: "localhost".to_string(),
+        port: 3000,
+    },
+    // ... other config fields
+};
+
+let engine = WhatsAppEngine::new(config).await?;
+```
+
+### Examples
+
+See the [`examples/`](examples/) directory for complete working examples:
+
+- [`basic_usage.rs`](examples/basic_usage.rs) - Complete library usage walkthrough
+- [`custom_server.rs`](examples/custom_server.rs) - Running as custom API server
+
+---
+
+## 📖 Developer Documentation
+
+### For Library Development
+
+If you're using WhatsApp Engine as a library in your Rust applications or contributing to its development, see the comprehensive developer guide:
+
+**📚 [Developer Guide](docs/DEVELOPER_GUIDE.md)**
+
+The developer guide includes:
+
+- **🏗️ Library Architecture**: Detailed service architecture and design patterns
+- **📚 Complete API Reference**: All public types, methods, and error handling
+- **🚀 Quick Start**: Step-by-step library integration guide
+- **⚙️ Configuration**: Environment variables, file config, and programmatic setup
+- **🔧 Advanced Usage**: Custom configurations, resource management, and best practices
+- **🎯 Extension Points**: How to extend and customize the library
+- **🔍 Troubleshooting**: Common issues and debugging techniques
+- **🤝 Contributing**: Development setup and contribution guidelines
+
+### Key Topics Covered
+
+#### Library Usage
+- Creating and configuring `WhatsAppEngine` instances
+- Authentication patterns (QR code vs phone number)
+- Message sending and file attachments
+- Error handling and retry strategies
+- Resource management and cleanup
+
+#### Advanced Integration
+- Custom configuration providers
+- Health monitoring and status checks
+- Bulk operations and rate limiting
+- Session persistence and recovery
+- Browser lifecycle management
+
+#### Extension and Customization
+- Custom error handling strategies
+- Configuration from databases or APIs
+- Instrumentation and logging patterns
+- Performance optimization techniques
+
+### API Documentation
+
+Generate complete API documentation with:
 
 ```bash
-# Override configuration with environment variables
-export WHATSAPP_SERVER_PORT=8080
-export WHATSAPP_AUTH_API_TOKEN=your-production-token
-export WHATSAPP_BROWSER_HEADLESS=true
-export RUST_LOG=debug
-```
-
-## 🛠️ Development
-
-### Project Structure
-
-```
-src/
-├── main.rs                 # Application entry point
-├── lib.rs                  # Library root with public exports
-├── auth/                   # Authentication & authorization
-│   ├── mod.rs             # Auth module exports
-│   └── middleware.rs      # JWT/token validation middleware
-├── config/                 # Configuration management
-│   └── mod.rs             # Config parsing and validation
-├── handlers/               # HTTP request handlers
-│   ├── mod.rs             # Handler module exports
-│   ├── auth.rs            # Authentication endpoints
-│   └── chat.rs            # Chat operation endpoints
-├── models/                 # Data models and schemas
-│   ├── mod.rs             # Model exports
-│   ├── auth.rs            # Authentication models
-│   └── chat.rs            # Chat-related models
-├── services/               # Core business logic
-│   ├── mod.rs             # Service exports
-│   ├── auth_service.rs    # Authentication service
-│   ├── browser.rs         # Chrome browser management
-│   ├── chat_service.rs    # Chat operations service
-│   └── whatsapp.rs        # WhatsApp Web integration
-├── locators/               # DOM element selectors
-│   └── mod.rs             # WhatsApp Web element locators
-└── utils/                  # Utility functions
-    └── mod.rs             # Common utilities
-```
-
-### Code Quality Standards
-
-```bash
-# Format code
-cargo fmt
-
-# Run linter
-cargo clippy
-
-# Run security audit
-cargo audit
-
-# Check for unused dependencies
-cargo machete
-
-# Generate documentation
 cargo doc --open
 ```
 
-### Adding New Features
+This will generate and open the full Rust documentation including:
+- All public types and methods
+- Usage examples and code samples
+- Cross-references and module organization
+- Implementation details and safety notes
 
-1. **Create Feature Branch**:
-```bash
-git checkout -b feature/new-feature-name
-```
+### Examples Directory
 
-2. **Implement Service Logic**:
-```rust
-// src/services/new_service.rs
-use anyhow::Result;
-
-pub struct NewService {
-    // Service fields
-}
-
-impl NewService {
-    pub async fn new_operation(&self) -> Result<String> {
-        // Implementation
-        Ok("Success".to_string())
-    }
-}
-```
-
-3. **Add HTTP Handler**:
-```rust
-// src/handlers/new_handler.rs
-use axum::{extract::State, response::Json};
-
-pub async fn handle_new_operation(
-    State(service): State<Arc<NewService>>,
-) -> Result<Json<Response>, Error> {
-    // Handler implementation
-}
-```
-
-4. **Register Routes**:
-```rust
-// src/main.rs
-let app = Router::new()
-    .route("/api/new/operation", post(handle_new_operation));
-```
-
-## 🧪 Testing
-
-### Unit Tests
+The [`examples/`](examples/) directory contains practical usage examples:
 
 ```bash
-# Run all tests
-cargo test
+# Run basic library usage example
+cargo run --example basic_usage
 
-# Run specific test module
-cargo test auth_service
-
-# Run with output
-cargo test -- --nocapture
-
-# Run in parallel
-cargo test -- --test-threads=4
+# Run custom server example
+cargo run --example custom_server
 ```
 
-### Integration Tests
+### Getting Help
 
-```bash
-# Run integration tests
-cargo test --test integration_tests
+- **📖 Documentation**: Start with this README and the [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- **💡 Examples**: Check the [`examples/`](examples/) directory for practical usage
+- **🐛 Issues**: Report bugs and request features on GitHub
+- **💬 Discussions**: Ask questions in GitHub Discussions
 
-# Run browser tests (requires Chrome)
-cargo test --test browser_tests
-
-# Run service tests
-cargo test --test service_tests
-```
-
-### Test Coverage
-
-```bash
-# Install cargo-tarpaulin
-cargo install cargo-tarpaulin
-
-# Generate coverage report
-cargo tarpaulin --out Html --output-dir coverage/
-```
-
-### Manual Testing
-
-```bash
-# Start test server
-cargo run
-
-# Run test script
-./test_runner.sh
-
-# Test phone authentication
-./test_phone_auth.sh +919501005734
-```
-
-## 🐳 Docker Support
-
-### Development Container
-
-```bash
-# Build development image
-docker build -t whatsapp-engine-rust:dev .
-
-# Run with mounted volume for development
-docker run -p 3000:3000 \
-           -v $(pwd):/app \
-           -v /tmp/.X11-unix:/tmp/.X11-unix \
-           -e DISPLAY=$DISPLAY \
-           whatsapp-engine-rust:dev
-```
-
-### Production Deployment
-
-```bash
-# Build production image
-docker build -t whatsapp-engine-rust:prod --target production .
-
-# Run production container
-docker run -d \
-           -p 3000:3000 \
-           --name whatsapp-engine \
-           --restart unless-stopped \
-           -e WHATSAPP_BROWSER_HEADLESS=true \
-           whatsapp-engine-rust:prod
-```
-
-### Docker Compose
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  whatsapp-engine:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - WHATSAPP_BROWSER_HEADLESS=true
-      - RUST_LOG=info
-    volumes:
-      - ./config:/app/config
-      - ./logs:/app/logs
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### 1. Browser Initialization Failed
-
-```bash
-# Error: "Browser initialization failed"
-# Solution: Install Chrome and check system dependencies
-
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install -y wget gnupg
-wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-sudo apt-get install google-chrome-stable
-
-# CentOS/RHEL
-sudo yum install -y google-chrome-stable
-```
-
-#### 2. Chrome Singleton Lock Issues
-
-```bash
-# Error: "Chrome singleton lock"
-# Solution: Clean up Chrome processes
-
-pkill -f chrome
-rm -rf /tmp/chromiumoxide-whatsapp-*
-```
-
-#### 3. Phone Authentication Timeout
-
-```bash
-# Error: "Timeout waiting for code input screen"
-# Solution: Check phone number format and network connectivity
-
-# Correct format examples:
-# +919501005734 (India)
-# +1234567890 (US)
-# +447700900123 (UK)
-```
-
-#### 4. QR Code Extraction Failed
-
-```bash
-# Error: "Failed to extract QR code"
-# Solution: Ensure browser is not in headless mode for debugging
-
-# config/app.toml
-[browser]
-headless = false  # Set to false for debugging
-```
-
-### Debug Mode
-
-```bash
-# Enable debug logging
-export RUST_LOG=debug
-cargo run
-
-# Enable trace logging for specific modules
-export RUST_LOG=whatsapp_engine_rust::services::browser=trace
-cargo run
-
-# Run with browser visible
-# Edit config/app.toml
-[browser]
-headless = false
-```
-
-### Performance Tuning
-
-```bash
-# For high-traffic scenarios
-[server]
-workers = 8  # Increase worker threads
-
-[browser]
-timeout = 45000  # Increase timeout for slow connections
-
-[whatsapp]
-retry_attempts = 5  # Increase retry attempts
-```
-
-## 📈 Monitoring and Metrics
-
-### Health Checks
-
-```bash
-# Application health
-curl http://localhost:3000/api/health
-
-# Authentication status
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:3000/api/auth/status
-```
-
-### Logging
-
-Structured logging with configurable levels:
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "level": "INFO",
-  "target": "whatsapp_engine_rust::services::auth_service",
-  "message": "Phone authentication successful",
-  "fields": {
-    "phone_number": "+919501005734",
-    "verification_code": "1CBZ-9GEJ",
-    "duration_ms": 15432
-  }
-}
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Development Workflow
-
-1. **Fork & Clone**:
-```bash
-git clone https://github.com/YOUR_USERNAME/whatsapp-engine-rust.git
-cd whatsapp-engine-rust
-```
-
-2. **Create Feature Branch**:
-```bash
-git checkout -b feature/amazing-feature
-```
-
-3. **Make Changes**:
-- Write code following Rust conventions
-- Add comprehensive tests
-- Update documentation
-
-4. **Test Your Changes**:
-```bash
-cargo test
-cargo clippy
-cargo fmt
-```
-
-5. **Submit Pull Request**:
-- Ensure all tests pass
-- Provide clear description
-- Link related issues
+---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+## 🤝 Contributing
 
-This project is for educational and development purposes. Please ensure compliance with:
+Contributions are welcome! Please read the [Developer Guide](docs/DEVELOPER_GUIDE.md) for development setup and guidelines.
 
-- **WhatsApp Terms of Service**
-- **Local Privacy Laws**
-- **Rate Limiting Guidelines**
-- **Responsible Usage Practices**
+## ⭐ Support
 
-Use this tool responsibly and respect WhatsApp's automation policies.
+If you find this project helpful, please give it a star! ⭐
 
 ---
 
-## 🙏 Acknowledgments
-
-- **chromiumoxide** - Chrome DevTools Protocol implementation
-- **tokio** - Async runtime for Rust
-- **axum** - Modern web framework
-- **serde** - Serialization framework
-- **tracing** - Structured logging
-
-Built with ❤️ by the DevStroop team.
+**Built with ❤️ by DevStroop**
