@@ -2797,6 +2797,7 @@ dependencies = [
  "futures",
  "futures-util",
  "mime_guess",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

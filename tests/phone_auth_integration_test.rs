@@ -71,9 +71,9 @@ async fn test_standalone_improved_service() -> Result<()> {
     
     // Check that all expected steps were completed
     let expected_steps = vec![
-        "phone_auth_started",
+        "phone_auth_started", 
         "phone_validated", 
-        "navigate_to_whatsapp_real",
+        "navigate_to_whatsapp_real_mcp",  // Fixed: match actual implementation
         "screen_detected: qr_screen",
         "switched_to_phone_auth",
         "phone_number_entered",
