@@ -12,6 +12,8 @@ pub struct EnvironmentConfig {
     pub rust_log: String,
     pub debug_mode: bool,
     pub health_check_interval: u64,
+    /// Directory for persistent data (database, media files)
+    pub data_directory: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -29,6 +31,7 @@ impl Default for EnvironmentConfig {
             rust_log: "wae_rust=info".to_string(),
             debug_mode: false,
             health_check_interval: 30,
+            data_directory: Some("data".to_string()),
         }
     }
 }
@@ -75,6 +78,11 @@ impl EnvironmentConfig {
             if let Ok(interval) = interval_str.parse::<u64>() {
                 config.health_check_interval = interval;
             }
+        }
+
+        // Data directory
+        if let Ok(data_dir) = env::var("DATA_DIRECTORY") {
+            config.data_directory = Some(data_dir);
         }
 
         config

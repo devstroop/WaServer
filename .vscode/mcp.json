@@ -2,7 +2,7 @@
     "servers": {
         "whatsapp-engine": {
             "type": "sse",
-            "url": "http://localhost:3000/mcp/sse",
+            "url": "http://localhost:3000/mcp",
             "headers": {
                 "Authorization": "Bearer test-api-token-123456789"
             }

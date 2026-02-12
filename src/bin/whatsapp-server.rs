@@ -345,7 +345,7 @@ async fn run_server(
     if mcp_enabled {
         use wae_rust::handlers::mcp;
         let mcp_endpoint = &config.mcp.endpoint;
-        info!("🤖 MCP over SSE enabled at {}/sse", mcp_endpoint);
+        info!("🤖 MCP Streamable HTTP enabled at {}", mcp_endpoint);
         app = app.nest(mcp_endpoint, mcp::mcp_routes(whatsapp_service.clone()));
     } else {
         info!("🤖 MCP server disabled by configuration");
@@ -379,15 +379,24 @@ async fn run_server(
                 auth::login_with_phone,
                 auth::logout,
                 chat::send_message,
+                chat::list_chats,
+                chat::get_chat_messages,
+                chat::watch_messages,
+                chat::get_message,
                 health::health_check,
             ),
             components(
-                schemas(AuthStatusResponse, QrCodeResponse, PhoneAuthResponse, SuccessResponse, ErrorResponse, SendMessageResponse, health::HealthResponse, health::ServiceHealth)
+                schemas(
+                    AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
+                    SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
+                    health::HealthResponse, health::ServiceHealth
+                )
             ),
             modifiers(&SecurityAddon),
             tags(
                 (name = "Authentication", description = "WhatsApp authentication endpoints"),
                 (name = "Chat", description = "WhatsApp chat and messaging endpoints"),
+                (name = "Messages", description = "Message management endpoints"),
                 (name = "Health", description = "Health check and readiness endpoints")
             ),
             info(
@@ -410,18 +419,25 @@ async fn run_server(
             }
         }
 
-        info!("📖 REST API enabled at /api");
+        info!("📖 REST API enabled at /api/v1");
         info!("📚 Swagger UI at /swagger-ui/");
 
         app = app
             .nest(
-                "/api",
+                "/api/v1",
                 Router::new()
-                    .route("/status", get(auth::get_auth_status))
-                    .route("/qr", get(auth::get_qr_code))
-                    .route("/login/:phone_number", post(auth::login_with_phone))
-                    .route("/logout", post(auth::logout))
-                    .route("/send", post(chat::send_message))
+                    // Auth endpoints: /api/v1/auth/*
+                    .route("/auth/status", get(auth::get_auth_status))
+                    .route("/auth/qr", get(auth::get_qr_code))
+                    .route("/auth/login", post(auth::login_with_phone))
+                    .route("/auth/logout", post(auth::logout))
+                    // Chats resource: /api/v1/chats/*
+                    .route("/chats", get(chat::list_chats))
+                    .route("/chats/events", get(chat::watch_messages))
+                    .route("/chats/:chat_id", get(chat::get_chat_messages))
+                    // Messages resource: /api/v1/messages/*
+                    .route("/messages", post(chat::send_message))
+                    .route("/messages/:message_id", get(chat::get_message))
                     .layer(middleware::from_fn_with_state(
                         whatsapp_service.clone(),
                         auth_middleware,
@@ -451,7 +467,36 @@ async fn run_server(
     info!("🚀 WhatsApp Engine is running!");
     info!("🔗 http://{}:{}", config.server.host, config.server.port);
 
-    axum::serve(listener, app).await?;
+    // Graceful shutdown signal
+    let shutdown_signal = async {
+        let ctrl_c = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to install Ctrl+C handler");
+        };
+
+        #[cfg(unix)]
+        let terminate = async {
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Failed to install SIGTERM handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = terminate => {},
+        }
+
+        info!("🛑 Shutdown signal received, gracefully stopping...");
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await?;
 
     Ok(())
 }

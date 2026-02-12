@@ -21,6 +21,14 @@ pub struct QrCodeResponse {
     pub qrcode: String,
 }
 
+/// Request for phone login
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api", derive(ToSchema))]
+pub struct PhoneLoginRequest {
+    /// Phone number with country code (e.g., "+1234567890")
+    pub phone: String,
+}
+
 /// Response for phone authentication
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "api", derive(ToSchema))]
@@ -38,10 +46,4 @@ pub struct SuccessResponse {
     pub message: String,
 }
 
-/// Generic error response
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
-pub struct ErrorResponse {
-    /// Error message
-    pub error: String,
-}
+// Note: ErrorResponse is defined in chat.rs to avoid duplication

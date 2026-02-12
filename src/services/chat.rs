@@ -3,7 +3,11 @@
 //! Handles sending text messages and attachments via WhatsApp Web.
 //! Based on proven .NET implementation patterns.
 
-use crate::{browser::BrowserService, config::AppConfig};
+use crate::{
+    browser::BrowserService,
+    config::AppConfig,
+    services::database::{DatabaseService, MediaType, MessageStatus},
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
@@ -28,6 +32,20 @@ pub trait ChatServiceTrait: Send + Sync {
         attachment_path: Option<&str>,
         timeout_ms: Option<u64>,
     ) -> Result<()>;
+
+    /// Get list of visible chats from sidebar
+    async fn get_chat_list(&self) -> Result<Vec<crate::models::chat::ChatInfo>>;
+
+    /// Get messages from a specific chat
+    async fn get_messages(
+        &self,
+        chat_id: &str,
+        limit: Option<u32>,
+        load_more: bool,
+    ) -> Result<crate::models::chat::MessageListResponse>;
+
+    /// Watch for new incoming messages
+    async fn watch_messages(&self) -> Result<Vec<crate::models::chat::MessageInfo>>;
 }
 
 // ============================================================================
@@ -40,6 +58,7 @@ pub struct ChatService {
     config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
     message_queue: Semaphore,
+    db: Option<Arc<DatabaseService>>,
 }
 
 impl ChatService {
@@ -48,6 +67,40 @@ impl ChatService {
             config,
             browser_service,
             message_queue: Semaphore::new(1),
+            db: None,
+        }
+    }
+
+    /// Create with database for message persistence
+    pub fn with_database(
+        config: Arc<AppConfig>,
+        browser_service: Arc<BrowserService>,
+        db: Arc<DatabaseService>,
+    ) -> Self {
+        Self {
+            config,
+            browser_service,
+            message_queue: Semaphore::new(1),
+            db: Some(db),
+        }
+    }
+
+    /// Get reference to database (if configured)
+    pub fn database(&self) -> Option<&Arc<DatabaseService>> {
+        self.db.as_ref()
+    }
+
+    /// Determine media type from file path
+    fn get_media_type(&self, path: &str) -> MediaType {
+        let mime = self.get_content_type(path);
+        if mime.contains("image") {
+            MediaType::Image
+        } else if mime.contains("video") {
+            MediaType::Video
+        } else if mime.contains("audio") {
+            MediaType::Voice
+        } else {
+            MediaType::Document
         }
     }
 
@@ -311,7 +364,8 @@ impl ChatService {
             ));
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        // Wait for preview to load (Send button appears) instead of fixed delay
+        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000).await?;
 
         self.add_caption_and_send(page, caption).await?;
         info!("Image/video sent");
@@ -393,7 +447,8 @@ impl ChatService {
             return Err(anyhow::anyhow!("Could not set file on any document input"));
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        // Wait for preview to load (Send button appears) instead of fixed delay
+        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000).await?;
 
         // Documents also have a caption field like images - use the same add_caption_and_send method
         self.add_caption_and_send(page, text).await?;
@@ -495,13 +550,9 @@ impl ChatService {
     }
 
     async fn add_caption_and_send(&self, page: &Page, caption: Option<&str>) -> Result<()> {
-        // Wait for the media preview to load - look for the send button in the preview
-        // The caption input is a contenteditable div with aria-label="Type a message"
-
-        // Wait for the preview dialog with send button
-        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000)
-            .await?;
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // The preview dialog should already be loaded (caller waits for Send button)
+        // Small delay for UI to stabilize
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Add caption if provided
         if let Some(text) = caption {
@@ -648,6 +699,34 @@ impl ChatServiceTrait for ChatService {
             }
         }
 
+        // Insert message into database as pending (if db configured)
+        let msg_id = if let Some(db) = &self.db {
+            let media_type = attachment_path
+                .map(|p| self.get_media_type(p))
+                .unwrap_or(MediaType::None);
+
+            let id = if media_type == MediaType::None {
+                db.insert_outgoing_message(
+                    phone,
+                    text.unwrap_or(""),
+                    MessageStatus::Processing,
+                )?
+            } else {
+                db.insert_outgoing_media(
+                    phone,
+                    media_type,
+                    attachment_path.unwrap(),
+                    attachment_path.and_then(|p| Path::new(p).file_name()?.to_str()),
+                    text,
+                    MessageStatus::Processing,
+                )?
+            };
+            debug!("Message queued with ID: {}", id);
+            Some(id)
+        } else {
+            None
+        };
+
         let _permit = tokio::time::timeout(
             std::time::Duration::from_millis(timeout),
             self.message_queue.acquire(),
@@ -659,27 +738,409 @@ impl ChatServiceTrait for ChatService {
         let page = self.get_page().await?;
 
         if !self.check_authorization(&page).await? {
+            // Update status to failed if db configured
+            if let (Some(db), Some(id)) = (&self.db, &msg_id) {
+                let _ = db.update_status(id, MessageStatus::Failed, Some("Not authorized"));
+            }
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
-        self.navigate_to_chat(&page, phone).await?;
+        // Attempt to send the message
+        let result = async {
+            self.navigate_to_chat(&page, phone).await?;
 
-        match (attachment_path, text) {
-            (None, Some(msg)) if !msg.is_empty() => {
-                self.send_text_only(&page, msg).await?;
+            match (attachment_path, text) {
+                (None, Some(msg)) if !msg.is_empty() => {
+                    self.send_text_only(&page, msg).await?;
+                }
+                (Some(path), caption) => {
+                    let mime = self.get_content_type(path);
+                    if mime.contains("image") || mime.contains("video") {
+                        self.send_image_or_video(&page, path, caption).await?;
+                    } else {
+                        self.send_document(&page, path, caption).await?;
+                    }
+                }
+                _ => return Err(anyhow::anyhow!("Invalid parameters")),
             }
-            (Some(path), caption) => {
-                let mime = self.get_content_type(path);
-                if mime.contains("image") || mime.contains("video") {
-                    self.send_image_or_video(&page, path, caption).await?;
-                } else {
-                    self.send_document(&page, path, caption).await?;
+            Ok(())
+        }
+        .await;
+
+        // Update database with result
+        if let Some(db) = &self.db {
+            if let Some(id) = &msg_id {
+                match &result {
+                    Ok(_) => {
+                        db.update_status(id, MessageStatus::Sent, None)?;
+                    }
+                    Err(e) => {
+                        db.update_status(id, MessageStatus::Failed, Some(&e.to_string()))?;
+                    }
                 }
             }
-            _ => return Err(anyhow::anyhow!("Invalid parameters")),
         }
 
+        result?;
         info!("Message sent to {}", phone);
         Ok(())
+    }
+
+    // ========================================================================
+    // DOM-Based Chat/Message Reading
+    // ========================================================================
+
+    /// Get list of visible chats from WhatsApp sidebar
+    async fn get_chat_list(&self) -> Result<Vec<crate::models::chat::ChatInfo>> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized - please scan QR code first"));
+        }
+
+        let script = r##"
+        (function() {
+            const chats = [];
+            const chatRows = document.querySelectorAll('[data-testid="cell-frame-container"], div[role="listitem"], div[role="row"]');
+            
+            chatRows.forEach(row => {
+                try {
+                    // Try to get the chat data
+                    const nameEl = row.querySelector('[data-testid="cell-frame-title"] span') ||
+                                   row.querySelector('span[title]') ||
+                                   row.querySelector('[dir="auto"]');
+                    
+                    if (!nameEl) return;
+                    
+                    const name = nameEl.innerText || nameEl.getAttribute('title') || '';
+                    if (!name || name === 'Loading…') return;
+                    
+                    // Get last message
+                    const msgEl = row.querySelector('[data-testid="last-msg-status"]')?.parentElement ||
+                                  row.querySelector('span[title]:not([data-testid])');
+                    const lastMsg = msgEl ? msgEl.innerText : null;
+                    
+                    // Get timestamp
+                    const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]') ||
+                                   row.querySelectorAll('[dir="auto"]')[1];
+                    const timestamp = timeEl ? timeEl.innerText : null;
+                    
+                    // Get unread count
+                    const unreadEl = row.querySelector('[data-testid="icon-unread-count"]') ||
+                                     row.querySelector('span[aria-label*="unread"]');
+                    let unreadCount = 0;
+                    if (unreadEl) {
+                        const text = unreadEl.innerText || unreadEl.getAttribute('aria-label') || '0';
+                        const match = text.match(/\d+/);
+                        unreadCount = match ? parseInt(match[0]) : 0;
+                    }
+                    
+                    // Check if group (has group icon or multiple participants indicator)
+                    const isGroup = row.querySelector('[data-icon="default-group"]') !== null ||
+                                    name.includes('group') ||
+                                    row.querySelector('[data-testid="group"]') !== null;
+                    
+                    // Get avatar URL
+                    const avatarEl = row.querySelector('img[src*="pps.whatsapp.net"]');
+                    const avatarUrl = avatarEl ? avatarEl.src : null;
+                    
+                    // Try to extract chat ID from data attributes or link
+                    let chatId = name; // Default to name
+                    const dataId = row.getAttribute('data-id');
+                    if (dataId && dataId.includes('@')) {
+                        chatId = dataId;
+                    }
+                    
+                    chats.push({
+                        id: chatId,
+                        name: name,
+                        last_message: lastMsg,
+                        timestamp: timestamp,
+                        unread_count: unreadCount,
+                        is_group: isGroup,
+                        avatar_url: avatarUrl
+                    });
+                } catch(e) {
+                    // Skip problematic rows
+                }
+            });
+            
+            return chats;
+        })();
+        "##;
+
+        let result = page.evaluate(script).await?;
+        let chats: Vec<crate::models::chat::ChatInfo> = result
+            .into_value()
+            .unwrap_or_default();
+
+        Ok(chats)
+    }
+
+    /// Get messages from the currently open chat or open a specific chat first
+    async fn get_messages(
+        &self,
+        chat_id: &str,
+        limit: Option<u32>,
+        load_more: bool,
+    ) -> Result<crate::models::chat::MessageListResponse> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized - please scan QR code first"));
+        }
+
+        // Navigate to the chat if chat_id looks like a phone number
+        let is_phone = chat_id.chars().all(|c| c.is_ascii_digit() || c == '+');
+        if is_phone {
+            self.navigate_to_chat(&page, chat_id).await?;
+            // Wait for messages to load
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        } else {
+            // Try to click on the chat by name in the sidebar
+            let click_script = format!(
+                r##"(function() {{
+                    const rows = document.querySelectorAll('[role="listitem"], [role="row"]');
+                    for (const row of rows) {{
+                        const nameEl = row.querySelector('span[title]');
+                        if (nameEl && (nameEl.title === "{}" || nameEl.innerText === "{}")) {{
+                            row.click();
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }})();"##,
+                chat_id.replace('"', "\\\""),
+                chat_id.replace('"', "\\\"")
+            );
+
+            let clicked = page
+                .evaluate(click_script.as_str())
+                .await?
+                .into_value::<bool>()
+                .unwrap_or(false);
+
+            if clicked {
+                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            }
+        }
+
+        // Load more messages if requested
+        if load_more {
+            let scroll_script = r##"
+            (function() {
+                const container = document.querySelector('[role="application"]') ||
+                                  document.querySelector('[data-testid="conversation-panel-messages"]')?.parentElement;
+                if (container) {
+                    container.scrollTop = 0;
+                    return true;
+                }
+                return false;
+            })();
+            "##;
+            let _ = page.evaluate(scroll_script).await;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        // Extract messages from DOM
+        let limit_val = limit.unwrap_or(50);
+        let extract_script = format!(
+            r##"
+            (function() {{
+                const messages = [];
+                const msgElements = document.querySelectorAll('[data-id]');
+                
+                msgElements.forEach(el => {{
+                    try {{
+                        const dataId = el.getAttribute('data-id');
+                        if (!dataId || !dataId.includes('@')) return;
+                        
+                        // Parse message ID format: fromMe_chatId_msgId
+                        const fromMe = dataId.startsWith('true_');
+                        
+                        // Get message text from span.copyable-text (WhatsApp Web 2026 structure)
+                        let text = null;
+                        const copyableSpans = el.querySelectorAll('span.copyable-text');
+                        for (const span of copyableSpans) {{
+                            const t = span.innerText?.trim();
+                            // Skip if it looks like a timestamp (HH:MM format) or empty
+                            if (t && t.length > 0 && !t.match(/^\d{{1,2}}:\d{{2}}$/)) {{
+                                text = t;
+                                break;
+                            }}
+                        }}
+                        // Fallback: Try _ao3e class (WhatsApp's internal class for message text)
+                        if (!text) {{
+                            const ao3e = el.querySelector('span._ao3e');
+                            if (ao3e) {{
+                                const t = ao3e.innerText?.trim();
+                                if (t && !t.match(/^\d{{1,2}}:\d{{2}}$/)) {{
+                                    text = t;
+                                }}
+                            }}
+                        }}
+                        
+                        // Get timestamp from data-pre-plain-text attribute
+                        const preTextEl = el.querySelector('[data-pre-plain-text]');
+                        let timestamp = null;
+                        if (preTextEl) {{
+                            const preText = preTextEl.getAttribute('data-pre-plain-text');
+                            if (preText) {{
+                                timestamp = preText.replace(/[\[\]]/g, '').trim();
+                            }}
+                        }}
+                        // Fallback: get time from msg-meta
+                        if (!timestamp) {{
+                            const timeEl = el.querySelector('[data-testid="msg-meta"] span');
+                            if (timeEl) {{
+                                timestamp = timeEl.innerText;
+                            }}
+                        }}
+                        
+                        // Get sender for group chats
+                        const senderEl = el.querySelector('[data-testid="msg-container"] span[aria-label]');
+                        const sender = senderEl ? senderEl.getAttribute('aria-label')?.replace(':', '') : null;
+                        
+                        // Determine message type
+                        let msgType = 'chat';
+                        if (el.querySelector('[data-testid="image-thumb"]') || el.querySelector('img[src*="blob:"]')) {{
+                            msgType = 'image';
+                        }} else if (el.querySelector('[data-testid="video-thumb"]') || el.querySelector('video')) {{
+                            msgType = 'video';
+                        }} else if (el.querySelector('[data-testid="audio-play"]') || el.querySelector('audio')) {{
+                            msgType = 'audio';
+                        }} else if (el.querySelector('[data-testid="document-thumb"]') || el.querySelector('[data-icon="audio-document"]')) {{
+                            msgType = 'document';
+                        }} else if (el.querySelector('[data-testid="location"]')) {{
+                            msgType = 'location';
+                        }} else if (el.querySelector('[data-testid="contact-card"]')) {{
+                            msgType = 'contact';
+                        }} else if (el.querySelector('button[title*="Sticker"]') || el.querySelector('[data-testid="sticker"]')) {{
+                            msgType = 'sticker';
+                        }}
+                        
+                        // Get status (delivered, read, etc.)
+                        let status = null;
+                        const statusEl = el.querySelector('[data-testid="msg-dblcheck"]') ||
+                                         el.querySelector('[data-testid="msg-check"]') ||
+                                         el.querySelector('[data-icon="msg-dblcheck"]') ||
+                                         el.querySelector('[data-icon="msg-check"]');
+                        if (statusEl) {{
+                            const icon = statusEl.getAttribute('data-icon') || statusEl.getAttribute('data-testid');
+                            if (icon && icon.includes('dblcheck')) {{
+                                status = el.querySelector('[data-icon="msg-dblcheck-ack"]') ? 'read' : 'delivered';
+                            }} else {{
+                                status = 'sent';
+                            }}
+                        }}
+                        
+                        // Get media info for non-text messages
+                        let mediaInfo = null;
+                        if (msgType !== 'chat') {{
+                            const docName = el.querySelector('[data-testid="document-thumb"] + div span');
+                            if (docName) mediaInfo = docName.innerText;
+                        }}
+                        
+                        messages.push({{
+                            id: dataId,
+                            from_me: fromMe,
+                            sender: sender,
+                            text: text,
+                            message_type: msgType,
+                            timestamp: timestamp,
+                            timestamp_unix: null,
+                            status: status,
+                            media_info: mediaInfo
+                        }});
+                    }} catch(e) {{
+                        // Skip problematic messages
+                    }}
+                }});
+                
+                // Limit results
+                return messages.slice(-{});
+            }})();
+            "##,
+            limit_val
+        );
+
+        let result = page.evaluate(extract_script.as_str()).await?;
+        let messages: Vec<crate::models::chat::MessageInfo> = result
+            .into_value()
+            .unwrap_or_default();
+
+        // Get chat name from header
+        let name_script = r##"
+        (function() {
+            const header = document.querySelector('[data-testid="conversation-info-header-chat-title"]') ||
+                           document.querySelector('#main header span[title]');
+            return header ? header.innerText || header.title : null;
+        })();
+        "##;
+        let chat_name: Option<String> = page
+            .evaluate(name_script)
+            .await
+            .ok()
+            .and_then(|r| r.into_value().ok());
+
+        let total = messages.len();
+
+        Ok(crate::models::chat::MessageListResponse {
+            chat_id: chat_id.to_string(),
+            chat_name,
+            messages,
+            total,
+            has_more: total >= limit_val as usize,
+        })
+    }
+
+    /// Watch for new incoming messages (returns new messages since last check)
+    async fn watch_messages(&self) -> Result<Vec<crate::models::chat::MessageInfo>> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Get unread messages from visible chats
+        let script = r##"
+        (function() {
+            const newMessages = [];
+            
+            // Look for unread indicators in chat list
+            const unreadChats = document.querySelectorAll('[data-testid="icon-unread-count"]');
+            unreadChats.forEach(badge => {
+                const row = badge.closest('[role="listitem"], [role="row"]');
+                if (row) {
+                    const nameEl = row.querySelector('span[title]');
+                    const msgEl = row.querySelector('[data-testid="last-msg-status"]')?.parentElement;
+                    const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]');
+                    
+                    if (nameEl && msgEl) {
+                        newMessages.push({
+                            id: 'unread_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                            from_me: false,
+                            sender: nameEl.title || nameEl.innerText,
+                            text: msgEl.innerText,
+                            message_type: 'chat',
+                            timestamp: timeEl ? timeEl.innerText : null,
+                            timestamp_unix: Date.now(),
+                            status: 'received',
+                            media_info: null
+                        });
+                    }
+                }
+            });
+            
+            return newMessages;
+        })();
+        "##;
+
+        let result = page.evaluate(script).await?;
+        let messages: Vec<crate::models::chat::MessageInfo> = result
+            .into_value()
+            .unwrap_or_default();
+
+        Ok(messages)
     }
 }

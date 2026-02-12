@@ -1,11 +1,12 @@
 use crate::{
     models::auth::{
-        AuthStatusResponse, ErrorResponse, PhoneAuthResponse, QrCodeResponse, SuccessResponse,
+        AuthStatusResponse, PhoneAuthResponse, PhoneLoginRequest, QrCodeResponse, SuccessResponse,
     },
+    models::chat::ErrorResponse,
     services::whatsapp::WhatsAppService,
 };
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::Json,
 };
@@ -77,7 +78,7 @@ pub async fn get_auth_status(
 /// Get QR code for authentication
 #[utoipa::path(
     get,
-    path = "/api/auth/qrcode",
+    path = "/api/auth/qr",
     responses(
         (status = 200, description = "QR code retrieved successfully", body = QrCodeResponse),
         (status = 400, description = "Bad request - already authorized", body = ErrorResponse),
@@ -131,10 +132,8 @@ pub async fn get_qr_code(
 /// Authenticate with phone number
 #[utoipa::path(
     post,
-    path = "/api/auth/phone/{phone_number}",
-    params(
-        ("phone_number" = String, Path, description = "Phone number for authentication")
-    ),
+    path = "/api/auth/login",
+    request_body = PhoneLoginRequest,
     responses(
         (status = 200, description = "Phone authentication initiated", body = PhoneAuthResponse),
         (status = 400, description = "Bad request", body = ErrorResponse),
@@ -146,9 +145,11 @@ pub async fn get_qr_code(
     tag = "Authentication"
 )]
 pub async fn login_with_phone(
-    Path(phone_number): Path<String>,
     State(whatsapp_service): State<Arc<WhatsAppService>>,
+    Json(request): Json<PhoneLoginRequest>,
 ) -> Result<Json<PhoneAuthResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let phone_number = request.phone;
+    
     match whatsapp_service
         .execute_with_busy_flag(async {
             whatsapp_service

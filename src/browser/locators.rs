@@ -2,9 +2,35 @@
 //!
 //! Type-safe CSS selectors and XPath for WhatsApp Web UI elements.
 //! Updated to match current WhatsApp Web UI (2024+).
+//!
+//! Also includes centralized timeout constants for consistency.
 
 use anyhow::Result;
 use chromiumoxide::page::Page;
+
+/// Centralized timeout constants (in milliseconds)
+pub struct Timeouts;
+
+impl Timeouts {
+    /// Default element wait timeout
+    pub const ELEMENT_WAIT_MS: u64 = 10_000;
+    /// Short timeout for quick checks
+    pub const SHORT_MS: u64 = 5_000;
+    /// Long timeout for slow operations
+    pub const LONG_MS: u64 = 30_000;
+    /// Send message operation timeout
+    pub const SEND_MESSAGE_MS: u64 = 60_000;
+    /// QR code wait timeout
+    pub const QR_CODE_MS: u64 = 20_000;
+    /// Navigation timeout
+    pub const NAVIGATION_MS: u64 = 15_000;
+    /// Dialog dismiss timeout
+    pub const DIALOG_MS: u64 = 10_000;
+    /// Delay between queue messages (rate limiting)
+    pub const QUEUE_DELAY_MS: u64 = 500;
+    /// Polling interval for element checks
+    pub const POLL_INTERVAL_MS: u64 = 200;
+}
 
 /// WhatsApp Web element locators
 pub struct Locators;
@@ -83,6 +109,22 @@ impl Locators {
 
     /// Send button for attachments
     pub const ATTACHMENT_SEND: &'static str = "#app div[aria-label='Send']";
+
+    // ========================================
+    // Chat List & Messages
+    // ========================================
+
+    /// Chat list container
+    pub const CHAT_LIST: &'static str = "[data-testid='chat-list']";
+
+    /// Chat list item row
+    pub const CHAT_LIST_ITEM: &'static str = "[data-testid='cell-frame-container']";
+
+    /// Conversation panel
+    pub const CONVERSATION_PANEL: &'static str = "[data-testid='conversation-panel-messages']";
+
+    /// Message container with ID
+    pub const MESSAGE_ITEM: &'static str = "[data-id]";
 
     // ========================================
     // Dialogs

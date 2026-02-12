@@ -1,58 +1,17 @@
+//! Domain models for the WhatsApp Engine library
+//!
+//! These are pure business objects for the library API.
+//! Database models are in services/database.rs - use conversions when needed.
+
 use serde::{Deserialize, Serialize};
 
-/// Domain models for the WhatsApp Engine library
-/// These are pure business objects without HTTP-specific details
+// Re-export database types as the canonical source for Message-related types
+// This avoids duplicate definitions and ensures consistency
+pub use crate::services::database::{
+    MediaType, Message, MessageStatus, NewMessage, SELF_JID,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Contact {
-    pub id: String,
-    pub name: String,
-    pub phone: String,
-    pub is_business: bool,
-    pub profile_picture_url: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Chat {
-    pub id: String,
-    pub name: String,
-    pub is_group: bool,
-    pub last_message: Option<String>,
-    pub unread_count: u32,
-    pub last_activity: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub content: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    pub message_type: MessageType,
-    pub status: MessageStatus,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MessageType {
-    Text,
-    Image,
-    Document,
-    Audio,
-    Video,
-    Sticker,
-    Location,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MessageStatus {
-    Sending,
-    Sent,
-    Delivered,
-    Read,
-    Failed,
-}
-
+/// Authentication status for the library API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthStatus {
     pub is_authenticated: bool,
@@ -61,14 +20,20 @@ pub struct AuthStatus {
     pub authenticated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// QR code data for authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QrCode {
-    pub data: String, // base64 encoded PNG
+    /// Base64 encoded PNG image data
+    pub data: String,
+    /// When this QR code expires
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// URL to the QR code image (same as data for base64)
     pub image_url: String,
+    /// How often to refresh in seconds
     pub refresh_interval_seconds: u32,
 }
 
+/// Result of phone number authentication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhoneAuthResult {
     pub success: bool,
@@ -77,6 +42,7 @@ pub struct PhoneAuthResult {
     pub next_retry_in_seconds: Option<u32>,
 }
 
+/// Result of sending a message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageResult {
     pub success: bool,
@@ -85,6 +51,7 @@ pub struct SendMessageResult {
     pub retry_after_seconds: Option<u32>,
 }
 
+/// Engine status information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineStatus {
     pub is_ready: bool,
@@ -94,18 +61,11 @@ pub struct EngineStatus {
     pub uptime_seconds: u64,
 }
 
+/// File attachment for sending media
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAttachment {
     pub file_path: String,
     pub file_name: Option<String>,
     pub mime_type: Option<String>,
     pub caption: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthenticationStatus {
-    pub is_authenticated: bool,
-    pub phone_number: Option<String>,
-    pub connection_state: String,
-    pub last_activity: Option<chrono::DateTime<chrono::Utc>>,
 }

@@ -8,4 +8,4 @@ mod driver;
 mod locators;
 
 pub use driver::BrowserService;
-pub use locators::Locators;
+pub use locators::{Locators, Timeouts};

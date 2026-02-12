@@ -168,3 +168,26 @@ impl From<serde_json::Error> for WhatsAppError {
         WhatsAppError::Internal(format!("JSON error: {}", err))
     }
 }
+
+/// Convert from rusqlite errors
+impl From<rusqlite::Error> for WhatsAppError {
+    fn from(err: rusqlite::Error) -> Self {
+        WhatsAppError::Internal(format!("Database error: {}", err))
+    }
+}
+
+/// Convert from std::io errors
+impl From<std::io::Error> for WhatsAppError {
+    fn from(err: std::io::Error) -> Self {
+        WhatsAppError::FileError {
+            details: err.to_string(),
+        }
+    }
+}
+
+/// Convert from tokio::sync::AcquireError
+impl From<tokio::sync::AcquireError> for WhatsAppError {
+    fn from(err: tokio::sync::AcquireError) -> Self {
+        WhatsAppError::Internal(format!("Semaphore acquire error: {}", err))
+    }
+}

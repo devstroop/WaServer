@@ -5,13 +5,14 @@ use crate::{
     services::{
         auth::{AuthService, AuthServiceTrait},
         chat::{ChatService, ChatServiceTrait},
+        database::DatabaseService,
     },
     utils::metrics::{MetricsSnapshot, ServiceMetrics},
 };
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Main WhatsApp service that coordinates all operations
 pub struct WhatsAppService {
@@ -19,7 +20,8 @@ pub struct WhatsAppService {
     browser_service: Arc<BrowserService>,
     auth_service: Arc<dyn AuthServiceTrait>,
     chat_service: Arc<dyn ChatServiceTrait>,
-    busy_flag: Arc<Mutex<bool>>,
+    db: Arc<DatabaseService>,
+    /// Semaphore for limiting concurrent operations (set to 1 for mutual exclusion)
     operation_semaphore: Arc<Semaphore>,
     metrics: ServiceMetrics,
     initialized: Arc<Mutex<bool>>,
@@ -29,19 +31,44 @@ impl WhatsAppService {
     /// Create a new WhatsApp service instance
     pub fn new(config: Arc<AppConfig>) -> Self {
         let browser_service = Arc::new(BrowserService::new(config.clone()));
+
+        // Initialize database in data directory
+        let data_dir = config
+            .environment
+            .data_directory
+            .clone()
+            .unwrap_or_else(|| "data".to_string());
+        let db = match DatabaseService::new(&data_dir) {
+            Ok(db) => Arc::new(db),
+            Err(e) => {
+                warn!("Failed to initialize database: {}. Running without persistence.", e);
+                // Create in-memory fallback (won't persist but won't crash)
+                Arc::new(DatabaseService::in_memory().expect("In-memory DB should work"))
+            }
+        };
+
         let auth_service = Arc::new(AuthService::new(config.clone(), browser_service.clone()));
-        let chat_service = Arc::new(ChatService::new(config.clone(), browser_service.clone()));
+        let chat_service = Arc::new(ChatService::with_database(
+            config.clone(),
+            browser_service.clone(),
+            db.clone(),
+        ));
 
         Self {
             config: config.clone(),
             browser_service,
             auth_service: auth_service as Arc<dyn AuthServiceTrait>,
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
-            busy_flag: Arc::new(Mutex::new(false)),
-            operation_semaphore: Arc::new(Semaphore::new(config.limits.max_concurrent_requests)),
+            db,
+            operation_semaphore: Arc::new(Semaphore::new(1)), // Single permit for mutual exclusion
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
         }
+    }
+
+    /// Get reference to the database service
+    pub fn database(&self) -> &Arc<DatabaseService> {
+        &self.db
     }
 
     /// Initialize the WhatsApp service
@@ -124,43 +151,35 @@ impl WhatsAppService {
         Ok(())
     }
 
-    /// Check if the service is currently busy
+    /// Check if the service is currently busy (no permits available)
     pub async fn is_busy(&self) -> bool {
-        *self.busy_flag.lock().await
+        self.operation_semaphore.available_permits() == 0
     }
 
-    /// Execute an operation with the busy flag set
+    /// Execute an operation with exclusive access (acquires semaphore permit)
     pub async fn execute_with_busy_flag<F, T>(&self, operation: F) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>> + Send,
         T: Send,
     {
-        // Acquire semaphore permit to limit concurrent operations
-        let _permit = self.operation_semaphore.acquire().await?;
-
-        // Set busy flag
-        {
-            let mut busy = self.busy_flag.lock().await;
-            if *busy {
+        // Try to acquire semaphore permit (non-blocking check first)
+        let permit = match self.operation_semaphore.try_acquire() {
+            Ok(permit) => permit,
+            Err(_) => {
                 return Err(anyhow::anyhow!(
                     "Service is already busy with another operation"
                 ));
             }
-            *busy = true;
-        }
+        };
 
-        debug!("Operation started - service marked as busy");
+        debug!("Operation started - acquired exclusive access");
 
         // Execute the operation
         let result = operation.await;
 
-        // Clear busy flag
-        {
-            let mut busy = self.busy_flag.lock().await;
-            *busy = false;
-        }
-
-        debug!("Operation completed - service marked as available");
+        // Permit is automatically released when dropped
+        drop(permit);
+        debug!("Operation completed - released exclusive access");
 
         result
     }
@@ -259,5 +278,93 @@ impl WhatsAppService {
     /// Track errors
     pub fn track_error(&self) {
         self.metrics.increment_error_count();
+    }
+
+    /// Process pending messages from the queue
+    /// 
+    /// This processes messages one at a time until the queue is empty
+    /// or an error occurs. Returns the number of messages processed.
+    pub async fn process_queue(&self) -> u32 {
+        let mut processed_count = 0;
+
+        loop {
+            // Check if we can process (not busy)
+            if self.is_busy().await {
+                debug!("Service busy, pausing queue processing");
+                break;
+            }
+
+            // Get next message from queue
+            let item = match self.db.dequeue_next() {
+                Ok(Some(item)) => item,
+                Ok(None) => {
+                    debug!("Queue empty, stopping processor");
+                    break;
+                }
+                Err(e) => {
+                    error!("Error dequeuing message: {}", e);
+                    break;
+                }
+            };
+
+            info!("Processing queued message {} to {}", item.id, item.recipient);
+
+            // Mark as processing
+            if let Err(e) = self.db.mark_processing(&item.id) {
+                error!("Failed to mark message {} as processing: {}", item.id, e);
+                continue;
+            }
+
+            // Send the message with busy flag (recipient is the phone for outgoing)
+            let result = self
+                .execute_with_busy_flag(async {
+                    self.chat_service
+                        .send_message(
+                            &item.recipient,
+                            item.text.as_deref(),
+                            item.media_path.as_deref(),
+                            None,
+                        )
+                        .await
+                })
+                .await;
+
+            match result {
+                Ok(_) => {
+                    if let Err(e) = self.db.mark_sent(&item.id) {
+                        error!("Failed to mark message {} as sent: {}", item.id, e);
+                    }
+                    processed_count += 1;
+                    self.track_message_sent();
+                    info!("Queued message {} sent successfully", item.id);
+                }
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    error!("Failed to send queued message {}: {}", item.id, error_msg);
+                    
+                    if let Err(db_err) = self.db.mark_failed(&item.id, &error_msg) {
+                        error!("Failed to mark message {} as failed: {}", item.id, db_err);
+                    }
+                    self.track_error();
+
+                    // If it's a critical error (not authorized), stop processing
+                    if error_msg.contains("Not authorized") {
+                        warn!("Stopping queue processing due to auth error");
+                        break;
+                    }
+                }
+            }
+
+            // Small delay between messages to avoid rate limiting
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        processed_count
+    }
+
+    /// Reset any stuck messages on startup
+    pub fn reset_stuck_messages(&self) -> Result<()> {
+        self.db.reset_stuck_processing()?;
+        Ok(())
     }
 }

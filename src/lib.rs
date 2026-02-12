@@ -88,7 +88,7 @@ pub mod handlers;
 pub mod middleware;
 
 // Re-export public API
-pub use browser::{BrowserService, Locators};
+pub use browser::{BrowserService, Locators, Timeouts};
 pub use config::AppConfig;
 pub use engine::WhatsAppEngine;
 pub use error::{Result, WhatsAppError};
