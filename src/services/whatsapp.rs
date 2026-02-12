@@ -6,6 +6,7 @@ use crate::{
         auth::{AuthService, AuthServiceTrait},
         chat::{ChatService, ChatServiceTrait},
         database::DatabaseService,
+        webhook::{WebhookEvent, WebhookMessageData, WebhookService},
     },
     utils::metrics::{MetricsSnapshot, ServiceMetrics},
 };
@@ -21,6 +22,7 @@ pub struct WhatsAppService {
     auth_service: Arc<dyn AuthServiceTrait>,
     chat_service: Arc<dyn ChatServiceTrait>,
     db: Arc<DatabaseService>,
+    webhook_service: Arc<WebhookService>,
     /// Semaphore for limiting concurrent operations (set to 1 for mutual exclusion)
     operation_semaphore: Arc<Semaphore>,
     metrics: ServiceMetrics,
@@ -47,6 +49,15 @@ impl WhatsAppService {
             }
         };
 
+        // Initialize webhook service
+        let webhook_service = WebhookService::new(config.webhooks.clone()).start_worker();
+        if config.webhooks.enabled {
+            info!(
+                "Webhooks enabled with {} endpoint(s)",
+                webhook_service.endpoints_count()
+            );
+        }
+
         let auth_service = Arc::new(AuthService::new(config.clone(), browser_service.clone()));
         let chat_service = Arc::new(ChatService::with_database(
             config.clone(),
@@ -60,6 +71,7 @@ impl WhatsAppService {
             auth_service: auth_service as Arc<dyn AuthServiceTrait>,
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             db,
+            webhook_service,
             operation_semaphore: Arc::new(Semaphore::new(1)), // Single permit for mutual exclusion
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
@@ -106,6 +118,18 @@ impl WhatsAppService {
     /// Get reference to chat service
     pub fn chat_service(&self) -> &Arc<dyn ChatServiceTrait> {
         &self.chat_service
+    }
+
+    /// Get reference to webhook service
+    pub fn webhook_service(&self) -> &Arc<WebhookService> {
+        &self.webhook_service
+    }
+
+    /// Fire webhook for received message
+    pub async fn fire_message_received_webhook(&self, data: WebhookMessageData) {
+        self.webhook_service
+            .fire(WebhookEvent::MessageReceived, data)
+            .await;
     }
 
     /// Pre-check to dismiss any dialogs that might be blocking operations

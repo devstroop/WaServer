@@ -6,6 +6,7 @@ pub mod auth;
 pub mod chat;
 pub mod database;
 pub mod mcp_client;
+pub mod webhook;
 pub mod whatsapp;
 
 // Re-exports for convenience
@@ -14,3 +15,4 @@ pub use chat::{ChatService, ChatServiceTrait};
 pub use database::{
     is_self, Contact, DatabaseService, MediaType, Message, MessageStatus, NewMessage, SELF_JID,
 };
+pub use webhook::{WebhookEvent, WebhookMessageData, WebhookService};

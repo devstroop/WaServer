@@ -117,6 +117,11 @@ mime_guess = "2.0"
 # SQLite database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
+# HMAC for webhook signatures
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
 # ============================================================================
 # Optional Dependencies
 # ============================================================================
