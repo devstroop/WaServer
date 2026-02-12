@@ -151,6 +151,16 @@ heartbeat_interval_secs = 30
 max_concurrent_requests = 50
 request_timeout_ms = 30000
 max_upload_size = 10485760
+
+[webhooks]
+enabled = true
+timeout_ms = 5000
+retry_count = 3
+retry_delay_ms = 1000
+
+[[webhooks.endpoints]]
+url = "https://your-server.com/webhook/whatsapp"
+secret = "your-hmac-secret"
 ```
 
 ### Environment Variables
@@ -216,6 +226,68 @@ Add to your Claude Desktop config:
 Swagger UI available at: `http://localhost:3000/swagger-ui/`
 
 OpenAPI spec at: `http://localhost:3000/api-docs/openapi.json`
+
+## Webhooks
+
+WAS can push incoming messages to your server via webhooks with HMAC-SHA256 signature verification.
+
+### Webhook Configuration
+
+```toml
+[webhooks]
+enabled = true
+timeout_ms = 5000
+retry_count = 3
+retry_delay_ms = 1000
+
+[[webhooks.endpoints]]
+url = "https://your-server.com/webhook/whatsapp"
+secret = "your-hmac-secret-for-signature-verification"
+headers = { "X-Custom-Header" = "value" }
+
+# Multiple endpoints supported
+[[webhooks.endpoints]]
+url = "https://n8n.example.com/webhook/abc123"
+```
+
+### Webhook Payload
+
+```json
+{
+  "event": "message.received",
+  "timestamp": "2026-02-12T10:30:00Z",
+  "data": {
+    "id": "message-id",
+    "sender": "+1234567890",
+    "recipient": "me",
+    "text": "Hello!",
+    "timestamp": "2026-02-12T10:30:00Z",
+    "is_group": false
+  }
+}
+```
+
+### Signature Verification
+
+Each webhook request includes an `X-Webhook-Signature` header containing an HMAC-SHA256 signature. Verify it like this:
+
+```python
+import hmac
+import hashlib
+
+def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+```
+
+```javascript
+const crypto = require('crypto');
+
+function verifySignature(payload, signature, secret) {
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+```
 
 ## Docker
 

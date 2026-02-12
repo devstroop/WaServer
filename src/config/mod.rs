@@ -42,8 +42,6 @@ pub struct WebhookConfig {
 pub struct WebhookEndpointConfig {
     /// Webhook URL
     pub url: String,
-    /// Events to subscribe to (e.g., ["message.received"] or ["*"] for all)
-    pub events: Vec<String>,
     /// Optional HMAC secret for signature verification
     pub secret: Option<String>,
     /// Optional custom headers

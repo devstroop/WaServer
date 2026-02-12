@@ -61,7 +61,6 @@ pub struct WebhookMessageData {
 #[derive(Debug, Clone)]
 pub struct WebhookEndpoint {
     pub url: String,
-    pub events: Vec<WebhookEvent>,
     pub secret: Option<String>,
     pub headers: std::collections::HashMap<String, String>,
 }
@@ -86,18 +85,10 @@ impl WebhookService {
         let endpoints = config
             .endpoints
             .iter()
-            .map(|ep| {
-                let events = ep
-                    .events
-                    .iter()
-                    .filter_map(|e| WebhookEvent::parse(e))
-                    .collect();
-                WebhookEndpoint {
-                    url: ep.url.clone(),
-                    events,
-                    secret: ep.secret.clone(),
-                    headers: ep.headers.clone().unwrap_or_default(),
-                }
+            .map(|ep| WebhookEndpoint {
+                url: ep.url.clone(),
+                secret: ep.secret.clone(),
+                headers: ep.headers.clone().unwrap_or_default(),
             })
             .collect();
 
@@ -156,14 +147,9 @@ impl WebhookService {
         }
     }
 
-    /// Deliver webhook to all matching endpoints
-    async fn deliver_webhook(&self, event: &WebhookEvent, payload: &WebhookPayload) {
+    /// Deliver webhook to all endpoints
+    async fn deliver_webhook(&self, _event: &WebhookEvent, payload: &WebhookPayload) {
         for endpoint in &self.endpoints {
-            // Check if endpoint subscribes to this event
-            if !endpoint.events.contains(event) && !endpoint.events.is_empty() {
-                continue;
-            }
-
             debug!("Delivering webhook to {}", endpoint.url);
 
             // Serialize payload

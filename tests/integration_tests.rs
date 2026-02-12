@@ -1,8 +1,6 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::Value;
-use std::time::Duration;
-use tokio::time::sleep;
 
 const BASE_URL: &str = "http://localhost:3000";
 const API_TOKEN: &str = "test-api-token-123456789";
