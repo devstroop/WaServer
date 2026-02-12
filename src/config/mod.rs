@@ -17,6 +17,49 @@ pub struct AppConfig {
     pub environment: EnvironmentConfig,
     #[serde(default)]
     pub mcp: McpConfig,
+    #[serde(default)]
+    pub webhooks: WebhookConfig,
+}
+
+/// Webhook configuration for event callbacks
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebhookConfig {
+    /// Enable webhook callbacks
+    pub enabled: bool,
+    /// Webhook endpoints
+    #[serde(default)]
+    pub endpoints: Vec<WebhookEndpointConfig>,
+    /// Request timeout in milliseconds
+    pub timeout_ms: u64,
+    /// Number of retry attempts on failure
+    pub retry_count: u32,
+    /// Delay between retries in milliseconds
+    pub retry_delay_ms: u64,
+}
+
+/// Individual webhook endpoint configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebhookEndpointConfig {
+    /// Webhook URL
+    pub url: String,
+    /// Events to subscribe to (e.g., ["message.received"] or ["*"] for all)
+    pub events: Vec<String>,
+    /// Optional HMAC secret for signature verification
+    pub secret: Option<String>,
+    /// Optional custom headers
+    pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+impl Default for WebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoints: vec![],
+            timeout_ms: 5000,
+            retry_count: 3,
+            retry_delay_ms: 1000,
+        }
+    }
 }
 
 /// MCP (Model Context Protocol) configuration
@@ -140,6 +183,7 @@ impl Default for AppConfig {
             },
             environment: EnvironmentConfig::default(),
             mcp: McpConfig::default(),
+            webhooks: WebhookConfig::default(),
         }
     }
 }
