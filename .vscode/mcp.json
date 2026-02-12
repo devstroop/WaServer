@@ -1,10 +1,27 @@
 {
     "servers": {
+        "whatsapp-engine": {
+            "type": "sse",
+            "url": "http://localhost:3000/mcp/sse",
+            "headers": {
+                "Authorization": "Bearer test-api-token-123456789"
+            }
+        },
         "playwright": {
             "command": "npx",
             "args": [
                 "@playwright/mcp@latest"
             ]
+        },
+        "rest-api": {
+            "command": "node",
+            "args": [
+                "C:/Users/Administrator/mcp-servers/rest-mcp/build/index.js"
+            ],
+            "env": {
+                "REST_BASE_URL": "http://localhost:3000",
+                "AUTH_BEARER": "test-api-token-123456789"
+            }
         }
     }
 }

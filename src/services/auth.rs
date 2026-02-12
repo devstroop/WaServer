@@ -1,0 +1,445 @@
+//! Authentication Service
+//!
+//! Handles WhatsApp Web authentication including QR code and phone number methods.
+
+use crate::{
+    browser::{BrowserService, Locators},
+    config::AppConfig,
+};
+use anyhow::Result;
+use async_trait::async_trait;
+use chromiumoxide::page::Page;
+use std::sync::Arc;
+use std::time::Duration;
+use tracing::{debug, info};
+
+// ============================================================================
+// Trait Definition
+// ============================================================================
+
+/// Authentication service trait
+#[async_trait]
+pub trait AuthServiceTrait: Send + Sync {
+    /// Check if user is authorized (logged in)
+    async fn is_authorized(&self) -> Result<bool>;
+
+    /// Get the sender's phone number/ID
+    async fn get_sender_id(&self) -> Result<Option<String>>;
+
+    /// Get QR code for authentication
+    async fn get_auth_qr_code(&self) -> Result<String>;
+
+    /// Authenticate using phone number
+    async fn login_with_phone_number(&self, phone_number: &str) -> Result<Option<String>>;
+
+    /// Logout from WhatsApp Web
+    async fn logout(&self) -> Result<()>;
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/// Timeout configuration for authentication operations
+#[derive(Debug, Clone)]
+pub struct AuthTimeouts {
+    pub navigation: Duration,
+    pub element_wait: Duration,
+    pub code_detection: Duration,
+    pub total_operation: Duration,
+}
+
+impl Default for AuthTimeouts {
+    fn default() -> Self {
+        Self {
+            navigation: Duration::from_secs(15),
+            element_wait: Duration::from_secs(10),
+            code_detection: Duration::from_secs(30),
+            total_operation: Duration::from_secs(60),
+        }
+    }
+}
+
+// ============================================================================
+// Service Implementation
+// ============================================================================
+
+/// WhatsApp authentication service
+pub struct AuthService {
+    #[allow(dead_code)]
+    config: Arc<AppConfig>,
+    browser_service: Arc<BrowserService>,
+    timeouts: AuthTimeouts,
+}
+
+impl AuthService {
+    pub fn new(config: Arc<AppConfig>, browser_service: Arc<BrowserService>) -> Self {
+        Self {
+            config,
+            browser_service,
+            timeouts: AuthTimeouts::default(),
+        }
+    }
+
+    /// Get page from browser service
+    async fn get_page(&self) -> Result<Page> {
+        self.browser_service
+            .get_or_create_page("https://web.whatsapp.com")
+            .await
+    }
+
+    /// Wait for element with timeout
+    async fn wait_for_element(&self, page: &Page, selector: &str, timeout_ms: u64) -> Result<bool> {
+        Locators::wait_for_element(page, selector, timeout_ms).await
+    }
+
+    /// Extract QR code from canvas
+    async fn extract_qr_code(&self, page: &Page) -> Result<String> {
+        // Wait for QR code canvas
+        page.find_element("canvas").await?;
+
+        // Extract QR code from canvas
+        let canvas_result = page
+            .evaluate("document.getElementsByTagName('canvas')[0].toDataURL('image/png');")
+            .await?;
+
+        let canvas_string = match canvas_result.into_value()? {
+            serde_json::Value::String(data) => data,
+            _ => return Err(anyhow::anyhow!("Failed to get QR code canvas data")),
+        };
+
+        if canvas_string.is_empty() {
+            return Err(anyhow::anyhow!("Failed to get QR code canvas"));
+        }
+
+        let parts: Vec<&str> = canvas_string.split(',').collect();
+        if parts.len() < 2 || parts[1].is_empty() {
+            return Err(anyhow::anyhow!("Invalid QR code data format"));
+        }
+
+        Ok(parts[1].to_string())
+    }
+
+    /// Format phone number for WhatsApp
+    fn format_phone_number(&self, phone: &str) -> String {
+        let cleaned: String = phone
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '+')
+            .collect();
+
+        if !cleaned.starts_with('+') && cleaned.len() >= 10 {
+            format!("+{}", cleaned)
+        } else {
+            cleaned
+        }
+    }
+
+    /// Extract verification code from page
+    async fn extract_verification_code(&self, page: &Page) -> Result<Option<String>> {
+        let code_script = r#"
+            (function() {
+                // Method 1: data-link-code attribute
+                const linkCodeEl = document.querySelector('[data-link-code]');
+                if (linkCodeEl) {
+                    const code = linkCodeEl.getAttribute('data-link-code');
+                    if (code && code.length >= 6) return code;
+                }
+                
+                // Method 2: Look for code pattern in body text
+                const bodyText = document.body.textContent || '';
+                const codeMatch = bodyText.match(/\b[A-Z0-9]{3,4}[-][A-Z0-9]{3,4}\b/);
+                if (codeMatch) return codeMatch[0];
+                
+                // Method 3: Simple alphanumeric pattern
+                const simpleMatch = bodyText.match(/\b[A-Z0-9]{6,9}\b/);
+                if (simpleMatch && !simpleMatch[0].match(/^\d+$/)) {
+                    return simpleMatch[0];
+                }
+                
+                return null;
+            })()
+        "#;
+
+        let result = page.evaluate(code_script).await?;
+        if let Ok(value) = result.into_value::<serde_json::Value>() {
+            if let Some(code_str) = value.as_str() {
+                if !code_str.is_empty() && code_str != "null" && code_str.len() >= 4 {
+                    return Ok(Some(code_str.replace(" ", "")));
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[async_trait]
+impl AuthServiceTrait for AuthService {
+    async fn is_authorized(&self) -> Result<bool> {
+        let page = self.get_page().await?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let check_js = r##"
+            (() => {
+                const paneExists = document.querySelector('#pane-side') !== null 
+                    || document.querySelector('[data-testid="chat-list"]') !== null
+                    || document.querySelector('div[aria-label="Chat list"]') !== null;
+                
+                const loginScreen = document.body.innerText.includes('Log into WhatsApp Web')
+                    || document.body.innerText.includes('Use WhatsApp on your computer')
+                    || document.querySelector('canvas[aria-label="Scan me!"]') !== null;
+                
+                const phoneEntry = document.body.innerText.includes('Enter phone number')
+                    || document.querySelector('input[aria-label="Type your phone number."]') !== null;
+                
+                const codeEntry = document.body.innerText.includes('Enter code on phone')
+                    || document.querySelector('[data-testid="link-device-phone-number-code-entry"]') !== null;
+                
+                if (loginScreen || phoneEntry || codeEntry) {
+                    return { authorized: false, reason: loginScreen ? 'login' : phoneEntry ? 'phone' : 'code' };
+                }
+                
+                if (paneExists) {
+                    return { authorized: true, reason: 'pane_visible' };
+                }
+                
+                return { authorized: false, reason: 'unclear' };
+            })()
+        "##;
+
+        let result = page.evaluate(check_js).await?;
+        let value: serde_json::Value = result.into_value()?;
+
+        let authorized = value
+            .get("authorized")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let reason = value
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        debug!(
+            "Authorization check: authorized={}, reason={}",
+            authorized, reason
+        );
+        Ok(authorized)
+    }
+
+    async fn get_sender_id(&self) -> Result<Option<String>> {
+        let page = self.get_page().await?;
+
+        if !self.is_authorized().await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        let sender_result = page.evaluate(
+            "window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';"
+        ).await?;
+
+        let sender_string = match sender_result.into_value()? {
+            serde_json::Value::String(s) => s,
+            _ => String::new(),
+        }
+        .trim_matches('"')
+        .to_string();
+
+        if sender_string.is_empty() {
+            return Ok(None);
+        }
+
+        let cleaned_id = sender_string
+            .split('@')
+            .next()
+            .and_then(|part| part.split(':').next())
+            .map(|s| s.to_string());
+
+        debug!("Sender ID: {:?}", cleaned_id);
+        Ok(cleaned_id)
+    }
+
+    async fn get_auth_qr_code(&self) -> Result<String> {
+        let page = self.get_page().await?;
+
+        if self.is_authorized().await? {
+            return Err(anyhow::anyhow!("Already authorized"));
+        }
+
+        // Check if we need to switch to QR code mode
+        if page.find_element("text='Enter phone number'").await.is_ok()
+            || page
+                .find_element("text='Enter code on phone'")
+                .await
+                .is_ok()
+        {
+            debug!("Switching to QR code login");
+            if let Ok(qr_link) = page.find_element("text='Log in with QR code'").await {
+                qr_link.click().await?;
+            }
+        }
+
+        // Wait for QR code to be visible
+        if !self
+            .wait_for_element(&page, Locators::QR_CODE_CANVAS, 20000)
+            .await?
+        {
+            // Check if we need to reload the QR code
+            if let Ok(reload) = page.find_element("text='Click to reload QR code'").await {
+                reload.click().await?;
+            }
+        }
+
+        // Wait again after potential reload
+        if !self
+            .wait_for_element(&page, Locators::QR_CODE_CANVAS, 15000)
+            .await?
+        {
+            return Err(anyhow::anyhow!("QR code not available"));
+        }
+
+        self.extract_qr_code(&page).await
+    }
+
+    async fn login_with_phone_number(&self, phone_number: &str) -> Result<Option<String>> {
+        let page = self.get_page().await?;
+
+        if self.is_authorized().await? {
+            return Err(anyhow::anyhow!("Already authorized"));
+        }
+
+        let formatted_phone = self.format_phone_number(phone_number);
+        info!("Starting phone authentication for: {}", formatted_phone);
+
+        // Wait for page to load
+        tokio::time::sleep(Duration::from_millis(3000)).await;
+
+        // Check current screen state
+        let has_qr_login = page
+            .find_element("text='Log into WhatsApp Web'")
+            .await
+            .is_ok();
+
+        // Switch to phone number login if on QR screen
+        if has_qr_login {
+            debug!("Switching to phone number login");
+            if let Ok(phone_link) = page.find_element("text='Log in with phone number'").await {
+                phone_link.click().await?;
+
+                // Wait for phone input screen
+                tokio::time::timeout(self.timeouts.element_wait, async {
+                    while page
+                        .find_element("text='Enter phone number'")
+                        .await
+                        .is_err()
+                    {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                })
+                .await
+                .map_err(|_| anyhow::anyhow!("Timeout waiting for phone input screen"))?;
+            }
+        }
+
+        // Enter phone number
+        if page.find_element("text='Enter phone number'").await.is_ok() {
+            debug!("Entering phone number: {}", formatted_phone);
+
+            let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
+                loop {
+                    if let Ok(input) = page.find_element(Locators::PHONE_INPUT).await {
+                        return Ok::<_, anyhow::Error>(input);
+                    }
+                    if let Ok(input) = page.find_element("input[type='tel']").await {
+                        return Ok(input);
+                    }
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
+
+            phone_input.click().await?;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            // Clear and type
+            let _ = phone_input.press_key("Control+A").await;
+            let _ = phone_input.press_key("Delete").await;
+            phone_input.type_str(&formatted_phone).await?;
+
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Click Next button
+            if let Ok(next_btn) = page.find_element("text='Next'").await {
+                next_btn.click().await?;
+            } else if let Ok(submit) = page.find_element("button[type='submit']").await {
+                submit.click().await?;
+            } else {
+                return Err(anyhow::anyhow!("Could not find Next button"));
+            }
+        }
+
+        // Wait for code screen
+        debug!("Waiting for verification code screen...");
+        let code_found = tokio::time::timeout(self.timeouts.code_detection, async {
+            loop {
+                let content = page.content().await.unwrap_or_default();
+                if content.contains("Enter code") || content.contains("verification") {
+                    return true;
+                }
+                if page.find_element(Locators::PHONE_CODE).await.is_ok() {
+                    return true;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        })
+        .await
+        .unwrap_or(false);
+
+        if !code_found {
+            return Err(anyhow::anyhow!("Code screen not found"));
+        }
+
+        // Extract verification code
+        let code = tokio::time::timeout(self.timeouts.element_wait, async {
+            loop {
+                if let Ok(Some(code)) = self.extract_verification_code(&page).await {
+                    return Some(code);
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        })
+        .await
+        .ok()
+        .flatten();
+
+        if let Some(ref c) = code {
+            info!("Verification code extracted: {}", c);
+        }
+
+        Ok(code)
+    }
+
+    async fn logout(&self) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.is_authorized().await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        debug!("Logging out");
+
+        // Click menu
+        if let Ok(menu) = page.find_element(Locators::MENU_BUTTON).await {
+            menu.click().await?;
+        }
+
+        // Click logout
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if let Ok(logout) = page.find_element(Locators::LOGOUT_BUTTON).await {
+            logout.click().await?;
+        }
+
+        info!("Logout completed");
+        Ok(())
+    }
+}

@@ -11,7 +11,6 @@ pub struct EnvironmentConfig {
     pub log_level: String,
     pub rust_log: String,
     pub debug_mode: bool,
-    pub metrics_enabled: bool,
     pub health_check_interval: u64,
 }
 
@@ -29,7 +28,6 @@ impl Default for EnvironmentConfig {
             log_level: "info".to_string(),
             rust_log: "wae_rust=info".to_string(),
             debug_mode: false,
-            metrics_enabled: true,
             health_check_interval: 30,
         }
     }
@@ -70,11 +68,6 @@ impl EnvironmentConfig {
             config.debug_mode = debug_str.to_lowercase() == "true" || debug_str == "1";
         } else {
             config.debug_mode = matches!(config.environment, Environment::Development);
-        }
-
-        // Metrics enabled
-        if let Ok(metrics_str) = env::var("METRICS_ENABLED") {
-            config.metrics_enabled = metrics_str.to_lowercase() != "false" && metrics_str != "0";
         }
 
         // Health check interval

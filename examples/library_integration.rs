@@ -5,9 +5,9 @@
 //
 // Run with: cargo run --example library_integration
 
-use whatsapp_engine::{WhatsAppEngine, WhatsAppError, FileAttachment, Result};
-use tokio::time::{sleep, Duration, timeout};
-use tracing::{info, warn, error};
+use tokio::time::{sleep, timeout, Duration};
+use tracing::{error, info, warn};
+use whatsapp_engine::{FileAttachment, Result, WhatsAppEngine, WhatsAppError};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -61,11 +61,11 @@ async fn demonstrate_authentication(engine: &WhatsAppEngine) -> Result<()> {
     match engine.is_authenticated().await {
         Ok(true) => {
             info!("✅ Already authenticated from previous session");
-            
+
             // Get detailed status
             let status = engine.get_auth_status().await?;
             info!("📊 Auth status: {:?}", status);
-            
+
             return Ok(());
         }
         Ok(false) => {
@@ -78,31 +78,35 @@ async fn demonstrate_authentication(engine: &WhatsAppEngine) -> Result<()> {
 
     // Method 1: QR Code Authentication (recommended for interactive use)
     info!("📱 Starting QR code authentication...");
-    
+
     match engine.authenticate_with_qr().await {
         Ok(qr) => {
             info!("🎯 QR code generated successfully");
-            info!("📋 QR Data: {} (first 50 chars)", &qr.data.chars().take(50).collect::<String>());
-            
+            info!(
+                "📋 QR Data: {} (first 50 chars)",
+                &qr.data.chars().take(50).collect::<String>()
+            );
+
             if let Some(expires_at) = qr.expires_at {
                 info!("⏰ QR code expires at: {}", expires_at);
             }
-            
+
             // Wait for authentication with timeout
             info!("⏳ Waiting for QR code scan (max 2 minutes)...");
-            
+
             let auth_result = timeout(Duration::from_secs(120), async {
                 let mut attempts = 0;
                 while !engine.is_authenticated().await.unwrap_or(false) {
                     sleep(Duration::from_secs(3)).await;
                     attempts += 1;
-                    
+
                     if attempts % 10 == 0 {
                         info!("Still waiting for QR scan... ({}s)", attempts * 3);
                     }
                 }
                 Ok::<(), WhatsAppError>(())
-            }).await;
+            })
+            .await;
 
             match auth_result {
                 Ok(_) => {
@@ -116,7 +120,7 @@ async fn demonstrate_authentication(engine: &WhatsAppEngine) -> Result<()> {
         }
         Err(e) => {
             error!("❌ QR code generation failed: {}", e);
-            
+
             // Method 2: Phone Authentication (fallback or for automated setups)
             info!("📞 Trying phone authentication as fallback...");
             demonstrate_phone_auth(engine).await?;
@@ -130,26 +134,26 @@ async fn demonstrate_authentication(engine: &WhatsAppEngine) -> Result<()> {
 async fn demonstrate_phone_auth(engine: &WhatsAppEngine) -> Result<()> {
     // Note: Replace with actual phone number for testing
     let phone_number = "+1234567890"; // This should be a real number in production
-    
+
     info!("📞 Starting phone authentication for {}", phone_number);
-    
+
     match engine.authenticate_with_phone(phone_number).await {
         Ok(result) => {
             if result.success {
                 info!("✅ Phone authentication initiated successfully");
-                
+
                 if let Some(code) = result.verification_code {
                     info!("🔢 Verification code: {}", code);
                     info!("💡 Enter this code in your WhatsApp mobile app");
                 }
-                
+
                 // Wait for authentication completion
                 let mut attempts = 0;
                 while !engine.is_authenticated().await.unwrap_or(false) && attempts < 30 {
                     sleep(Duration::from_secs(2)).await;
                     attempts += 1;
                 }
-                
+
                 if engine.is_authenticated().await.unwrap_or(false) {
                     info!("🎉 Phone authentication completed!");
                 } else {
@@ -157,7 +161,7 @@ async fn demonstrate_phone_auth(engine: &WhatsAppEngine) -> Result<()> {
                 }
             } else {
                 warn!("❌ Phone authentication failed: {}", result.message);
-                
+
                 if let Some(retry_after) = result.next_retry_in_seconds {
                     warn!("🔄 Can retry after {} seconds", retry_after);
                 }
@@ -167,7 +171,7 @@ async fn demonstrate_phone_auth(engine: &WhatsAppEngine) -> Result<()> {
             error!("❌ Phone authentication error: {}", e);
         }
     }
-    
+
     Ok(())
 }
 
@@ -182,22 +186,21 @@ async fn demonstrate_messaging(engine: &WhatsAppEngine) -> Result<()> {
     }
 
     // Test phone numbers - replace with real numbers for actual testing
-    let test_numbers = vec![
-        "1234567890",
-        "0987654321",
-    ];
+    let test_numbers = vec!["1234567890", "0987654321"];
 
     // Demonstrate text messaging
     for phone in &test_numbers {
-        let message = format!("Hello from WhatsApp Engine! 🚀 Sent at {}", 
-            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"));
-        
+        let message = format!(
+            "Hello from WhatsApp Engine! 🚀 Sent at {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
         match send_message_with_retry(engine, phone, &message, 3).await {
             Ok(true) => info!("✅ Message sent successfully to {}", phone),
             Ok(false) => warn!("⚠️ Message failed to send to {}", phone),
             Err(e) => error!("❌ Error sending to {}: {}", phone, e),
         }
-        
+
         // Rate limiting - space out messages
         sleep(Duration::from_millis(1000)).await;
     }
@@ -206,7 +209,7 @@ async fn demonstrate_messaging(engine: &WhatsAppEngine) -> Result<()> {
     let test_file = "README.md"; // Use existing file for demo
     if std::path::Path::new(test_file).exists() {
         info!("📎 Demonstrating file attachment...");
-        
+
         let attachment = FileAttachment {
             file_path: test_file.to_string(),
             file_name: Some("WhatsApp_Engine_README.md".to_string()),
@@ -320,10 +323,15 @@ async fn send_message_with_retry(
             }
             Err(e) => {
                 attempts += 1;
-                
+
                 if e.is_retryable() && attempts <= max_retries {
-                    let delay = e.retry_delay_seconds().unwrap_or(2_u32.pow(attempts.min(4)));
-                    warn!("⚠️ Attempt {} failed: {}. Retrying in {}s...", attempts, e, delay);
+                    let delay = e
+                        .retry_delay_seconds()
+                        .unwrap_or(2_u32.pow(attempts.min(4)));
+                    warn!(
+                        "⚠️ Attempt {} failed: {}. Retrying in {}s...",
+                        attempts, e, delay
+                    );
                     sleep(Duration::from_secs(delay as u64)).await;
                 } else {
                     return Err(e);

@@ -1,6 +1,7 @@
-// Request Middleware
-//
-// Production-ready middleware for request correlation, metrics, and security
+//! HTTP Middleware for WhatsApp Engine
+//!
+//! Production-ready middleware for request correlation, metrics, authentication, and security.
+//! Only compiled when `api` or `mcp` features are enabled.
 
 use axum::{
     extract::{Request, State},
@@ -9,22 +10,20 @@ use axum::{
     response::Response,
 };
 use std::{sync::Arc, time::SystemTime};
+use tracing::Instrument;
 
 use crate::{
     services::whatsapp::WhatsAppService,
-    utils::logging::{CorrelationId, RequestMetrics, log_request_metrics},
+    utils::logging::{log_request_metrics, CorrelationId, RequestMetrics},
 };
 
 /// Correlation ID middleware - adds correlation ID to all requests
-pub async fn correlation_id_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Response {
     let correlation_id = extract_or_generate_correlation_id(request.headers());
-    
+
     // Add correlation ID to request extensions
     request.extensions_mut().insert(correlation_id.clone());
-    
+
     // Create a span with correlation ID
     let span = tracing::info_span!(
         "request",
@@ -32,54 +31,57 @@ pub async fn correlation_id_middleware(
         method = %request.method(),
         path = %request.uri().path(),
     );
-    
+
     // Execute request within the span
-    let response = async move {
-        next.run(request).await
-    }.instrument(span).await;
+    let response = async move { next.run(request).await }
+        .instrument(span)
+        .await;
 
     // Add correlation ID to response headers
     let mut response = response;
     if let Ok(header_value) = correlation_id.0.parse() {
-        response.headers_mut().insert("x-correlation-id", header_value);
+        response
+            .headers_mut()
+            .insert("x-correlation-id", header_value);
     }
 
     response
 }
 
 /// Request metrics middleware - tracks request timing and logs metrics
-pub async fn request_metrics_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn request_metrics_middleware(request: Request, next: Next) -> Response {
     let start_time = SystemTime::now();
     let method = request.method().to_string();
     let path = request.uri().path().to_string();
-    let user_agent = request.headers()
+    let user_agent = request
+        .headers()
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    
+
     // Extract correlation ID from request extensions
-    let correlation_id = request.extensions()
+    let correlation_id = request
+        .extensions()
         .get::<CorrelationId>()
         .cloned()
-        .unwrap_or_else(|| CorrelationId::new());
+        .unwrap_or_else(CorrelationId::new);
 
-    // Get client IP (simplified - in production you'd want more sophisticated IP extraction)
-    let ip_address = request.headers()
+    // Get client IP
+    let ip_address = request
+        .headers()
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
         .or_else(|| {
-            request.headers()
+            request
+                .headers()
                 .get("x-real-ip")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string())
         });
 
     let response = next.run(request).await;
-    
+
     let duration = SystemTime::now()
         .duration_since(start_time)
         .unwrap()
@@ -99,28 +101,35 @@ pub async fn request_metrics_middleware(
     response
 }
 
-/// Authentication middleware with improved error handling
+/// Authentication middleware
+#[cfg(feature = "api")]
 pub async fn auth_middleware(
     State(whatsapp_service): State<Arc<WhatsAppService>>,
     headers: HeaderMap,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth for health endpoints
+    // Skip auth for public endpoints
     let path = request.uri().path();
-    if path.starts_with("/health") || path.starts_with("/ready") || 
-       path.starts_with("/live") || path.starts_with("/metrics") ||
-       path.starts_with("/swagger-ui") || path.starts_with("/api-docs") {
+    if path.starts_with("/health")
+        || path.starts_with("/ready")
+        || path.starts_with("/live")
+        || path.starts_with("/metrics")
+        || path.starts_with("/swagger-ui")
+        || path.starts_with("/api-docs")
+        || path.starts_with("/mcp")
+    {
         return Ok(next.run(request).await);
     }
 
     // Get correlation ID for logging
-    let correlation_id = request.extensions()
+    let correlation_id = request
+        .extensions()
         .get::<CorrelationId>()
         .cloned()
-        .unwrap_or_else(|| CorrelationId::new());
+        .unwrap_or_else(CorrelationId::new);
 
-    // Get API token from configuration through the WhatsApp service
+    // Get API token from configuration
     let expected_token = whatsapp_service.get_api_token();
 
     // Extract the Authorization header
@@ -151,21 +160,24 @@ pub async fn auth_middleware(
 }
 
 /// Security headers middleware
-pub async fn security_headers_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn security_headers_middleware(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
-    
+
     let headers = response.headers_mut();
-    
+
     // Add security headers
     headers.insert("x-content-type-options", "nosniff".parse().unwrap());
     headers.insert("x-frame-options", "DENY".parse().unwrap());
     headers.insert("x-xss-protection", "1; mode=block".parse().unwrap());
-    headers.insert("referrer-policy", "strict-origin-when-cross-origin".parse().unwrap());
-    headers.insert("content-security-policy", "default-src 'self'".parse().unwrap());
-    
+    headers.insert(
+        "referrer-policy",
+        "strict-origin-when-cross-origin".parse().unwrap(),
+    );
+    headers.insert(
+        "content-security-policy",
+        "default-src 'self'".parse().unwrap(),
+    );
+
     response
 }
 
@@ -174,7 +186,5 @@ fn extract_or_generate_correlation_id(headers: &HeaderMap) -> CorrelationId {
         .get("x-correlation-id")
         .and_then(|v| v.to_str().ok())
         .map(|s| CorrelationId::from_string(s.to_string()))
-        .unwrap_or_else(|| CorrelationId::new())
+        .unwrap_or_else(CorrelationId::new)
 }
-
-use tracing::Instrument;

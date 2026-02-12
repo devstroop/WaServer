@@ -42,7 +42,7 @@ impl McpPlaywrightClient {
     /// Navigate to a URL
     pub async fn navigate(&self, url: &str) -> Result<()> {
         debug!("🌐 MCP: Navigating to {}", url);
-        
+
         let payload = json!({
             "method": "tools/call",
             "params": {
@@ -54,7 +54,7 @@ impl McpPlaywrightClient {
         });
 
         let response = self.send_request(payload).await?;
-        
+
         if response.get("error").is_some() {
             return Err(anyhow!("Navigation failed: {:?}", response.get("error")));
         }
@@ -66,7 +66,7 @@ impl McpPlaywrightClient {
     /// Take a snapshot of the current page
     pub async fn snapshot(&self) -> Result<BrowserSnapshot> {
         debug!("📸 MCP: Taking browser snapshot");
-        
+
         let payload = json!({
             "method": "tools/call",
             "params": {
@@ -76,7 +76,7 @@ impl McpPlaywrightClient {
         });
 
         let response = self.send_request(payload).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Snapshot failed: {:?}", error));
         }
@@ -106,7 +106,10 @@ impl McpPlaywrightClient {
         // Extract elements from the snapshot
         let elements = self.parse_elements_from_snapshot(&content).await?;
 
-        debug!("✅ MCP: Snapshot captured - {} elements detected", elements.len());
+        debug!(
+            "✅ MCP: Snapshot captured - {} elements detected",
+            elements.len()
+        );
 
         Ok(BrowserSnapshot {
             content,
@@ -119,7 +122,7 @@ impl McpPlaywrightClient {
     /// Click on an element by reference
     pub async fn click(&self, element_ref: &str, description: &str) -> Result<()> {
         debug!("🖱️  MCP: Clicking element: {}", description);
-        
+
         let payload = json!({
             "method": "tools/call",
             "params": {
@@ -132,7 +135,7 @@ impl McpPlaywrightClient {
         });
 
         let response = self.send_request(payload).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Click failed: {:?}", error));
         }
@@ -144,7 +147,7 @@ impl McpPlaywrightClient {
     /// Type text into an element
     pub async fn type_text(&self, element_ref: &str, text: &str, description: &str) -> Result<()> {
         debug!("⌨️  MCP: Typing into element: {}", description);
-        
+
         let payload = json!({
             "method": "tools/call",
             "params": {
@@ -159,7 +162,7 @@ impl McpPlaywrightClient {
         });
 
         let response = self.send_request(payload).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Type failed: {:?}", error));
         }
@@ -171,7 +174,7 @@ impl McpPlaywrightClient {
     /// Wait for text to appear or disappear
     pub async fn wait_for_text(&self, text: &str, timeout_secs: u64) -> Result<bool> {
         debug!("⏳ MCP: Waiting for text: '{}'", text);
-        
+
         let payload = json!({
             "method": "tools/call",
             "params": {
@@ -184,7 +187,7 @@ impl McpPlaywrightClient {
         });
 
         let response = self.send_request(payload).await?;
-        
+
         if let Some(error) = response.get("error") {
             warn!("⚠️  MCP: Wait for text failed: {:?}", error);
             return Ok(false);
@@ -217,12 +220,15 @@ impl McpPlaywrightClient {
     }
 
     /// Parse elements from the accessibility snapshot
-    async fn parse_elements_from_snapshot(&self, content: &str) -> Result<HashMap<String, ElementInfo>> {
+    async fn parse_elements_from_snapshot(
+        &self,
+        content: &str,
+    ) -> Result<HashMap<String, ElementInfo>> {
         let mut elements = HashMap::new();
 
         // For now, create some basic parsing logic
         // In a real implementation, we'd parse the accessibility tree properly
-        
+
         // Look for common WhatsApp Web elements
         if content.contains("phone number") || content.contains("Phone number") {
             elements.insert(
@@ -250,7 +256,10 @@ impl McpPlaywrightClient {
             );
         }
 
-        if content.contains("verification") || content.contains("code") || content.contains("Enter code") {
+        if content.contains("verification")
+            || content.contains("code")
+            || content.contains("Enter code")
+        {
             elements.insert(
                 "verification_code".to_string(),
                 ElementInfo {
@@ -283,7 +292,7 @@ impl McpPlaywrightClient {
     /// Detect the current screen type based on snapshot content
     pub fn detect_screen_type(&self, snapshot: &BrowserSnapshot) -> String {
         let content = &snapshot.content.to_lowercase();
-        
+
         if content.contains("qr") || content.contains("scan") {
             "qr_screen".to_string()
         } else if content.contains("phone") && content.contains("number") {
@@ -300,7 +309,7 @@ impl McpPlaywrightClient {
     /// Extract verification code from screen
     pub fn extract_verification_code(&self, snapshot: &BrowserSnapshot) -> Option<String> {
         let content = &snapshot.content;
-        
+
         // Look for patterns like "Enter the 6-digit code: 123456"
         if let Some(code_match) = extract_code_pattern(content) {
             debug!("🔑 MCP: Extracted verification code: {}", code_match);
@@ -326,13 +335,13 @@ impl McpPlaywrightClient {
 fn extract_code_pattern(text: &str) -> Option<String> {
     // Look for 6-digit codes
     use regex::Regex;
-    
+
     let patterns = [
-        r"\b(\d{6})\b",           // 6 digits
-        r"code[:\s]+(\d{6})",     // "code: 123456"
-        r"(\d{3})\s*(\d{3})",     // "123 456"
+        r"\b(\d{6})\b",       // 6 digits
+        r"code[:\s]+(\d{6})", // "code: 123456"
+        r"(\d{3})\s*(\d{3})", // "123 456"
     ];
-    
+
     for pattern in &patterns {
         if let Ok(re) = Regex::new(pattern) {
             if let Some(captures) = re.captures(text) {
@@ -342,7 +351,7 @@ fn extract_code_pattern(text: &str) -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
@@ -350,7 +359,7 @@ fn extract_code_pattern(text: &str) -> Option<String> {
 fn extract_code_from_text(text: &str) -> Option<String> {
     // Simple numeric extraction
     let digits: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
-    
+
     if digits.len() >= 4 && digits.len() <= 8 {
         Some(digits)
     } else {

@@ -15,6 +15,32 @@ pub struct AppConfig {
     pub cors: CorsConfig,
     pub limits: LimitsConfig,
     pub environment: EnvironmentConfig,
+    #[serde(default)]
+    pub mcp: McpConfig,
+}
+
+/// MCP (Model Context Protocol) configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct McpConfig {
+    /// Enable MCP server (requires mcp feature)
+    pub enabled: bool,
+    /// MCP endpoint path
+    pub endpoint: String,
+    /// Enable SSE transport
+    pub sse_enabled: bool,
+    /// SSE heartbeat interval in seconds
+    pub heartbeat_interval_secs: u64,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            endpoint: "/mcp".to_string(),
+            sse_enabled: true,
+            heartbeat_interval_secs: 30,
+        }
+    }
 }
 
 /// Server configuration
@@ -105,10 +131,7 @@ impl Default for AppConfig {
                     "DELETE".to_string(),
                     "OPTIONS".to_string(),
                 ],
-                allow_headers: vec![
-                    "authorization".to_string(),
-                    "content-type".to_string(),
-                ],
+                allow_headers: vec!["authorization".to_string(), "content-type".to_string()],
             },
             limits: LimitsConfig {
                 max_concurrent_requests: 10,
@@ -116,6 +139,7 @@ impl Default for AppConfig {
                 max_upload_size: 10 * 1024 * 1024, // 10MB
             },
             environment: EnvironmentConfig::default(),
+            mcp: McpConfig::default(),
         }
     }
 }
@@ -125,7 +149,7 @@ impl AppConfig {
     pub fn load() -> Result<Self, config::ConfigError> {
         // First load environment config
         let env_config = EnvironmentConfig::from_env();
-        
+
         let mut builder = config::Config::builder()
             .add_source(config::File::with_name("config/app").required(false))
             .add_source(config::Environment::with_prefix("WHATSAPP").separator("__"));
@@ -137,10 +161,10 @@ impl AppConfig {
 
         let config = builder.build()?;
         let mut app_config: AppConfig = config.try_deserialize()?;
-        
+
         // Override with environment config
         app_config.environment = env_config;
-        
+
         Ok(app_config)
     }
 

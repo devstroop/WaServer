@@ -15,12 +15,6 @@ pub struct HealthResponse {
     pub timestamp: u64,
     pub version: String,
     pub uptime_seconds: u64,
-    pub memory_usage_bytes: u64,
-    pub whatsapp_connection_status: String,
-    pub total_messages_sent: u64,
-    pub total_auth_attempts: u64,
-    pub error_count: u64,
-    pub last_activity: Option<u64>,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -30,6 +24,18 @@ pub struct ServiceHealth {
     pub last_check: u64,
     pub response_time_ms: Option<u64>,
     pub details: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct MetricsResponse {
+    pub timestamp: u64,
+    pub uptime_seconds: u64,
+    pub memory_usage_bytes: u64,
+    pub whatsapp_connection_status: String,
+    pub total_messages_sent: u64,
+    pub total_auth_attempts: u64,
+    pub error_count: u64,
+    pub last_activity: Option<u64>,
 }
 
 static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
@@ -56,12 +62,12 @@ pub async fn health_check(
 ) -> Result<Json<HealthResponse>, StatusCode> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
+        .unwrap()
         .as_secs();
 
     let uptime = SystemTime::now()
         .duration_since(get_start_time())
-        .unwrap_or_default()
+        .unwrap()
         .as_secs();
 
     // Check WhatsApp service health
@@ -77,31 +83,11 @@ pub async fn health_check(
     let mut services = HashMap::new();
     services.insert("whatsapp".to_string(), whatsapp_health);
 
-    // Get metrics
-    let memory_usage = get_memory_usage();
-    let connection_status = match whatsapp_service.get_auth_status().await {
-        Ok(status) => {
-            if status.authorized {
-                "connected".to_string()
-            } else {
-                "disconnected".to_string()
-            }
-        }
-        Err(_) => "disconnected".to_string(),
-    };
-    let metrics = whatsapp_service.get_metrics().await;
-
     let response = HealthResponse {
         status: overall_status.to_string(),
         timestamp: now,
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
-        memory_usage_bytes: memory_usage,
-        whatsapp_connection_status: connection_status,
-        total_messages_sent: metrics.total_messages_sent,
-        total_auth_attempts: metrics.total_auth_attempts,
-        error_count: metrics.error_count,
-        last_activity: metrics.last_activity,
         services,
     };
 
@@ -112,21 +98,115 @@ pub async fn health_check(
     }
 }
 
+/// Readiness Check Endpoint
+///
+/// Returns whether the service is ready to accept traffic.
+/// This is typically used by Kubernetes readiness probes.
+#[utoipa::path(
+    get,
+    path = "/ready",
+    responses(
+        (status = 200, description = "Service is ready"),
+        (status = 503, description = "Service is not ready")
+    ),
+    tag = "Health"
+)]
+pub async fn readiness_check(
+    State(whatsapp_service): State<Arc<WhatsAppService>>,
+) -> Result<(), StatusCode> {
+    // Check if the service is initialized and ready
+    if whatsapp_service.is_initialized().await {
+        Ok(())
+    } else {
+        Err(StatusCode::SERVICE_UNAVAILABLE)
+    }
+}
+
+/// Liveness Check Endpoint
+///
+/// Returns whether the service is alive and running.
+/// This is typically used by Kubernetes liveness probes.
+#[utoipa::path(
+    get,
+    path = "/live",
+    responses(
+        (status = 200, description = "Service is alive"),
+        (status = 503, description = "Service is not responding")
+    ),
+    tag = "Health"
+)]
+pub async fn liveness_check() -> Result<(), StatusCode> {
+    // Simple liveness check - if we can respond, we're alive
+    Ok(())
+}
+
+/// Metrics Endpoint
+///
+/// Returns operational metrics for monitoring and observability.
+/// This endpoint provides performance and usage statistics.
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    responses(
+        (status = 200, description = "Metrics data", body = MetricsResponse)
+    ),
+    tag = "Metrics"
+)]
+pub async fn get_metrics(
+    State(whatsapp_service): State<Arc<WhatsAppService>>,
+) -> Json<MetricsResponse> {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let uptime = SystemTime::now()
+        .duration_since(get_start_time())
+        .unwrap()
+        .as_secs();
+
+    // Get memory usage (simple approximation)
+    let memory_usage = get_memory_usage();
+
+    // Get WhatsApp connection status
+    let connection_status = match whatsapp_service.get_auth_status().await {
+        Ok(status) => {
+            if status.authorized {
+                "connected".to_string()
+            } else {
+                "disconnected".to_string()
+            }
+        }
+        Err(_) => "disconnected".to_string(),
+    };
+
+    // Get service metrics (these would be tracked by the service in a real implementation)
+    let metrics = whatsapp_service.get_metrics().await;
+
+    Json(MetricsResponse {
+        timestamp: now,
+        uptime_seconds: uptime,
+        memory_usage_bytes: memory_usage,
+        whatsapp_connection_status: connection_status,
+        total_messages_sent: metrics.total_messages_sent,
+        total_auth_attempts: metrics.total_auth_attempts,
+        error_count: metrics.error_count,
+        last_activity: metrics.last_activity,
+    })
+}
+
 async fn check_whatsapp_service_health(service: &WhatsAppService) -> ServiceHealth {
     let start = SystemTime::now();
 
     match service.health_check().await {
         Ok(_) => {
-            let response_time = SystemTime::now()
-                .duration_since(start)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let response_time = SystemTime::now().duration_since(start).unwrap().as_millis() as u64;
 
             ServiceHealth {
                 status: "healthy".to_string(),
                 last_check: SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
+                    .unwrap()
                     .as_secs(),
                 response_time_ms: Some(response_time),
                 details: None,
@@ -136,7 +216,7 @@ async fn check_whatsapp_service_health(service: &WhatsAppService) -> ServiceHeal
             status: "unhealthy".to_string(),
             last_check: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
+                .unwrap()
                 .as_secs(),
             response_time_ms: None,
             details: Some(e.to_string()),

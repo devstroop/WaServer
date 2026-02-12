@@ -8,14 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive documentation suite including CONTRIBUTING.md, TESTING.md, MONITORING.md, PERFORMANCE.md
+- Comprehensive documentation suite including CONTRIBUTING.md, TESTING.md, PERFORMANCE.md
 - Performance optimization framework with benchmarking tools
 - Advanced caching strategies with multi-level cache support
 - Memory pool management for efficient resource utilization
 - Browser instance pooling for better concurrency
 - Enhanced error tracking and observability features
-- Distributed tracing support with OpenTelemetry/Jaeger integration
-- Advanced monitoring dashboards and alerting rules
 
 ### Changed
 - Improved async runtime configuration for better performance
@@ -50,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Comprehensive API**: Full REST API with OpenAPI/Swagger documentation
 - **Browser Service**: Robust browser lifecycle management with Chromium integration
 - **Configuration Management**: TOML and environment variable configuration
-- **Health Monitoring**: Comprehensive health checks and metrics endpoints
+- **Health Monitoring**: Comprehensive health checks
 - **Docker Support**: Production-ready containerization with optimized builds
 - **Error Handling**: Rich error types with retry guidance and context
 - **Documentation**: Extensive developer documentation and quick reference guides
@@ -67,7 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session Persistence**: Automatic session state management
 - **Rate Limiting**: Built-in rate limiting for API protection
 - **CORS Support**: Configurable cross-origin resource sharing
-- **Metrics Integration**: Prometheus metrics and monitoring
 
 ### API Endpoints
 - `POST /auth/qr` - Generate QR code for authentication
@@ -79,7 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GET /contacts` - Retrieve contacts list
 - `GET /chats` - Retrieve chat list
 - `GET /health` - Health check endpoint
-- `GET /metrics` - Prometheus metrics endpoint
 
 ### Documentation
 - **README.md**: Complete project overview with architecture diagrams
@@ -108,7 +104,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Infrastructure
 - **Docker**: Multi-stage builds with optimized production images
 - **Kubernetes**: Deployment manifests with health checks and resource limits
-- **Monitoring**: Prometheus, Grafana, and Jaeger integration
 - **CI/CD**: GitHub Actions with automated testing and building
 - **Security**: Comprehensive security scanning and best practices
 

@@ -40,3 +40,20 @@ max_concurrent_requests = 10
 request_timeout_ms = 60000
 # Maximum file upload size in bytes (10MB)
 max_upload_size = 10485760
+
+[environment]
+environment = "development"
+log_level = "info"
+rust_log = "whatsapp_engine=info"
+debug_mode = true
+health_check_interval = 30
+
+[mcp]
+# Enable MCP (Model Context Protocol) server
+enabled = true
+# MCP endpoint path
+endpoint = "/mcp"
+# Enable SSE (Server-Sent Events) transport
+sse_enabled = true
+# SSE heartbeat interval in seconds
+heartbeat_interval_secs = 30

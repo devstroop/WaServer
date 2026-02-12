@@ -57,7 +57,11 @@ impl ServiceMetrics {
             total_messages_sent: self.total_messages_sent.load(Ordering::Relaxed),
             total_auth_attempts: self.total_auth_attempts.load(Ordering::Relaxed),
             error_count: self.error_count.load(Ordering::Relaxed),
-            last_activity: if last_activity == 0 { None } else { Some(last_activity) },
+            last_activity: if last_activity == 0 {
+                None
+            } else {
+                Some(last_activity)
+            },
         }
     }
 

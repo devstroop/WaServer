@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
-use tracing::{info, warn, error};
-use whatsapp_engine::{WhatsAppEngine, Result as WaResult};
+use tracing::{error, info, warn};
+use whatsapp_engine::{Result as WaResult, WhatsAppEngine};
 
 // Custom API models
 #[derive(Serialize, Deserialize)]
@@ -54,45 +54,41 @@ struct AppState {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     tracing_subscriber::fmt::init();
-    
+
     info!("🚀 Starting Custom WhatsApp API Server");
-    
+
     // Initialize WhatsApp Engine
     let engine = Arc::new(WhatsAppEngine::with_defaults().await?);
-    
+
     // Create application state
     let state = Arc::new(AppState {
         engine,
         start_time: std::time::SystemTime::now(),
         message_counter: std::sync::atomic::AtomicU64::new(0),
     });
-    
+
     // Build custom API routes
     let app = Router::new()
         // Health and status endpoints
         .route("/", get(root_handler))
         .route("/status", get(server_status))
         .route("/health", get(health_check))
-        
         // Authentication endpoints
         .route("/auth/qr", post(generate_qr))
         .route("/auth/phone/:phone", post(authenticate_phone))
         .route("/auth/status", get(auth_status))
         .route("/auth/logout", post(logout))
-        
         // Messaging endpoints - simplified API
         .route("/send/:phone", post(quick_send_message))
         .route("/send/:phone/:message", get(send_message_get)) // GET for easy testing
         .route("/message", post(send_message_post))
-        
         // Contact and chat endpoints
         .route("/contacts", get(get_contacts))
         .route("/chats", get(get_chats))
-        
         // Add CORS support
         .layer(CorsLayer::permissive())
         .with_state(state);
-    
+
     // Start server
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
     info!("🌍 Custom WhatsApp API Server running on http://0.0.0.0:8080");
@@ -102,26 +98,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   GET  /auth/status     - Check authentication");
     info!("   GET  /send/1234567890/Hello - Quick send message");
     info!("   POST /send/1234567890 - Send message with JSON body");
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
 // Route handlers
 
 async fn root_handler() -> Json<ApiResponse<String>> {
-    success_response(Some("Custom WhatsApp API Server - Powered by WhatsApp Engine Library".to_string()))
+    success_response(Some(
+        "Custom WhatsApp API Server - Powered by WhatsApp Engine Library".to_string(),
+    ))
 }
 
 async fn server_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<ServerStatus>> {
-    let uptime = state.start_time.elapsed()
-        .unwrap_or_default()
-        .as_secs();
-    
+    let uptime = state.start_time.elapsed().unwrap_or_default().as_secs();
+
     let is_authenticated = state.engine.is_authenticated().await.unwrap_or(false);
-    let message_count = state.message_counter.load(std::sync::atomic::Ordering::Relaxed);
-    
+    let message_count = state
+        .message_counter
+        .load(std::sync::atomic::Ordering::Relaxed);
+
     let status = ServerStatus {
         server_name: "Custom WhatsApp API".to_string(),
         version: "1.0.0".to_string(),
@@ -129,11 +127,13 @@ async fn server_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<S
         whatsapp_authenticated: is_authenticated,
         total_messages_sent: message_count,
     };
-    
+
     success_response(Some(status))
 }
 
-async fn health_check(State(state): State<Arc<AppState>>) -> Result<Json<ApiResponse<String>>, StatusCode> {
+async fn health_check(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
     match state.engine.get_status().await {
         Ok(status) => {
             if status.is_ready {
@@ -239,17 +239,16 @@ async fn send_message_post(
     State(state): State<Arc<AppState>>,
     Json(request): Json<serde_json::Value>,
 ) -> Json<ApiResponse<serde_json::Value>> {
-    let phone = request.get("phone")
+    let phone = request.get("phone").and_then(|v| v.as_str()).unwrap_or("");
+    let message = request
+        .get("message")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let message = request.get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    
+
     if phone.is_empty() || message.is_empty() {
         return error_response("Both 'phone' and 'message' fields are required");
     }
-    
+
     send_message_internal(&state, phone, message).await
 }
 
@@ -259,13 +258,15 @@ async fn send_message_internal(
     message: &str,
 ) -> Json<ApiResponse<serde_json::Value>> {
     info!("Sending message to {} - {}", phone, message);
-    
+
     match state.engine.send_message(phone, message).await {
         Ok(result) => {
             if result.success {
                 // Increment message counter
-                state.message_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                
+                state
+                    .message_counter
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                 info!("Message sent successfully to {}", phone);
                 let response_data = serde_json::json!({
                     "success": true,
@@ -292,7 +293,9 @@ async fn send_message_internal(
     }
 }
 
-async fn get_contacts(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<whatsapp_engine::Contact>>> {
+async fn get_contacts(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<whatsapp_engine::Contact>>> {
     match state.engine.get_contacts().await {
         Ok(contacts) => {
             info!("Retrieved {} contacts", contacts.len());
@@ -305,7 +308,9 @@ async fn get_contacts(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
     }
 }
 
-async fn get_chats(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<whatsapp_engine::Chat>>> {
+async fn get_chats(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<whatsapp_engine::Chat>>> {
     match state.engine.get_chats().await {
         Ok(chats) => {
             info!("Retrieved {} chats", chats.len());

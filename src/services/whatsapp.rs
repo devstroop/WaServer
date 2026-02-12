@@ -1,12 +1,12 @@
 use crate::{
+    browser::BrowserService,
     config::AppConfig,
-    services::{
-        auth_service::{AuthService, AuthServiceTrait},
-        browser::BrowserService,
-        chat_service::{ChatService, ChatServiceTrait},
-    },
-    utils::metrics::{ServiceMetrics, MetricsSnapshot},
     models::auth::AuthStatusResponse,
+    services::{
+        auth::{AuthService, AuthServiceTrait},
+        chat::{ChatService, ChatServiceTrait},
+    },
+    utils::metrics::{MetricsSnapshot, ServiceMetrics},
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -47,16 +47,16 @@ impl WhatsAppService {
     /// Initialize the WhatsApp service
     pub async fn initialize(&self) -> Result<()> {
         info!("Initializing WhatsApp service");
-        
+
         // Initialize browser service
         self.browser_service.initialize().await?;
-        
+
         // Mark as initialized
         {
             let mut initialized = self.initialized.lock().await;
             *initialized = true;
         }
-        
+
         info!("WhatsApp service initialized successfully");
         Ok(())
     }
@@ -84,42 +84,43 @@ impl WhatsAppService {
     /// Pre-check to dismiss any dialogs that might be blocking operations
     pub async fn pre_check(&self) -> Result<()> {
         let page = self.browser_service.get_whatsapp_page().await?;
-        
+
         // Check if there's a dialog and dismiss it
         if let Ok(_dialog) = page.find_element("[role='dialog']").await {
-            if let Ok(backdrop) = page.find_element("div[data-animate-modal-backdrop='true']").await {
+            if let Ok(backdrop) = page
+                .find_element("div[data-animate-modal-backdrop='true']")
+                .await
+            {
                 debug!("Dismissing dialog by clicking backdrop");
                 backdrop.click().await?;
-                
+
                 // Wait for dialog to disappear
-                tokio::time::timeout(
-                    std::time::Duration::from_millis(10000),
-                    async {
-                        while page.find_element("[role='dialog']").await.is_ok() {
-                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        }
+                tokio::time::timeout(std::time::Duration::from_millis(10000), async {
+                    while page.find_element("[role='dialog']").await.is_ok() {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
-                ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for dialog to disappear"))?;
+                })
+                .await
+                .map_err(|_| anyhow::anyhow!("Timeout waiting for dialog to disappear"))?;
             }
         }
-        
+
         Ok(())
     }
 
     /// Wait for loading indicators to disappear
     pub async fn wait_til_loading(&self) -> Result<()> {
         let page = self.browser_service.get_whatsapp_page().await?;
-        
+
         // Wait for loading progress indicator to disappear
-        tokio::time::timeout(
-            std::time::Duration::from_millis(10000),
-            async {
-                while page.find_element("progress[max='100']").await.is_ok() {
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
+        tokio::time::timeout(std::time::Duration::from_millis(10000), async {
+            while page.find_element("progress[max='100']").await.is_ok() {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
-        ).await.map_err(|_| anyhow::anyhow!("Timeout waiting for loading to complete"))?;
-        
+        })
+        .await
+        .map_err(|_| anyhow::anyhow!("Timeout waiting for loading to complete"))?;
+
         Ok(())
     }
 
@@ -136,12 +137,14 @@ impl WhatsAppService {
     {
         // Acquire semaphore permit to limit concurrent operations
         let _permit = self.operation_semaphore.acquire().await?;
-        
+
         // Set busy flag
         {
             let mut busy = self.busy_flag.lock().await;
             if *busy {
-                return Err(anyhow::anyhow!("Service is already busy with another operation"));
+                return Err(anyhow::anyhow!(
+                    "Service is already busy with another operation"
+                ));
             }
             *busy = true;
         }

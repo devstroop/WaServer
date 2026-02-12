@@ -16,7 +16,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_auth_status() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
             .header("Authorization", format!("Bearer {}", API_TOKEN))
@@ -24,11 +24,14 @@ mod tests {
             .await?;
 
         assert!(response.status().is_success());
-        
+
         let body: Value = response.json().await?;
         assert!(body.get("authorized").is_some());
-        
-        println!("Auth status response: {}", serde_json::to_string_pretty(&body)?);
+
+        println!(
+            "Auth status response: {}",
+            serde_json::to_string_pretty(&body)?
+        );
         Ok(())
     }
 
@@ -36,7 +39,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_qr_code() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .get(&format!("{}/api/auth/qrcode", BASE_URL))
             .header("Authorization", format!("Bearer {}", API_TOKEN))
@@ -45,7 +48,7 @@ mod tests {
 
         // Should succeed even if not authorized
         assert!(response.status().is_success() || response.status().is_client_error());
-        
+
         let body: Value = response.json().await?;
         println!("QR code response: {}", serde_json::to_string_pretty(&body)?);
         Ok(())
@@ -55,7 +58,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_phone_auth() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .post(&format!("{}/api/auth/phone/1234567890", BASE_URL))
             .header("Authorization", format!("Bearer {}", API_TOKEN))
@@ -64,9 +67,12 @@ mod tests {
 
         // Should return some response (may fail if not ready for phone auth)
         assert!(response.status().is_success() || response.status().is_client_error());
-        
+
         let body: Value = response.json().await?;
-        println!("Phone auth response: {}", serde_json::to_string_pretty(&body)?);
+        println!(
+            "Phone auth response: {}",
+            serde_json::to_string_pretty(&body)?
+        );
         Ok(())
     }
 
@@ -74,7 +80,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_send_message() -> Result<()> {
         let client = Client::new();
-        
+
         // First check if we're authorized
         let auth_response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
@@ -83,7 +89,8 @@ mod tests {
             .await?;
 
         let auth_body: Value = auth_response.json().await?;
-        let is_authorized = auth_body.get("authorized")
+        let is_authorized = auth_body
+            .get("authorized")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -102,9 +109,12 @@ mod tests {
         if !is_authorized {
             assert!(response.status().is_client_error());
         }
-        
+
         let body: Value = response.json().await?;
-        println!("Send message response: {}", serde_json::to_string_pretty(&body)?);
+        println!(
+            "Send message response: {}",
+            serde_json::to_string_pretty(&body)?
+        );
         Ok(())
     }
 
@@ -112,7 +122,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_logout() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .post(&format!("{}/api/auth/logout", BASE_URL))
             .header("Authorization", format!("Bearer {}", API_TOKEN))
@@ -120,7 +130,7 @@ mod tests {
             .await?;
 
         assert!(response.status().is_success() || response.status().is_client_error());
-        
+
         let body: Value = response.json().await?;
         println!("Logout response: {}", serde_json::to_string_pretty(&body)?);
         Ok(())
@@ -130,7 +140,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_unauthorized_request() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
             .header("Authorization", "Bearer invalid-token")
@@ -145,7 +155,7 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_missing_auth_header() -> Result<()> {
         let client = Client::new();
-        
+
         let response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
             .send()
@@ -159,12 +169,9 @@ mod tests {
     #[ignore] // Only run when server is running
     async fn test_api_health_check() -> Result<()> {
         let client = Client::new();
-        
+
         // Test if server is responding
-        let response = client
-            .get(&format!("{}/docs", BASE_URL))
-            .send()
-            .await?;
+        let response = client.get(&format!("{}/docs", BASE_URL)).send().await?;
 
         assert!(response.status().is_success());
         println!("Health check successful - server is running");
@@ -172,13 +179,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Only run when server is running  
+    #[ignore] // Only run when server is running
     async fn test_concurrent_requests() -> Result<()> {
         let client = Client::new();
-        
+
         // Send multiple concurrent auth status requests
         let mut handles = vec![];
-        
+
         for i in 0..5 {
             let client = client.clone();
             let handle = tokio::spawn(async move {
@@ -187,20 +194,20 @@ mod tests {
                     .header("Authorization", format!("Bearer {}", API_TOKEN))
                     .send()
                     .await?;
-                
+
                 let status = response.status();
                 println!("Request {} completed with status: {}", i, status);
                 Ok::<_, anyhow::Error>(status)
             });
             handles.push(handle);
         }
-        
+
         // Wait for all requests to complete
         for handle in handles {
             let status = handle.await??;
             assert!(status.is_success());
         }
-        
+
         println!("Concurrent requests test completed successfully");
         Ok(())
     }

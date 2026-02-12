@@ -48,5 +48,15 @@ environment = "development"
 log_level = "info"
 rust_log = "wae_rust=info"
 debug_mode = true
-metrics_enabled = true
 health_check_interval = 30
+
+# MCP (Model Context Protocol) Configuration
+[mcp]
+# Enable MCP server (requires --features mcp at compile time)
+enabled = true
+# MCP endpoint path
+endpoint = "/mcp"
+# Enable SSE (Server-Sent Events) transport
+sse_enabled = true
+# SSE heartbeat interval in seconds
+heartbeat_interval_secs = 30

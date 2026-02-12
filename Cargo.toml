@@ -3,10 +3,10 @@ name = "whatsapp-engine"
 version = "0.2.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
-description = "A high-performance WhatsApp Web automation engine built in Rust - supports both library and API server modes"
+description = "A high-performance WhatsApp Web automation engine built in Rust - modular architecture with optional API/MCP servers"
 license = "MIT"
 repository = "https://github.com/devstroop/whatsapp-engine-rust"
-keywords = ["whatsapp", "automation", "messaging", "api", "library"]
+keywords = ["whatsapp", "automation", "messaging", "api", "mcp"]
 categories = ["api-bindings", "web-programming", "asynchronous"]
 
 # Library configuration
@@ -14,29 +14,72 @@ categories = ["api-bindings", "web-programming", "asynchronous"]
 name = "wae_rust"
 path = "src/lib.rs"
 
-# Binary configuration (API server)
+# Binary configuration (CLI + optional servers)
 [[bin]]
-name = "whatsapp-server"
+name = "whatsapp-engine"
 path = "src/bin/whatsapp-server.rs"
-required-features = ["api-server"]
+required-features = ["cli"]
+
+# ============================================================================
+# Features - Modular Architecture
+# ============================================================================
+# 
+# Core (always included):
+#   - WhatsApp Engine library with browser automation
+#   - Authentication services (QR, Phone)
+#   - Chat/messaging services
+#   - Session management
+#   - Configuration system
+#
+# Optional features:
+#   - cli: Command-line interface with service management
+#   - api: REST API server with OpenAPI documentation
+#   - mcp: Model Context Protocol server over SSE
+#   - full: All features enabled
+#
+# ============================================================================
 
 [features]
-default = ["full"]
-api-server = [
+default = ["cli"]
+
+# Core CLI with service management (base for all server modes)
+cli = ["clap"]
+
+# REST API server
+api = [
+    "cli",
     "axum", 
     "tower", 
     "tower-http", 
     "utoipa", 
-    "utoipa-swagger-ui",
-    "mime_guess"
+    "utoipa-swagger-ui"
 ]
-full = ["api-server"]
+
+# MCP (Model Context Protocol) server over SSE
+mcp = [
+    "cli",
+    "axum",
+    "tower",
+    "tower-http",
+    "async-stream"
+]
+
+# Full server with API + MCP
+server = ["api", "mcp"]
+
+# Everything enabled
+full = ["server"]
 
 [dependencies]
-# Core library dependencies (always included)
+# ============================================================================
+# Core Dependencies (always included)
+# ============================================================================
+
+# Async runtime
 tokio = { version = "1.0", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
+futures-util = "0.3"
 
 # Browser automation
 chromiumoxide = { version = "0.5", features = ["tokio-runtime"] }
@@ -60,32 +103,58 @@ anyhow = "1.0"
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 
-# UUID generation
+# Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 base64 = "0.22"
-
-# Regex for pattern matching
 regex = "1.10"
 
-# File handling utilities
-futures-util = "0.3.31"
-
-# HTTP client (used by MCP client)
+# HTTP client (for MCP client / external integrations)
 reqwest = { version = "0.11", features = ["json", "multipart"] }
 
-# API server dependencies (optional - only when api-server feature is enabled)
-axum = { version = "0.7", features = ["multipart"], optional = true }
+# MIME type detection for file uploads
+mime_guess = "2.0"
+
+# ============================================================================
+# Optional Dependencies
+# ============================================================================
+
+# CLI
+clap = { version = "4.4", features = ["derive", "env"], optional = true }
+
+# Web framework (API + MCP)
+axum = { version = "0.7", features = ["multipart", "tokio"], optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
 
-# OpenAPI documentation (for API server mode)
+# OpenAPI documentation (API only)
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"], optional = true }
 utoipa-swagger-ui = { version = "6.0", features = ["axum"], optional = true }
 
-# File handling (for API server mode)
-mime_guess = { version = "2.0", optional = true }
+# Async streaming (MCP SSE)
+async-stream = { version = "0.3", optional = true }
+
+# ============================================================================
+# Platform-specific Dependencies
+# ============================================================================
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.6"
 
 [dev-dependencies]
 tower-test = "0.4"
 tokio-test = "0.4"
 tempfile = "3.0"
+
+# ============================================================================
+# Build Profiles
+# ============================================================================
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

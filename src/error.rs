@@ -8,83 +8,72 @@ pub type Result<T> = std::result::Result<T, WhatsAppError>;
 pub enum WhatsAppError {
     #[error("Browser initialization failed: {0}")]
     BrowserInit(String),
-    
+
     #[error("Browser navigation failed: {0}")]
     BrowserNavigation(String),
-    
+
     #[error("Browser connection lost: {0}")]
     BrowserConnection(String),
-    
+
     #[error("Authentication failed: {0}")]
     Authentication(String),
-    
+
     #[error("QR code generation failed: {0}")]
     QrCodeGeneration(String),
-    
+
     #[error("Phone authentication failed: {0}")]
     PhoneAuthentication(String),
-    
+
     #[error("Message sending failed: {0}")]
     MessageSending(String),
-    
+
     #[error("Contact retrieval failed: {0}")]
     ContactRetrieval(String),
-    
+
     #[error("Chat navigation failed: {0}")]
     ChatNavigation(String),
-    
+
     #[error("File upload failed: {0}")]
     FileUpload(String),
-    
+
     #[error("Configuration error: {0}")]
     Configuration(String),
-    
+
     #[error("Network error: {0}")]
     Network(String),
-    
+
     #[error("Timeout error: operation timed out after {timeout_seconds}s: {operation}")]
     Timeout {
         operation: String,
         timeout_seconds: u64,
     },
-    
+
     #[error("Invalid input: {field} - {reason}")]
-    InvalidInput {
-        field: String,
-        reason: String,
-    },
-    
+    InvalidInput { field: String, reason: String },
+
     #[error("Service not ready: {service} is not initialized or has failed")]
-    ServiceNotReady {
-        service: String,
-    },
-    
+    ServiceNotReady { service: String },
+
     #[error("Rate limit exceeded: {operation} - retry after {retry_after_seconds}s")]
     RateLimit {
         operation: String,
         retry_after_seconds: u32,
     },
-    
+
     #[error("Session expired: authentication session is no longer valid")]
     SessionExpired,
-    
+
     #[error("Permission denied: {operation} requires additional permissions")]
-    PermissionDenied {
-        operation: String,
-    },
-    
+    PermissionDenied { operation: String },
+
     #[error("Internal error: {0}")]
     Internal(String),
-    
+
     #[error("File operation failed: {details}")]
-    FileError {
-        details: String,
-    },
-    
+    FileError { details: String },
+
     #[error("Serialization error: {details}")]
-    SerializationError {
-        details: String,
-    },
+    SerializationError { details: String },
 }
 
 impl WhatsAppError {
@@ -95,7 +84,7 @@ impl WhatsAppError {
             timeout_seconds,
         }
     }
-    
+
     /// Create an invalid input error
     pub fn invalid_input(field: &str, reason: &str) -> Self {
         Self::InvalidInput {
@@ -103,14 +92,14 @@ impl WhatsAppError {
             reason: reason.to_string(),
         }
     }
-    
+
     /// Create a service not ready error
     pub fn service_not_ready(service: &str) -> Self {
         Self::ServiceNotReady {
             service: service.to_string(),
         }
     }
-    
+
     /// Create a rate limit error
     pub fn rate_limit(operation: &str, retry_after_seconds: u32) -> Self {
         Self::RateLimit {
@@ -118,29 +107,32 @@ impl WhatsAppError {
             retry_after_seconds,
         }
     }
-    
+
     /// Create a permission denied error
     pub fn permission_denied(operation: &str) -> Self {
         Self::PermissionDenied {
             operation: operation.to_string(),
         }
     }
-    
+
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            WhatsAppError::Network(_) |
-            WhatsAppError::Timeout { .. } |
-            WhatsAppError::BrowserConnection(_) |
-            WhatsAppError::RateLimit { .. }
+            WhatsAppError::Network(_)
+                | WhatsAppError::Timeout { .. }
+                | WhatsAppError::BrowserConnection(_)
+                | WhatsAppError::RateLimit { .. }
         )
     }
-    
+
     /// Get retry delay in seconds if this error is retryable
     pub fn retry_delay_seconds(&self) -> Option<u32> {
         match self {
-            WhatsAppError::RateLimit { retry_after_seconds, .. } => Some(*retry_after_seconds),
+            WhatsAppError::RateLimit {
+                retry_after_seconds,
+                ..
+            } => Some(*retry_after_seconds),
             WhatsAppError::Network(_) => Some(5),
             WhatsAppError::Timeout { .. } => Some(10),
             WhatsAppError::BrowserConnection(_) => Some(15),
