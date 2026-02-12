@@ -1,4 +1,4 @@
-//! WhatsApp Engine Services
+//! WAS (WhatsApp Server) Services
 //!
 //! Core business logic services for WhatsApp automation.
 

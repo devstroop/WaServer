@@ -180,7 +180,7 @@ impl WebhookService {
                 .client
                 .post(&endpoint.url)
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "WhatsApp-Engine/0.2.0");
+                .header("User-Agent", "WAS/0.2.0");
 
             // Add HMAC signature if secret is configured
             if let Some(secret) = &endpoint.secret {

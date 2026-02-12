@@ -28,7 +28,7 @@ impl Default for EnvironmentConfig {
         Self {
             environment: Environment::Development,
             log_level: "info".to_string(),
-            rust_log: "wae_rust=info".to_string(),
+            rust_log: "was=info".to_string(),
             debug_mode: false,
             health_check_interval: 30,
             data_directory: Some("data".to_string()),
@@ -60,9 +60,9 @@ impl EnvironmentConfig {
         } else {
             // Set default RUST_LOG based on environment
             config.rust_log = match config.environment {
-                Environment::Production => "wae_rust=warn,error".to_string(),
-                Environment::Staging => "wae_rust=info".to_string(),
-                Environment::Development => "wae_rust=debug".to_string(),
+                Environment::Production => "was=warn,error".to_string(),
+                Environment::Staging => "was=info".to_string(),
+                Environment::Development => "was=debug".to_string(),
             };
         }
 

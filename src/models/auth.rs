@@ -1,10 +1,8 @@
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "api")]
 use utoipa::ToSchema;
 
 /// Response for authentication status
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthStatusResponse {
     /// Whether the user is authenticated
     pub authorized: bool,
@@ -14,24 +12,21 @@ pub struct AuthStatusResponse {
 }
 
 /// Response containing QR code data
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct QrCodeResponse {
     /// Base64 encoded QR code image
     pub qrcode: String,
 }
 
 /// Request for phone login
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PhoneLoginRequest {
     /// Phone number with country code (e.g., "+1234567890")
     pub phone: String,
 }
 
 /// Response for phone authentication
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PhoneAuthResponse {
     /// Authentication code to enter on phone
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,8 +34,7 @@ pub struct PhoneAuthResponse {
 }
 
 /// Generic success response
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SuccessResponse {
     /// Success message
     pub message: String,

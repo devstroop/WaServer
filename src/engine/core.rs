@@ -1,4 +1,4 @@
-//! WhatsApp Engine Core
+//! WAS - WhatsApp Server Core
 //!
 //! The main library interface for WhatsApp Web automation.
 
@@ -15,7 +15,7 @@ use tracing::{debug, error, info, warn};
 
 use super::session::SessionManager;
 
-/// The main WhatsApp Engine library interface.
+/// The main WAS (WhatsApp Server) library interface.
 ///
 /// Provides a clean, async API for WhatsApp Web automation with comprehensive
 /// authentication, messaging, and resource management capabilities.
@@ -30,9 +30,9 @@ pub struct WhatsAppEngine {
 }
 
 impl WhatsAppEngine {
-    /// Creates a new WhatsApp Engine with the provided configuration.
+    /// Creates a new WAS instance with the provided configuration.
     pub async fn new(config: AppConfig) -> Result<Self> {
-        info!("Initializing WhatsApp Engine");
+        info!("Initializing WAS (WhatsApp Server)");
 
         let config = Arc::new(config);
         let start_time = SystemTime::now();
@@ -56,7 +56,7 @@ impl WhatsAppEngine {
             .join("sessions");
         let session_manager = Arc::new(tokio::sync::Mutex::new(SessionManager::new(session_dir)));
 
-        info!("WhatsApp Engine initialized successfully");
+        info!("WAS initialized successfully");
 
         Ok(Self {
             auth_service,
@@ -68,7 +68,7 @@ impl WhatsAppEngine {
         })
     }
 
-    /// Creates a new WhatsApp Engine with default configuration.
+    /// Creates a new WAS instance with default configuration.
     pub async fn with_defaults() -> Result<Self> {
         let config = AppConfig::load().map_err(|e| WhatsAppError::Configuration(e.to_string()))?;
         Self::new(config).await
@@ -276,13 +276,13 @@ impl WhatsAppEngine {
 
     /// Close and cleanup.
     pub async fn close(&self) -> Result<()> {
-        info!("Closing WhatsApp Engine");
+        info!("Closing WAS");
 
         if let Err(e) = self.browser_service.close().await {
             warn!("Error closing browser: {}", e);
         }
 
-        info!("WhatsApp Engine closed");
+        info!("WAS closed");
         Ok(())
     }
 }

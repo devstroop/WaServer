@@ -1,4 +1,4 @@
-//! Domain models for the WhatsApp Engine library
+//! Domain models for the WAS (WhatsApp Server) library
 //!
 //! These are pure business objects for the library API.
 //! Database models are in services/database.rs - use conversions when needed.

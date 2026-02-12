@@ -19,14 +19,14 @@ RUN mkdir -p src/bin && \
     echo "" > src/lib.rs
 
 # Build dependencies only
-RUN cargo build --release --features server || true
+RUN cargo build --release --features mcp || true
 
 # Copy actual source
 COPY src ./src
 
 # Build the application
 RUN touch src/lib.rs src/bin/whatsapp-server.rs && \
-    cargo build --release --features server
+    cargo build --release --features mcp
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/whatsapp-engine /usr/local/bin/
+COPY --from=builder /app/target/release/was /usr/local/bin/
 
 # Copy config
 COPY config/app.example.toml /app/config/app.toml
@@ -77,4 +77,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-CMD ["whatsapp-engine", "run"]
+CMD ["was"]

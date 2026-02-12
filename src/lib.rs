@@ -1,39 +1,30 @@
-//! # WhatsApp Engine Rust Library
+//! # WAS - WhatsApp Server
 //!
-//! A modular, high-performance WhatsApp Web automation engine built in Rust.
+//! A high-performance WhatsApp Web automation server built in Rust.
 //!
 //! ## Architecture
 //!
-//! The library is organized into feature-gated modules:
+//! The library provides:
 //!
-//! - **Core** (always included): Browser automation, authentication, messaging, sessions
-//! - **CLI** (`cli` feature): Command-line interface with service management
-//! - **API** (`api` feature): REST API server with OpenAPI documentation  
-//! - **MCP** (`mcp` feature): Model Context Protocol server over SSE
+//! - **Core**: Browser automation, authentication, messaging, sessions
+//! - **REST API**: Full REST API with OpenAPI/Swagger documentation (always included)
+//! - **MCP** (`mcp` feature): Model Context Protocol server over Streamable HTTP
 //!
 //! ## Features
 //!
-//! Enable features in your `Cargo.toml`:
-//!
 //! ```toml
 //! [dependencies]
-//! # Core library only
-//! whatsapp-engine = { version = "0.2", default-features = false }
+//! # Server with REST API (default)
+//! was = "0.2"
 //!
-//! # With REST API
-//! whatsapp-engine = { version = "0.2", features = ["api"] }
-//!
-//! # With MCP server
-//! whatsapp-engine = { version = "0.2", features = ["mcp"] }
-//!
-//! # Full server (API + MCP)
-//! whatsapp-engine = { version = "0.2", features = ["server"] }
+//! # With MCP server support
+//! was = { version = "0.2", features = ["mcp"] }
 //! ```
 //!
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use wae_rust::{WhatsAppEngine, Result};
+//! use was::{WhatsAppEngine, Result};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
@@ -72,19 +63,16 @@ pub mod locators;
 pub mod session;
 
 // ============================================================================
-// Feature-gated Modules
+// Server Modules (always included)
 // ============================================================================
 
-/// HTTP API handlers (requires `api` or `mcp` feature)
-#[cfg(any(feature = "api", feature = "mcp"))]
+/// HTTP API handlers
 pub mod api;
 
-/// HTTP handlers - legacy alias for api (requires `api` or `mcp` feature)
-#[cfg(any(feature = "api", feature = "mcp"))]
+/// HTTP handlers - legacy alias for api
 pub mod handlers;
 
-/// HTTP middleware (requires `api` or `mcp` feature)
-#[cfg(any(feature = "api", feature = "mcp"))]
+/// HTTP middleware
 pub mod middleware;
 
 // Re-export public API

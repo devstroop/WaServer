@@ -1,7 +1,7 @@
 services:
-  whatsapp-engine:
+  was:
     build: .
-    container_name: whatsapp-engine
+    container_name: was
     ports:
       - "3000:3000"
     environment:
@@ -11,7 +11,7 @@ services:
       - RUST_LOG=info
     volumes:
       # Persist browser session data
-      - whatsapp-data:/app/data
+      - was-data:/app/data
       # Optional: mount custom config
       # - ./config/app.toml:/app/config/app.toml:ro
     restart: unless-stopped
@@ -27,4 +27,4 @@ services:
       start_period: 10s
 
 volumes:
-  whatsapp-data:
+  was-data:

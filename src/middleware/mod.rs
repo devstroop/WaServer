@@ -1,7 +1,6 @@
-//! HTTP Middleware for WhatsApp Engine
+//! HTTP Middleware for WAS (WhatsApp Server)
 //!
 //! Production-ready middleware for request correlation, metrics, authentication, and security.
-//! Only compiled when `api` or `mcp` features are enabled.
 
 use axum::{
     extract::{Request, State},
@@ -102,7 +101,6 @@ pub async fn request_metrics_middleware(request: Request, next: Next) -> Respons
 }
 
 /// Authentication middleware
-#[cfg(feature = "api")]
 pub async fn auth_middleware(
     State(whatsapp_service): State<Arc<WhatsAppService>>,
     headers: HeaderMap,

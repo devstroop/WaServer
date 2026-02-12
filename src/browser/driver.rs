@@ -60,7 +60,7 @@ impl BrowserService {
             std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
         };
 
-        let user_data_dir = format!("{}/whatsapp-engine/chrome-profile", base_dir);
+        let user_data_dir = format!("{}/was/chrome-profile", base_dir);
 
         // Ensure the directory exists
         std::fs::create_dir_all(&user_data_dir)

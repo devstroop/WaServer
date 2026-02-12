@@ -46,7 +46,7 @@ max_upload_size = 10485760
 # Environment: "development", "staging", or "production"
 environment = "development"
 log_level = "info"
-rust_log = "wae_rust=info"
+rust_log = "was=info"
 debug_mode = true
 health_check_interval = 30
 

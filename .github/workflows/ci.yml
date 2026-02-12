@@ -25,10 +25,13 @@ jobs:
           shared-key: "ci"
 
       - name: Build
-        run: cargo build --features server
+        run: cargo build
+
+      - name: Build with MCP
+        run: cargo build --features mcp
 
       - name: Run tests
-        run: cargo test --features server
+        run: cargo test
 
   clippy:
     name: Clippy
@@ -47,7 +50,7 @@ jobs:
           shared-key: "ci"
 
       - name: Clippy
-        run: cargo clippy --features server -- -D warnings
+        run: cargo clippy --features mcp -- -D warnings
 
   fmt:
     name: Format

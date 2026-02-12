@@ -1,6 +1,6 @@
-# WhatsApp Engine 🚀
+# WAS - WhatsApp Server 🚀
 
-A high-performance WhatsApp Web automation engine built in Rust. Provides REST API and MCP (Model Context Protocol) interfaces for WhatsApp messaging.
+A high-performance WhatsApp Web automation server built in Rust. Provides REST API and MCP (Model Context Protocol) interfaces for WhatsApp messaging.
 
 ## Features
 
@@ -8,7 +8,7 @@ A high-performance WhatsApp Web automation engine built in Rust. Provides REST A
 - **REST API** - Full CRUD endpoints with OpenAPI/Swagger docs
 - **MCP Server** - Model Context Protocol over Streamable HTTP (spec 2025-06-18)
 - **Real-time Events** - SSE streams for message watching
-- **Windows Service** - Native Windows service support
+- **Webhooks** - Push notifications for incoming messages
 - **Modular Build** - Feature flags for lean deployments
 
 ## Quick Start
@@ -17,23 +17,26 @@ A high-performance WhatsApp Web automation engine built in Rust. Provides REST A
 
 - Rust 1.70+ 
 - Chrome/Chromium browser
-- Windows (for service mode) or Linux/macOS
+- Windows, Linux, or macOS
 
 ### Install & Run
 
 ```bash
 # Clone repository
-git clone https://github.com/devstroop/whatsapp-engine-rust.git
-cd whatsapp-engine-rust
+git clone https://github.com/devstroop/was.git
+cd was
 
 # Copy config
 cp config/app.example.toml config/app.toml
 
-# Build with all features
-cargo build --release --features server
+# Build (REST API included by default)
+cargo build --release
+
+# Build with MCP support
+cargo build --release --features mcp
 
 # Run
-cargo run --features server
+cargo run
 ```
 
 Server starts at `http://localhost:3000`
@@ -86,7 +89,7 @@ Server starts at `http://localhost:3000`
 curl -X POST http://localhost:3000/api/v1/messages \
   -H "Authorization: Bearer your-api-token" \
   -H "Content-Type: application/json" \
-  -d '{"phone": "+1234567890", "message": "Hello from WhatsApp Engine!"}'
+  -d '{"phone": "+1234567890", "message": "Hello from WAS!"}'
 ```
 
 ### Check Auth Status
@@ -160,58 +163,24 @@ max_upload_size = 10485760
 
 ## Feature Flags
 
-Build with specific features for lean deployments:
+Build with optional features:
 
 ```bash
-# CLI only (no servers)
-cargo build --features cli
+# Default build (REST API server)
+cargo build --release
 
-# REST API only
-cargo build --features api
-
-# MCP server only
-cargo build --features mcp
-
-# Full server (API + MCP)
-cargo build --features server
+# With MCP server support
+cargo build --release --features mcp
 ```
 
-## CLI Usage
+## Server Usage
 
 ```bash
-# Show help
-whatsapp-engine --help
-
 # Run with defaults
-whatsapp-engine run
+was
 
-# Run with options
-whatsapp-engine --port 8080 --headless run
-
-# Show configuration
-whatsapp-engine config
-
-# Validate configuration
-whatsapp-engine validate
-
-# Show version info
-whatsapp-engine info
-```
-
-### Windows Service
-
-```bash
-# Install as Windows service
-whatsapp-engine install --start
-
-# Check service status
-whatsapp-engine status
-
-# Stop service
-whatsapp-engine stop
-
-# Uninstall service
-whatsapp-engine uninstall
+# Run with environment variables
+WHATSAPP_PORT=8080 WHATSAPP_API_TOKEN=secret was
 ```
 
 ## MCP Tools
@@ -234,7 +203,7 @@ Add to your Claude Desktop config:
 ```json
 {
   "mcpServers": {
-    "whatsapp": {
+    "was": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "http://localhost:3000/mcp"]
     }
@@ -267,7 +236,7 @@ src/
 ├── error.rs            # Error types
 ├── session.rs          # Session management
 ├── bin/
-│   └── whatsapp-server.rs  # CLI binary
+│   └── whatsapp-server.rs  # Server binary
 ├── config/             # Configuration
 ├── handlers/           # HTTP handlers
 │   ├── auth.rs         # Auth endpoints
@@ -278,6 +247,7 @@ src/
 │   ├── whatsapp.rs     # Main service
 │   ├── auth_service.rs # Authentication
 │   ├── chat_service.rs # Chat/messaging
+│   ├── webhook.rs      # Webhook notifications
 │   └── browser.rs      # Browser automation
 ├── models/             # Data models
 └── utils/              # Utilities

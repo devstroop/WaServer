@@ -1,6 +1,6 @@
 //! Engine Module
 //!
-//! Core WhatsApp Engine implementation for library usage.
+//! Core WAS (WhatsApp Server) implementation for library usage.
 
 mod core;
 mod session;

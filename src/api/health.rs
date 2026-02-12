@@ -46,7 +46,7 @@ fn get_start_time() -> SystemTime {
 
 /// Health Check Endpoint
 ///
-/// Returns the overall health status of the WhatsApp Engine API server and its dependencies.
+/// Returns the overall health status of the WAS (WhatsApp Server) API and its dependencies.
 /// This endpoint is typically used by load balancers and monitoring systems.
 #[utoipa::path(
     get,

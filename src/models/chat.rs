@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "api")]
 use utoipa::ToSchema;
 
 // ============================================================================
@@ -7,8 +6,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Request for sending a message
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
     /// Recipient phone number
     pub phone: String,
@@ -17,8 +15,7 @@ pub struct SendMessageRequest {
 }
 
 /// Response for sending a message
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SendMessageResponse {
     /// Status message
     pub status: String,
@@ -27,8 +24,7 @@ pub struct SendMessageResponse {
 }
 
 /// Error response
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     /// Error message
     pub error: String,
@@ -39,8 +35,7 @@ pub struct ErrorResponse {
 // ============================================================================
 
 /// A chat/conversation from the WhatsApp sidebar
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ChatInfo {
     /// Chat ID (phone@c.us or group ID)
     pub id: String,
@@ -59,8 +54,7 @@ pub struct ChatInfo {
 }
 
 /// Response for listing chats
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ChatListResponse {
     /// List of chats
     pub chats: Vec<ChatInfo>,
@@ -74,8 +68,7 @@ pub struct ChatListResponse {
 // ============================================================================
 
 /// A complete message with all information and status
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Message {
     /// Unique message ID
     pub id: String,
@@ -118,8 +111,7 @@ pub struct Message {
 }
 
 /// Response for listing messages
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct MessageListResponse {
     /// Chat ID
     pub chat_id: String,
@@ -134,8 +126,7 @@ pub struct MessageListResponse {
 }
 
 /// Query params for message listing
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct MessageQueryParams {
     /// Maximum number of messages to retrieve
     pub limit: Option<u32>,
@@ -146,7 +137,6 @@ pub struct MessageQueryParams {
 }
 
 /// Multipart form schema for Swagger documentation
-#[cfg(feature = "api")]
 #[derive(Debug, ToSchema)]
 #[schema(title = "SendMessageForm")]
 pub struct SendMessageMultipartForm {
@@ -155,7 +145,7 @@ pub struct SendMessageMultipartForm {
     pub phone: String,
 
     /// Message text (optional if file is provided)
-    #[schema(example = "Hello from WhatsApp Engine!")]
+    #[schema(example = "Hello from WAS!")]
     pub text: Option<String>,
 
     /// File attachment (optional if text is provided)  
@@ -194,8 +184,7 @@ impl From<crate::services::database::Message> for Message {
 }
 
 /// Simplified message info for DOM-scraped messages (before DB storage)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "api", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MessageInfo {
     /// Message ID
     pub id: String,

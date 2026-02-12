@@ -1,74 +1,33 @@
 [package]
-name = "whatsapp-engine"
+name = "was"
 version = "0.2.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
-description = "A high-performance WhatsApp Web automation engine built in Rust - modular architecture with optional API/MCP servers"
+description = "WAS (WhatsAppServer) - A high-performance WhatsApp Web automation server built in Rust with REST API and MCP support"
 license = "MIT"
-repository = "https://github.com/devstroop/whatsapp-engine-rust"
-keywords = ["whatsapp", "automation", "messaging", "api", "mcp"]
+repository = "https://github.com/devstroop/was"
+keywords = ["whatsapp", "automation", "messaging", "api", "mcp", "server"]
 categories = ["api-bindings", "web-programming", "asynchronous"]
 
 # Library configuration
 [lib]
-name = "wae_rust"
+name = "was"
 path = "src/lib.rs"
 
-# Binary configuration (CLI + optional servers)
+# Binary configuration
 [[bin]]
-name = "whatsapp-engine"
+name = "was"
 path = "src/bin/whatsapp-server.rs"
-required-features = ["cli"]
 
 # ============================================================================
-# Features - Modular Architecture
-# ============================================================================
-# 
-# Core (always included):
-#   - WhatsApp Engine library with browser automation
-#   - Authentication services (QR, Phone)
-#   - Chat/messaging services
-#   - Session management
-#   - Configuration system
-#
-# Optional features:
-#   - cli: Command-line interface with service management
-#   - api: REST API server with OpenAPI documentation
-#   - mcp: Model Context Protocol server over SSE
-#   - full: All features enabled
-#
+# Features
 # ============================================================================
 
 [features]
-default = ["cli"]
+default = []
 
-# Core CLI with service management (base for all server modes)
-cli = ["clap"]
-
-# REST API server
-api = [
-    "cli",
-    "axum", 
-    "tower", 
-    "tower-http", 
-    "utoipa", 
-    "utoipa-swagger-ui"
-]
-
-# MCP (Model Context Protocol) server over SSE
-mcp = [
-    "cli",
-    "axum",
-    "tower",
-    "tower-http",
-    "async-stream"
-]
-
-# Full server with API + MCP
-server = ["api", "mcp"]
-
-# Everything enabled
-full = ["server"]
+# MCP (Model Context Protocol) server - optional
+mcp = ["async-stream"]
 
 [dependencies]
 # ============================================================================
@@ -122,31 +81,21 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
+# Web framework
+axum = { version = "0.7", features = ["multipart", "tokio"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# OpenAPI documentation
+utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+
 # ============================================================================
 # Optional Dependencies
 # ============================================================================
 
-# CLI
-clap = { version = "4.4", features = ["derive", "env"], optional = true }
-
-# Web framework (API + MCP)
-axum = { version = "0.7", features = ["multipart", "tokio"], optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
-
-# OpenAPI documentation (API only)
-utoipa = { version = "4.0", features = ["axum_extras", "chrono"], optional = true }
-utoipa-swagger-ui = { version = "6.0", features = ["axum"], optional = true }
-
-# Async streaming (MCP SSE)
+# Async streaming (MCP SSE) - optional
 async-stream = { version = "0.3", optional = true }
-
-# ============================================================================
-# Platform-specific Dependencies
-# ============================================================================
-
-[target.'cfg(windows)'.dependencies]
-windows-service = "0.6"
 
 [dev-dependencies]
 tower-test = "0.4"

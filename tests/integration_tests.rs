@@ -7,7 +7,7 @@ use tokio::time::sleep;
 const BASE_URL: &str = "http://localhost:3000";
 const API_TOKEN: &str = "test-api-token-123456789";
 
-/// Integration tests for WhatsApp Engine API
+/// Integration tests for WAS (WhatsApp Server) API
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,7 +101,7 @@ mod tests {
             .post(&format!("{}/api/chat/send", BASE_URL))
             .header("Authorization", format!("Bearer {}", API_TOKEN))
             .query(&[("phone", "1234567890")])
-            .query(&[("text", "Hello from Rust WhatsApp Engine Test!")])
+            .query(&[("text", "Hello from Rust WAS Test!")])
             .send()
             .await?;
 

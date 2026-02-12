@@ -1,9 +1,9 @@
 use thiserror::Error;
 
-/// Result type for WhatsApp Engine operations
+/// Result type for WAS (WhatsApp Server) operations
 pub type Result<T> = std::result::Result<T, WhatsAppError>;
 
-/// Comprehensive error types for the WhatsApp Engine library
+/// Comprehensive error types for the WAS library
 #[derive(Error, Debug)]
 pub enum WhatsAppError {
     #[error("Browser initialization failed: {0}")]

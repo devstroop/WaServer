@@ -1,6 +1,6 @@
 // MCP (Model Context Protocol) Server over SSE
 //
-// This module implements an MCP server that exposes WhatsApp Engine functionality
+// This module implements an MCP server that exposes WAS (WhatsApp Server) functionality
 // as tools that AI agents can use. Communication happens over Server-Sent Events (SSE).
 
 use axum::{
@@ -201,7 +201,7 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_health_check".to_string(),
-            description: "Check the health status of the WhatsApp Engine service".to_string(),
+            description: "Check the health status of the WAS (WhatsApp Server) service".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -454,7 +454,7 @@ async fn handle_mcp_request(
                         }
                     },
                     "serverInfo": {
-                        "name": "whatsapp-engine",
+                        "name": "was",
                         "version": "0.2.0"
                     }
                 })),
@@ -673,7 +673,7 @@ pub async fn mcp_message_handler(
 /// Simple info endpoint about MCP server
 pub async fn mcp_info_handler() -> impl IntoResponse {
     Json(json!({
-        "name": "whatsapp-engine",
+        "name": "was",
         "version": "0.2.0",
         "protocol": "MCP",
         "transport": "SSE",

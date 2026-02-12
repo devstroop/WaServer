@@ -1,4 +1,4 @@
-// Session management implementation for WhatsApp Engine
+// Session management implementation for WAS (WhatsApp Server)
 // This module handles session persistence, phone number extraction, and session IDs
 
 use crate::{Result, WhatsAppError};

@@ -17,10 +17,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: whatsapp-engine
+            artifact: was
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact: whatsapp-engine.exe
+            artifact: was.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
           shared-key: "release-${{ matrix.target }}"
 
       - name: Build release
-        run: cargo build --release --features server --target ${{ matrix.target }}
+        run: cargo build --release --features mcp --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -65,10 +65,10 @@ jobs:
           for dir in */; do
             target="${dir%/}"
             if [[ "$target" == *"windows"* ]]; then
-              zip -j "../release/whatsapp-engine-${GITHUB_REF_NAME}-${target}.zip" "$dir"*
+              zip -j "../release/was-${GITHUB_REF_NAME}-${target}.zip" "$dir"*
             else
               chmod +x "$dir"*
-              tar -czvf "../release/whatsapp-engine-${GITHUB_REF_NAME}-${target}.tar.gz" -C "$dir" .
+              tar -czvf "../release/was-${GITHUB_REF_NAME}-${target}.tar.gz" -C "$dir" .
             fi
           done
 
