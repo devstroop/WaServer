@@ -5,11 +5,7 @@ use crate::{
     models::chat::ErrorResponse,
     services::whatsapp::WhatsAppService,
 };
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::State, http::StatusCode, response::Json};
 use std::sync::Arc;
 use tracing::{error, info};
 use utoipa;
@@ -149,7 +145,7 @@ pub async fn login_with_phone(
     Json(request): Json<PhoneLoginRequest>,
 ) -> Result<Json<PhoneAuthResponse>, (StatusCode, Json<ErrorResponse>)> {
     let phone_number = request.phone;
-    
+
     match whatsapp_service
         .execute_with_busy_flag(async {
             whatsapp_service

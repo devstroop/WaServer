@@ -43,7 +43,10 @@ impl WhatsAppService {
         let db = match DatabaseService::new(&data_dir) {
             Ok(db) => Arc::new(db),
             Err(e) => {
-                warn!("Failed to initialize database: {}. Running without persistence.", e);
+                warn!(
+                    "Failed to initialize database: {}. Running without persistence.",
+                    e
+                );
                 // Create in-memory fallback (won't persist but won't crash)
                 Arc::new(DatabaseService::in_memory().expect("In-memory DB should work"))
             }
@@ -305,7 +308,7 @@ impl WhatsAppService {
     }
 
     /// Process pending messages from the queue
-    /// 
+    ///
     /// This processes messages one at a time until the queue is empty
     /// or an error occurs. Returns the number of messages processed.
     pub async fn process_queue(&self) -> u32 {
@@ -331,7 +334,10 @@ impl WhatsAppService {
                 }
             };
 
-            info!("Processing queued message {} to {}", item.id, item.recipient);
+            info!(
+                "Processing queued message {} to {}",
+                item.id, item.recipient
+            );
 
             // Mark as processing
             if let Err(e) = self.db.mark_processing(&item.id) {
@@ -365,7 +371,7 @@ impl WhatsAppService {
                 Err(e) => {
                     let error_msg = e.to_string();
                     error!("Failed to send queued message {}: {}", item.id, error_msg);
-                    
+
                     if let Err(db_err) = self.db.mark_failed(&item.id, &error_msg) {
                         error!("Failed to mark message {} as failed: {}", item.id, db_err);
                     }

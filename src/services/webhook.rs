@@ -27,7 +27,7 @@ impl std::fmt::Display for WebhookEvent {
 }
 
 impl WebhookEvent {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "message.received" | "message_received" => Some(WebhookEvent::MessageReceived),
             "*" => Some(WebhookEvent::MessageReceived), // Wildcard matches all
@@ -90,7 +90,7 @@ impl WebhookService {
                 let events = ep
                     .events
                     .iter()
-                    .filter_map(|e| WebhookEvent::from_str(e))
+                    .filter_map(|e| WebhookEvent::parse(e))
                     .collect();
                 WebhookEndpoint {
                     url: ep.url.clone(),
@@ -232,8 +232,7 @@ impl WebhookService {
                 if attempts > max_retries {
                     error!(
                         "Webhook to {} failed after {} attempts",
-                        endpoint.url,
-                        attempts
+                        endpoint.url, attempts
                     );
                     break;
                 }
@@ -251,8 +250,8 @@ impl WebhookService {
 
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(body.as_bytes());
         let result = mac.finalize();
         hex::encode(result.into_bytes())
@@ -282,14 +281,14 @@ mod tests {
     #[test]
     fn test_webhook_event_from_str() {
         assert_eq!(
-            WebhookEvent::from_str("message.received"),
+            WebhookEvent::parse("message.received"),
             Some(WebhookEvent::MessageReceived)
         );
         assert_eq!(
-            WebhookEvent::from_str("*"),
+            WebhookEvent::parse("*"),
             Some(WebhookEvent::MessageReceived)
         );
-        assert_eq!(WebhookEvent::from_str("unknown"), None);
+        assert_eq!(WebhookEvent::parse("unknown"), None);
     }
 
     #[test]

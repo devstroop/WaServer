@@ -133,7 +133,7 @@ impl TryFrom<&str> for MediaType {
 /// - 1:1 incoming: sender="contact_phone", recipient="me"
 /// - Group outgoing: sender="me", recipient="group_jid"
 /// - Group incoming: sender="member_phone", recipient="group_jid"
-/// 
+///
 /// Outgoing queue = messages WHERE sender='me' AND status IN ('pending', 'processing')
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -186,20 +186,18 @@ impl Message {
     pub fn is_outgoing(&self) -> bool {
         is_self(&self.sender)
     }
-    
+
     /// Check if this is an incoming message
     pub fn is_incoming(&self) -> bool {
         !self.is_outgoing()
     }
-    
+
     /// Get the "other party" - the contact/group we're chatting with
     /// For outgoing: returns recipient
     /// For incoming 1:1: returns sender
     /// For incoming group: returns recipient (the group)
     pub fn chat_jid(&self) -> &str {
-        if self.is_outgoing() {
-            &self.recipient
-        } else if self.is_group {
+        if self.is_outgoing() || self.is_group {
             &self.recipient
         } else {
             &self.sender
@@ -478,10 +476,8 @@ impl DatabaseService {
                 let name: String = row.get(1)?;
                 Ok(name)
             })?;
-            for col in column_iter {
-                if let Ok(name) = col {
-                    existing_columns.push(name);
-                }
+            for name in column_iter.flatten() {
+                existing_columns.push(name);
             }
         }
 
@@ -489,12 +485,27 @@ impl DatabaseService {
 
         // Add missing columns
         let migrations = [
-            ("priority", "ALTER TABLE messages ADD COLUMN priority INTEGER DEFAULT 0"),
-            ("max_retries", "ALTER TABLE messages ADD COLUMN max_retries INTEGER DEFAULT 3"),
-            ("is_group", "ALTER TABLE messages ADD COLUMN is_group INTEGER DEFAULT 0"),
+            (
+                "priority",
+                "ALTER TABLE messages ADD COLUMN priority INTEGER DEFAULT 0",
+            ),
+            (
+                "max_retries",
+                "ALTER TABLE messages ADD COLUMN max_retries INTEGER DEFAULT 3",
+            ),
+            (
+                "is_group",
+                "ALTER TABLE messages ADD COLUMN is_group INTEGER DEFAULT 0",
+            ),
             ("sender", "ALTER TABLE messages ADD COLUMN sender TEXT"),
-            ("recipient", "ALTER TABLE messages ADD COLUMN recipient TEXT"),
-            ("sender_name", "ALTER TABLE messages ADD COLUMN sender_name TEXT"),
+            (
+                "recipient",
+                "ALTER TABLE messages ADD COLUMN recipient TEXT",
+            ),
+            (
+                "sender_name",
+                "ALTER TABLE messages ADD COLUMN sender_name TEXT",
+            ),
         ];
 
         for (column, sql) in migrations {
@@ -529,20 +540,23 @@ impl DatabaseService {
                 );
 
                 // Migrate outgoing messages: sender='me', recipient=phone
-                let outgoing_migrated = conn.execute(
-                    "UPDATE messages SET 
+                let outgoing_migrated = conn
+                    .execute(
+                        "UPDATE messages SET 
                         sender = 'me',
                         recipient = phone,
                         is_group = 0
                      WHERE (sender IS NULL OR sender = '') 
                        AND direction = 'outgoing' 
                        AND phone IS NOT NULL",
-                    [],
-                ).unwrap_or(0);
+                        [],
+                    )
+                    .unwrap_or(0);
 
                 // Migrate incoming messages: sender=phone, recipient='me', sender_name=contact_name
-                let incoming_migrated = conn.execute(
-                    "UPDATE messages SET 
+                let incoming_migrated = conn
+                    .execute(
+                        "UPDATE messages SET 
                         sender = phone,
                         recipient = 'me',
                         sender_name = contact_name,
@@ -550,8 +564,9 @@ impl DatabaseService {
                      WHERE (sender IS NULL OR sender = '') 
                        AND direction = 'incoming' 
                        AND phone IS NOT NULL",
-                    [],
-                ).unwrap_or(0);
+                        [],
+                    )
+                    .unwrap_or(0);
 
                 info!(
                     "Data migration complete: {} outgoing, {} incoming messages converted",
@@ -610,14 +625,16 @@ impl DatabaseService {
              ON messages(sender, status, priority DESC, created_at ASC)
              WHERE sender = 'me' AND status IN ('pending', 'processing')",
             [],
-        ).ok(); // Ignore if partial index not supported
+        )
+        .ok(); // Ignore if partial index not supported
 
         // Create index for chat history queries
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_chat 
              ON messages(recipient, created_at DESC)",
             [],
-        ).ok();
+        )
+        .ok();
 
         // Conversations/Chats cache table (from WhatsApp DOM scraping)
         conn.execute(
@@ -680,15 +697,18 @@ impl DatabaseService {
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender)",
             [],
-        ).ok();
+        )
+        .ok();
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient)",
             [],
-        ).ok();
+        )
+        .ok();
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)",
             [],
-        ).ok();
+        )
+        .ok();
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_media_type ON messages(media_type)",
             [],
@@ -720,7 +740,7 @@ impl DatabaseService {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         let msg_ts = msg.message_timestamp.map(|dt| dt.to_rfc3339());
-        
+
         // For backward compatibility with old schema that has phone NOT NULL
         // phone = recipient for outgoing, sender for incoming
         let phone = if is_self(&msg.sender) {
@@ -728,9 +748,13 @@ impl DatabaseService {
         } else {
             &msg.sender
         };
-        
+
         // direction for backward compatibility
-        let direction = if is_self(&msg.sender) { "outgoing" } else { "incoming" };
+        let direction = if is_self(&msg.sender) {
+            "outgoing"
+        } else {
+            "incoming"
+        };
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -766,8 +790,15 @@ impl DatabaseService {
             ],
         )?;
 
-        let direction = if is_self(&msg.sender) { "outgoing" } else { "incoming" };
-        debug!("Inserted message: {} ({}, {})", id, direction, msg.media_type);
+        let direction = if is_self(&msg.sender) {
+            "outgoing"
+        } else {
+            "incoming"
+        };
+        debug!(
+            "Inserted message: {} ({}, {})",
+            id, direction, msg.media_type
+        );
         Ok(id)
     }
 
@@ -983,7 +1014,11 @@ impl DatabaseService {
     }
 
     /// Get all messages (with pagination)
-    pub fn get_all_messages(&self, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<Message>> {
+    pub fn get_all_messages(
+        &self,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
         let limit = limit.unwrap_or(50);
         let offset = offset.unwrap_or(0);
@@ -1138,7 +1173,10 @@ impl DatabaseService {
 
     /// Get all unique conversations (distinct chat JIDs with latest message)
     /// Returns: Vec<(chat_jid, contact_name, Message)>
-    pub fn get_conversations(&self, limit: Option<i64>) -> Result<Vec<(String, Option<String>, Message)>> {
+    pub fn get_conversations(
+        &self,
+        limit: Option<i64>,
+    ) -> Result<Vec<(String, Option<String>, Message)>> {
         let conn = self.conn.lock().unwrap();
         let limit = limit.unwrap_or(50);
 
@@ -1184,7 +1222,7 @@ impl DatabaseService {
     /// Expected columns: id, sender, recipient, sender_name, text, is_group, status,
     ///                   media_type, media_path, media_filename, media_extension,
     ///                   media_size, media_duration, quoted_message_id,
-    ///                   error, retry_count, max_retries, priority, 
+    ///                   error, retry_count, max_retries, priority,
     ///                   message_timestamp, created_at, processed_at
     fn row_to_message(row: &rusqlite::Row) -> Result<Message> {
         let status_str: String = row.get(6)?;
@@ -1246,10 +1284,21 @@ impl DatabaseService {
                 id, sender, recipient, is_group, status, priority,
                 media_type, media_path, text, retry_count, max_retries, created_at
             ) VALUES (?1, 'me', ?2, 0, 'pending', ?3, ?4, ?5, ?6, 0, 3, ?7)",
-            params![id, recipient, priority, media_type.to_string(), media_path, text, now],
+            params![
+                id,
+                recipient,
+                priority,
+                media_type.to_string(),
+                media_path,
+                text,
+                now
+            ],
         )?;
 
-        info!("Queued message {} to {} (priority: {})", id, recipient, priority);
+        info!(
+            "Queued message {} to {} (priority: {})",
+            id, recipient, priority
+        );
         Ok(id)
     }
 
@@ -1320,7 +1369,13 @@ impl DatabaseService {
                  WHERE id = ?2",
                 params![error, id],
             )?;
-            warn!("Message {} failed, will retry ({}/{}): {}", id, retry_count + 1, max_retries, error);
+            warn!(
+                "Message {} failed, will retry ({}/{}): {}",
+                id,
+                retry_count + 1,
+                max_retries,
+                error
+            );
             Ok(true) // Will retry
         } else {
             // Max retries reached
@@ -1329,7 +1384,10 @@ impl DatabaseService {
                 "UPDATE messages SET status = 'failed', processed_at = ?1, error = ?2 WHERE id = ?3",
                 params![now, error, id],
             )?;
-            warn!("Message {} permanently failed after {} retries: {}", id, max_retries, error);
+            warn!(
+                "Message {} permanently failed after {} retries: {}",
+                id, max_retries, error
+            );
             Ok(false) // No more retries
         }
     }
@@ -1569,7 +1627,7 @@ impl DatabaseService {
     /// Get chat settings
     pub fn get_chat_settings(&self, chat_id: &str) -> Result<ChatSettings> {
         let conn = self.conn.lock().unwrap();
-        
+
         let result: rusqlite::Result<(Option<String>, i32, i32)> = conn.query_row(
             "SELECT muted_until, pinned, archived FROM chat_settings WHERE chat_id = ?1",
             params![chat_id],
@@ -1611,7 +1669,7 @@ impl DatabaseService {
             for contact in chunk {
                 let now = Utc::now().to_rfc3339();
                 let last_seen = contact.last_seen.map(|t| t.to_rfc3339());
-                
+
                 conn.execute(
                     "INSERT INTO contacts (phone, name, is_business, last_seen, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)
@@ -1640,7 +1698,7 @@ impl DatabaseService {
     pub fn get_all_contacts(&self) -> Result<Vec<Contact>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT phone, name, is_business, last_seen, updated_at FROM contacts ORDER BY name"
+            "SELECT phone, name, is_business, last_seen, updated_at FROM contacts ORDER BY name",
         )?;
 
         let mut contacts = Vec::new();
@@ -1676,11 +1734,7 @@ mod tests {
         let db = DatabaseService::new(dir.path().to_str().unwrap()).unwrap();
 
         let id = db
-            .insert_outgoing_message(
-                "1234567890",
-                "Hello",
-                MessageStatus::Pending,
-            )
+            .insert_outgoing_message("1234567890", "Hello", MessageStatus::Pending)
             .unwrap();
 
         let msg = db.get_message(&id).unwrap().unwrap();
@@ -1724,11 +1778,7 @@ mod tests {
         let db = DatabaseService::new(dir.path().to_str().unwrap()).unwrap();
 
         let id = db
-            .insert_incoming_message(
-                "9876543210",
-                Some("John Doe"),
-                "Hi there!",
-            )
+            .insert_incoming_message("9876543210", Some("John Doe"), "Hi there!")
             .unwrap();
 
         let msg = db.get_message(&id).unwrap().unwrap();
@@ -1745,12 +1795,8 @@ mod tests {
 
         // Login with first account
         db.handle_login("111111").unwrap();
-        db.insert_outgoing_message(
-            "111111",
-            "Test",
-            MessageStatus::Sent,
-        )
-        .unwrap();
+        db.insert_outgoing_message("111111", "Test", MessageStatus::Sent)
+            .unwrap();
 
         assert_eq!(db.get_all_messages(None, None).unwrap().len(), 1);
 
@@ -1791,14 +1837,16 @@ mod tests {
         assert!(db.get_contact("1234567890").unwrap().is_none());
 
         // Add contact
-        db.upsert_contact("1234567890", Some("Test User"), false).unwrap();
+        db.upsert_contact("1234567890", Some("Test User"), false)
+            .unwrap();
 
         let contact = db.get_contact("1234567890").unwrap().unwrap();
         assert_eq!(contact.name, Some("Test User".to_string()));
         assert!(!contact.is_business);
 
         // Update contact
-        db.upsert_contact("1234567890", Some("Updated Name"), true).unwrap();
+        db.upsert_contact("1234567890", Some("Updated Name"), true)
+            .unwrap();
 
         let contact = db.get_contact("1234567890").unwrap().unwrap();
         assert_eq!(contact.name, Some("Updated Name".to_string()));

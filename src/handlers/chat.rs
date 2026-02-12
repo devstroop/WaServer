@@ -55,9 +55,7 @@ pub async fn list_chats(
     }
 
     let result = whatsapp_service
-        .execute_with_busy_flag(async {
-            whatsapp_service.chat_service().get_chat_list().await
-        })
+        .execute_with_busy_flag(async { whatsapp_service.chat_service().get_chat_list().await })
         .await;
 
     match result {
@@ -220,9 +218,7 @@ pub async fn watch_messages(
     }
 
     let result = whatsapp_service
-        .execute_with_busy_flag(async {
-            whatsapp_service.chat_service().watch_messages().await
-        })
+        .execute_with_busy_flag(async { whatsapp_service.chat_service().watch_messages().await })
         .await;
 
     match result {
@@ -343,7 +339,7 @@ pub async fn send_message(
 
                         // Use UUID + original extension for unique filename
                         let unique_filename = format!("{}.{}", Uuid::new_v4(), file_extension);
-                        
+
                         // Temporary staging path until we know the phone number
                         let staging_path = format!("data/attachments/.staging/{}", unique_filename);
 
@@ -418,7 +414,7 @@ pub async fn send_message(
         // Create phone-specific directory: data/attachments/{phone}/{date}/
         let today = Utc::now().format("%Y-%m-%d").to_string();
         let phone_dir = format!("data/attachments/{}/{}", phone.replace("+", ""), today);
-        
+
         if let Err(e) = fs::create_dir_all(&phone_dir).await {
             error!("Failed to create phone attachments directory: {}", e);
             // Continue with staging path if we can't move it
@@ -429,9 +425,9 @@ pub async fn send_message(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("attachment");
-            
+
             let final_path = format!("{}/{}", phone_dir, filename);
-            
+
             // Move file from staging to final location
             match fs::rename(staging_path, &final_path).await {
                 Ok(_) => {
@@ -545,7 +541,7 @@ pub async fn get_message(
     Path(message_id): Path<String>,
 ) -> Result<Json<Message>, (StatusCode, Json<ErrorResponse>)> {
     let db = whatsapp_service.database();
-    
+
     match db.get_message(&message_id) {
         Ok(Some(msg)) => Ok(Json(Message::from(msg))),
         Ok(None) => Err((

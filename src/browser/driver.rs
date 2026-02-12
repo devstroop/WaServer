@@ -88,7 +88,7 @@ impl BrowserService {
             .arg("--disable-plugins")
             .arg("--disable-gpu")
             .arg("--remote-debugging-port=0")
-            .arg(&format!("--user-data-dir={}", user_data_dir));
+            .arg(format!("--user-data-dir={}", user_data_dir));
 
         let config = browser_config
             .build()
@@ -230,7 +230,7 @@ impl BrowserService {
             let chrome_processes = ["chrome.exe", "msedge.exe", "chromium.exe"];
             for process in chrome_processes {
                 let _ = tokio::process::Command::new("taskkill")
-                    .args(&["/F", "/IM", process])
+                    .args(["/F", "/IM", process])
                     .output()
                     .await;
             }
@@ -244,7 +244,7 @@ impl BrowserService {
             ];
             for process in chrome_processes {
                 let _ = tokio::process::Command::new("pkill")
-                    .args(&["-f", process])
+                    .args(["-f", process])
                     .output()
                     .await;
             }
@@ -253,7 +253,7 @@ impl BrowserService {
 
             for process in chrome_processes {
                 let _ = tokio::process::Command::new("pkill")
-                    .args(&["-9", "-f", process])
+                    .args(["-9", "-f", process])
                     .output()
                     .await;
             }

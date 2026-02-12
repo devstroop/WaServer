@@ -5,7 +5,6 @@
 pub mod auth;
 pub mod chat;
 pub mod database;
-pub mod mcp_client;
 pub mod webhook;
 pub mod whatsapp;
 

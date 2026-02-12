@@ -1,0 +1,30 @@
+services:
+  whatsapp-engine:
+    build: .
+    container_name: whatsapp-engine
+    ports:
+      - "3000:3000"
+    environment:
+      - WHATSAPP_HOST=0.0.0.0
+      - WHATSAPP_PORT=3000
+      - WHATSAPP_API_TOKEN=${WHATSAPP_API_TOKEN:-your-secure-api-token}
+      - RUST_LOG=info
+    volumes:
+      # Persist browser session data
+      - whatsapp-data:/app/data
+      # Optional: mount custom config
+      # - ./config/app.toml:/app/config/app.toml:ro
+    restart: unless-stopped
+    # Required for Chrome to work in container
+    security_opt:
+      - seccomp=unconfined
+    shm_size: '2gb'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  whatsapp-data:

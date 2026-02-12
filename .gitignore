@@ -49,3 +49,6 @@ docker/volumes/
 # Local config overrides
 config/app.toml
 config/local.toml
+
+
+/data/*.db

@@ -365,7 +365,8 @@ impl ChatService {
         }
 
         // Wait for preview to load (Send button appears) instead of fixed delay
-        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000).await?;
+        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000)
+            .await?;
 
         self.add_caption_and_send(page, caption).await?;
         info!("Image/video sent");
@@ -448,7 +449,8 @@ impl ChatService {
         }
 
         // Wait for preview to load (Send button appears) instead of fixed delay
-        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000).await?;
+        self.wait_for_element(page, r##"div[aria-label="Send"]"##, 10000)
+            .await?;
 
         // Documents also have a caption field like images - use the same add_caption_and_send method
         self.add_caption_and_send(page, text).await?;
@@ -559,26 +561,24 @@ impl ChatService {
             if !text.is_empty() {
                 // Find the caption input in the media preview dialog
                 // It's a contenteditable div, similar to the main chat input
-                let find_caption_input = format!(
-                    r##"(function() {{
+                let find_caption_input = r#"(function() {
                         // Look for the caption input in the preview - it's inside the modal/preview area
                         var inputs = document.querySelectorAll('div[contenteditable="true"][role="textbox"]');
-                        for (var i = 0; i < inputs.length; i++) {{
+                        for (var i = 0; i < inputs.length; i++) {
                             var input = inputs[i];
                             // The caption input usually has "Type a message" or "Add a caption" as aria-label
                             var label = input.getAttribute('aria-label') || '';
                             var placeholder = input.getAttribute('aria-placeholder') || '';
                             if (label.includes('message') || label.includes('caption') || 
-                                placeholder.includes('message') || placeholder.includes('caption')) {{
+                                placeholder.includes('message') || placeholder.includes('caption')) {
                                 return true;
-                            }}
-                        }}
+                            }
+                        }
                         return false;
-                    }})();"##
-                );
+                    })();"#;
 
                 let has_input = page
-                    .evaluate(find_caption_input.as_str())
+                    .evaluate(find_caption_input)
                     .await?
                     .into_value::<bool>()
                     .unwrap_or(false);
@@ -706,11 +706,7 @@ impl ChatServiceTrait for ChatService {
                 .unwrap_or(MediaType::None);
 
             let id = if media_type == MediaType::None {
-                db.insert_outgoing_message(
-                    phone,
-                    text.unwrap_or(""),
-                    MessageStatus::Processing,
-                )?
+                db.insert_outgoing_message(phone, text.unwrap_or(""), MessageStatus::Processing)?
             } else {
                 db.insert_outgoing_media(
                     phone,
@@ -795,7 +791,9 @@ impl ChatServiceTrait for ChatService {
         let page = self.get_page().await?;
 
         if !self.check_authorization(&page).await? {
-            return Err(anyhow::anyhow!("Not authorized - please scan QR code first"));
+            return Err(anyhow::anyhow!(
+                "Not authorized - please scan QR code first"
+            ));
         }
 
         let script = r##"
@@ -870,9 +868,7 @@ impl ChatServiceTrait for ChatService {
         "##;
 
         let result = page.evaluate(script).await?;
-        let chats: Vec<crate::models::chat::ChatInfo> = result
-            .into_value()
-            .unwrap_or_default();
+        let chats: Vec<crate::models::chat::ChatInfo> = result.into_value().unwrap_or_default();
 
         Ok(chats)
     }
@@ -887,7 +883,9 @@ impl ChatServiceTrait for ChatService {
         let page = self.get_page().await?;
 
         if !self.check_authorization(&page).await? {
-            return Err(anyhow::anyhow!("Not authorized - please scan QR code first"));
+            return Err(anyhow::anyhow!(
+                "Not authorized - please scan QR code first"
+            ));
         }
 
         // Navigate to the chat if chat_id looks like a phone number
@@ -1065,9 +1063,8 @@ impl ChatServiceTrait for ChatService {
         );
 
         let result = page.evaluate(extract_script.as_str()).await?;
-        let messages: Vec<crate::models::chat::MessageInfo> = result
-            .into_value()
-            .unwrap_or_default();
+        let messages: Vec<crate::models::chat::MessageInfo> =
+            result.into_value().unwrap_or_default();
 
         // Get chat name from header
         let name_script = r##"
@@ -1137,9 +1134,8 @@ impl ChatServiceTrait for ChatService {
         "##;
 
         let result = page.evaluate(script).await?;
-        let messages: Vec<crate::models::chat::MessageInfo> = result
-            .into_value()
-            .unwrap_or_default();
+        let messages: Vec<crate::models::chat::MessageInfo> =
+            result.into_value().unwrap_or_default();
 
         Ok(messages)
     }

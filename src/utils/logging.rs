@@ -53,7 +53,7 @@ pub fn init_logging(env_config: &EnvironmentConfig) -> Result<(), Box<dyn std::e
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
     // Create env filter from configuration
-    let env_filter = EnvFilter::try_new(&env_config.get_rust_log_filter())
+    let env_filter = EnvFilter::try_new(env_config.get_rust_log_filter())
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
     let registry = Registry::default().with(env_filter);

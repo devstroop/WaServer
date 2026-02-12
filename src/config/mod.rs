@@ -199,7 +199,7 @@ impl AppConfig {
             .add_source(config::Environment::with_prefix("WHATSAPP").separator("__"));
 
         // Try to load from current directory if config/app doesn't exist
-        if let Err(_) = std::fs::metadata("config/app.toml") {
+        if std::fs::metadata("config/app.toml").is_err() {
             builder = builder.add_source(config::File::with_name("app").required(false));
         }
 

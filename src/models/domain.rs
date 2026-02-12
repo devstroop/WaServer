@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 
 // Re-export database types as the canonical source for Message-related types
 // This avoids duplicate definitions and ensures consistency
-pub use crate::services::database::{
-    MediaType, Message, MessageStatus, NewMessage, SELF_JID,
-};
+pub use crate::services::database::{MediaType, Message, MessageStatus, NewMessage, SELF_JID};
 
 /// Authentication status for the library API
 #[derive(Debug, Clone, Serialize, Deserialize)]

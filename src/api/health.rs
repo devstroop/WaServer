@@ -41,7 +41,7 @@ pub struct MetricsResponse {
 static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
 
 fn get_start_time() -> SystemTime {
-    *START_TIME.get_or_init(|| SystemTime::now())
+    *START_TIME.get_or_init(SystemTime::now)
 }
 
 /// Health Check Endpoint
