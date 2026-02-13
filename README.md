@@ -58,7 +58,7 @@ Server starts at `http://localhost:3000`
 |--------|----------|-------------|
 | `GET` | `/api/v1/chats` | List all chats |
 | `GET` | `/api/v1/chats/:id` | Get messages for a chat |
-| `GET` | `/api/v1/chats/events` | SSE stream for real-time messages |
+| `GET` | `/api/v1/chats/events` | Stream for real-time messages |
 
 ### Messages
 
