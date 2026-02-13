@@ -26,38 +26,17 @@ use utoipa;
 pub async fn get_auth_status(
     State(whatsapp_service): State<Arc<WhatsAppService>>,
 ) -> Result<Json<AuthStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
-    match whatsapp_service.auth_service().is_authorized().await {
-        Ok(authorized) => {
-            if authorized {
-                // Try to get sender ID
-                match whatsapp_service.auth_service().get_sender_id().await {
-                    Ok(sender_id) => Ok(Json(AuthStatusResponse {
-                        authorized,
-                        sender_id,
-                    })),
-                    Err(e) => {
-                        error!("Error getting sender ID: {}", e);
-                        Ok(Json(AuthStatusResponse {
-                            authorized,
-                            sender_id: None,
-                        }))
-                    }
-                }
-            } else {
-                Ok(Json(AuthStatusResponse {
-                    authorized,
-                    sender_id: None,
-                }))
-            }
-        }
+    match whatsapp_service.get_auth_status().await {
+        Ok(response) => Ok(Json(response)),
         Err(e) => {
             error!("Error checking auth status: {}", e);
-
-            // If browser is not initialized, return a specific response
+            
+            // If browser is not initialized, return a checking response
             if e.to_string().contains("Browser not initialized") {
                 Ok(Json(AuthStatusResponse {
-                    authorized: false,
-                    sender_id: None,
+                    authenticated: false,
+                    status: "checking".to_string(),
+                    phone_number: None,
                 }))
             } else {
                 Err((

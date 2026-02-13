@@ -813,10 +813,49 @@ impl ChatServiceTrait for ChatService {
                     const name = nameEl.innerText || nameEl.getAttribute('title') || '';
                     if (!name || name === 'Loading…') return;
                     
-                    // Get last message
-                    const msgEl = row.querySelector('[data-testid="last-msg-status"]')?.parentElement ||
-                                  row.querySelector('span[title]:not([data-testid])');
-                    const lastMsg = msgEl ? msgEl.innerText : null;
+                    // Get last message - look for the message preview text under the chat name
+                    let lastMsg = null;
+                    
+                    // Method 1: WhatsApp's last message status container
+                    const lastMsgContainer = row.querySelector('[data-testid="last-msg-status"]');
+                    if (lastMsgContainer) {
+                        const parent = lastMsgContainer.closest('div');
+                        if (parent) {
+                            // Get text excluding status icons
+                            const textSpans = parent.querySelectorAll('span');
+                            for (const span of textSpans) {
+                                if (!span.querySelector('[data-icon]') && span.innerText?.trim()) {
+                                    lastMsg = span.innerText.trim();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Method 2: Look for the second row of text (first is name, second is message)
+                    if (!lastMsg) {
+                        const cellContainer = row.querySelector('[data-testid="cell-frame-container"]') || row;
+                        const spans = cellContainer.querySelectorAll('span[dir="ltr"], span[dir="auto"]');
+                        // Find spans that aren't the name and aren't timestamps
+                        for (const span of spans) {
+                            const text = span.innerText?.trim();
+                            if (text && text !== name && !text.match(/^\d{1,2}:\d{2}/) && 
+                                !text.match(/^(Yesterday|Today)/) && text.length > 0) {
+                                // Skip if this is likely the name element
+                                if (span.closest('[data-testid="cell-frame-title"]')) continue;
+                                lastMsg = text;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Method 3: Look for message text in secondary content area
+                    if (!lastMsg) {
+                        const secondaryEl = row.querySelector('[data-testid="cell-frame-secondary"]');
+                        if (secondaryEl) {
+                            lastMsg = secondaryEl.innerText?.trim() || null;
+                        }
+                    }
                     
                     // Get timestamp
                     const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]') ||
@@ -828,7 +867,7 @@ impl ChatServiceTrait for ChatService {
                                      row.querySelector('span[aria-label*="unread"]');
                     let unreadCount = 0;
                     if (unreadEl) {
-                        const text = unreadEl.innerText || unreadEl.getAttribute('aria-label') || '0';
+                        const text = unreadEl.innerText || unreadEl.getAttribute('aria-label') || '';
                         const match = text.match(/\d+/);
                         unreadCount = match ? parseInt(match[0]) : 0;
                     }
@@ -842,11 +881,59 @@ impl ChatServiceTrait for ChatService {
                     const avatarEl = row.querySelector('img[src*="pps.whatsapp.net"]');
                     const avatarUrl = avatarEl ? avatarEl.src : null;
                     
-                    // Try to extract chat ID from data attributes or link
-                    let chatId = name; // Default to name
-                    const dataId = row.getAttribute('data-id');
-                    if (dataId && dataId.includes('@')) {
-                        chatId = dataId;
+                    // Try to extract chat ID from multiple sources
+                    let chatId = null;
+                    
+                    // Method 1: data-id attribute on row or parent
+                    let el = row;
+                    for (let i = 0; i < 5 && el; i++) {
+                        const dataId = el.getAttribute('data-id');
+                        if (dataId && dataId.includes('@')) {
+                            chatId = dataId;
+                            break;
+                        }
+                        el = el.parentElement;
+                    }
+                    
+                    // Method 2: Look for data-id in child elements (deeper search)
+                    if (!chatId) {
+                        const allWithId = row.querySelectorAll('[data-id]');
+                        for (const child of allWithId) {
+                            const childDataId = child.getAttribute('data-id');
+                            if (childDataId && childDataId.includes('@')) {
+                                chatId = childDataId;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Method 3: Look for phone in aria-label or title attributes
+                    if (!chatId) {
+                        const allElements = row.querySelectorAll('[aria-label], [title]');
+                        for (const el of allElements) {
+                            const attr = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+                            // Match phone patterns like +919876543210 or 919876543210
+                            const phoneMatch = attr.match(/\+?(\d{10,15})/);
+                            if (phoneMatch) {
+                                chatId = phoneMatch[1] + '@c.us';
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Method 4: Extract phone number from name (handles formats like "+91 97389 68141")
+                    if (!chatId) {
+                        // Remove all non-digit characters except leading +
+                        const cleanName = name.replace(/[^\d+]/g, '').replace(/^\+/, '');
+                        if (cleanName.length >= 10 && cleanName.length <= 15 && /^\d+$/.test(cleanName)) {
+                            chatId = cleanName + '@c.us';
+                        }
+                    }
+                    
+                    // Method 5: Use the name as a fallback identifier
+                    // But prefix it to indicate it's a name-based ID
+                    if (!chatId) {
+                        chatId = 'name:' + name;
                     }
                     
                     chats.push({
@@ -888,28 +975,41 @@ impl ChatServiceTrait for ChatService {
             ));
         }
 
-        // Navigate to the chat if chat_id looks like a phone number
-        let is_phone = chat_id.chars().all(|c| c.is_ascii_digit() || c == '+');
-        if is_phone {
-            self.navigate_to_chat(&page, chat_id).await?;
-            // Wait for messages to load
-            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        // Determine how to navigate to the chat
+        let chat_name = if chat_id.starts_with("name:") {
+            // Extract name from "name:Contact Name" format
+            Some(chat_id.strip_prefix("name:").unwrap_or(chat_id))
+        } else if chat_id.contains('@') {
+            // It's a JID like "919876543210@c.us" - extract phone and also try name click
+            None
+        } else if chat_id.chars().all(|c| c.is_ascii_digit() || c == '+') {
+            // Pure phone number
+            None
         } else {
-            // Try to click on the chat by name in the sidebar
+            // Assume it's a contact name
+            Some(chat_id)
+        };
+
+        let mut navigated = false;
+
+        // Try to click on the chat by name in the sidebar first (most reliable)
+        if let Some(name) = chat_name {
             let click_script = format!(
                 r##"(function() {{
-                    const rows = document.querySelectorAll('[role="listitem"], [role="row"]');
+                    const rows = document.querySelectorAll('[role="listitem"], [role="row"], [data-testid="cell-frame-container"]');
                     for (const row of rows) {{
-                        const nameEl = row.querySelector('span[title]');
-                        if (nameEl && (nameEl.title === "{}" || nameEl.innerText === "{}")) {{
+                        const nameEl = row.querySelector('[data-testid="cell-frame-title"] span') ||
+                                       row.querySelector('span[title]') ||
+                                       row.querySelector('[dir="auto"]');
+                        if (nameEl && (nameEl.title === "{0}" || nameEl.innerText === "{0}" || 
+                            nameEl.getAttribute('title') === "{0}")) {{
                             row.click();
                             return true;
                         }}
                     }}
                     return false;
                 }})();"##,
-                chat_id.replace('"', "\\\""),
-                chat_id.replace('"', "\\\"")
+                name.replace('"', "\\\"").replace('\n', " ")
             );
 
             let clicked = page
@@ -919,7 +1019,26 @@ impl ChatServiceTrait for ChatService {
                 .unwrap_or(false);
 
             if clicked {
+                debug!("Clicked on chat by name: {}", name);
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                navigated = true;
+            }
+        }
+
+        // If name click didn't work, try phone number navigation
+        if !navigated {
+            let phone = if chat_id.contains('@') {
+                chat_id.split('@').next().unwrap_or(chat_id)
+            } else if chat_id.starts_with("name:") {
+                "" // Can't navigate by phone if we only have name
+            } else {
+                chat_id
+            };
+
+            if !phone.is_empty() && phone.chars().all(|c| c.is_ascii_digit() || c == '+') {
+                self.navigate_to_chat(&page, phone).await?;
                 tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                navigated = true;
             }
         }
 

@@ -18,6 +18,8 @@ args = [
 ]
 
 [auth]
+# Enable Bearer token authentication (set to false to disable auth completely)
+enabled = true
 # Set your secure API token here - CHANGE THIS IN PRODUCTION!
 api_token = "your-secure-api-token-change-this"
 
@@ -50,7 +52,27 @@ rust_log = "was=info"
 debug_mode = true
 health_check_interval = 30
 
-# MCP (Model Context Protocol) Configuration
+# =============================================================================
+# Web UI - React-based frontend for browser access
+# =============================================================================
+[web]
+# Enable Web UI serving (set to false for API-only mode)
+enabled = true
+# Path to the frontend build directory
+path = "app/dist"
+
+# =============================================================================
+# Swagger UI - Interactive API documentation
+# =============================================================================
+[swagger]
+# Enable Swagger UI (set to false to disable API docs in production)
+enabled = true
+# Swagger UI path
+path = "/swagger-ui"
+
+# =============================================================================
+# MCP - Model Context Protocol for AI agent integration
+# =============================================================================
 [mcp]
 # Enable MCP server (requires --features mcp at compile time)
 enabled = true

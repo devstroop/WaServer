@@ -4,6 +4,7 @@ use crate::{
     models::auth::AuthStatusResponse,
     services::{
         auth::{AuthService, AuthServiceTrait},
+        auth_token_service::AuthTokenService,
         chat::{ChatService, ChatServiceTrait},
         database::DatabaseService,
         webhook::{WebhookEvent, WebhookMessageData, WebhookService},
@@ -23,6 +24,8 @@ pub struct WhatsAppService {
     chat_service: Arc<dyn ChatServiceTrait>,
     db: Arc<DatabaseService>,
     webhook_service: Arc<WebhookService>,
+    /// Auth token service for JWT-based local authentication
+    auth_token_service: Option<Arc<AuthTokenService>>,
     /// Semaphore for limiting concurrent operations (set to 1 for mutual exclusion)
     operation_semaphore: Arc<Semaphore>,
     metrics: ServiceMetrics,
@@ -61,6 +64,28 @@ impl WhatsAppService {
             );
         }
 
+        // Initialize auth token service if local auth is enabled
+        let auth_token_service = if config.local_auth.enabled {
+            match AuthTokenService::new(
+                config.local_auth.jwt_secret.clone(),
+                config.local_auth.token_expiry_hours,
+                config.local_auth.refresh_token_expiry_days,
+                Some(config.local_auth.default_username.clone()),
+                Some(config.local_auth.default_password.clone()),
+            ) {
+                Ok(service) => {
+                    info!("Local authentication enabled with JWT tokens");
+                    Some(Arc::new(service))
+                }
+                Err(e) => {
+                    error!("Failed to initialize auth token service: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let auth_service = Arc::new(AuthService::new(config.clone(), browser_service.clone()));
         let chat_service = Arc::new(ChatService::with_database(
             config.clone(),
@@ -75,6 +100,7 @@ impl WhatsAppService {
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             db,
             webhook_service,
+            auth_token_service,
             operation_semaphore: Arc::new(Semaphore::new(1)), // Single permit for mutual exclusion
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
@@ -106,6 +132,21 @@ impl WhatsAppService {
     /// Get the API token from configuration
     pub fn get_api_token(&self) -> &str {
         &self.config.auth.api_token
+    }
+
+    /// Check if authentication is enabled
+    pub fn is_auth_enabled(&self) -> bool {
+        self.config.auth.enabled
+    }
+
+    /// Check if local auth is enabled
+    pub fn is_local_auth_enabled(&self) -> bool {
+        self.config.local_auth.enabled
+    }
+
+    /// Get reference to auth token service (for JWT-based auth)
+    pub fn auth_token_service(&self) -> Option<&Arc<AuthTokenService>> {
+        self.auth_token_service.as_ref()
     }
 
     /// Get reference to auth service
@@ -282,12 +323,21 @@ impl WhatsAppService {
     /// Get authentication status with metrics tracking
     pub async fn get_auth_status(&self) -> Result<AuthStatusResponse> {
         self.metrics.increment_auth_attempts();
-        match self.auth_service.is_authorized().await {
-            Ok(is_authorized) => {
+        match self.auth_service.check_auth_status().await {
+            Ok(auth_result) => {
                 self.metrics.update_last_activity();
+                
+                // Only fetch phone number if authenticated
+                let phone_number = if auth_result.authorized {
+                    self.auth_service.get_sender_id().await.unwrap_or(None)
+                } else {
+                    None
+                };
+                
                 Ok(AuthStatusResponse {
-                    authorized: is_authorized,
-                    sender_id: self.auth_service.get_sender_id().await.unwrap_or(None),
+                    authenticated: auth_result.authorized,
+                    status: auth_result.status,
+                    phone_number,
                 })
             }
             Err(e) => {

@@ -81,7 +81,7 @@ pub async fn health_check(
     let memory_usage = get_memory_usage();
     let connection_status = match whatsapp_service.get_auth_status().await {
         Ok(status) => {
-            if status.authorized {
+            if status.authenticated {
                 "connected".to_string()
             } else {
                 "disconnected".to_string()

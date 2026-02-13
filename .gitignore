@@ -52,3 +52,4 @@ config/local.toml
 
 
 /data/*.db
+.playwright-mcp

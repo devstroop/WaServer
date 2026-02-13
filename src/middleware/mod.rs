@@ -107,6 +107,11 @@ pub async fn auth_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    // Skip auth if disabled in config
+    if !whatsapp_service.is_auth_enabled() {
+        return Ok(next.run(request).await);
+    }
+
     // Skip auth for public endpoints
     let path = request.uri().path();
     if path.starts_with("/health")
@@ -116,6 +121,9 @@ pub async fn auth_middleware(
         || path.starts_with("/swagger-ui")
         || path.starts_with("/api-docs")
         || path.starts_with("/mcp")
+        || path == "/api/v1/auth/login"
+        || path == "/api/v1/auth/refresh"
+        || path == "/api/v1/auth/local-status"
     {
         return Ok(next.run(request).await);
     }
@@ -127,9 +135,6 @@ pub async fn auth_middleware(
         .cloned()
         .unwrap_or_else(CorrelationId::new);
 
-    // Get API token from configuration
-    let expected_token = whatsapp_service.get_api_token();
-
     // Extract the Authorization header
     let auth_header = headers
         .get("authorization")
@@ -137,11 +142,27 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
+            // First, try JWT validation if local auth is enabled
+            if whatsapp_service.is_local_auth_enabled() {
+                if let Some(auth_token_service) = whatsapp_service.auth_token_service() {
+                    if auth_token_service.validate_access_token(token).is_ok() {
+                        tracing::debug!(
+                            correlation_id = %correlation_id.0,
+                            path = %path,
+                            "JWT authentication successful"
+                        );
+                        return Ok(next.run(request).await);
+                    }
+                }
+            }
+
+            // Fall back to static token validation
+            let expected_token = whatsapp_service.get_api_token();
             if token == expected_token {
                 tracing::debug!(
                     correlation_id = %correlation_id.0,
                     path = %path,
-                    "Authentication successful"
+                    "Static token authentication successful"
                 );
                 return Ok(next.run(request).await);
             }
@@ -171,9 +192,12 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
         "referrer-policy",
         "strict-origin-when-cross-origin".parse().unwrap(),
     );
+    // CSP: allow self, data: for QR code images, and unsafe-inline for React styles
     headers.insert(
         "content-security-policy",
-        "default-src 'self'".parse().unwrap(),
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+            .parse()
+            .unwrap(),
     );
 
     response

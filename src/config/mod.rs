@@ -10,11 +10,17 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub browser: BrowserConfig,
     pub auth: AuthConfig,
+    #[serde(default)]
+    pub local_auth: LocalAuthConfig,
     pub logging: LoggingConfig,
     pub cache: CacheConfig,
     pub cors: CorsConfig,
     pub limits: LimitsConfig,
     pub environment: EnvironmentConfig,
+    #[serde(default)]
+    pub web: WebConfig,
+    #[serde(default)]
+    pub swagger: SwaggerConfig,
     #[serde(default)]
     pub mcp: McpConfig,
     #[serde(default)]
@@ -84,6 +90,62 @@ impl Default for McpConfig {
     }
 }
 
+/// Web UI configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebConfig {
+    /// Enable Web UI serving
+    #[serde(default = "default_web_enabled")]
+    pub enabled: bool,
+    /// Path to the frontend build directory
+    #[serde(default = "default_web_path")]
+    pub path: String,
+}
+
+fn default_web_enabled() -> bool {
+    true
+}
+
+fn default_web_path() -> String {
+    "app/dist".to_string()
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: "app/dist".to_string(),
+        }
+    }
+}
+
+/// Swagger UI configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SwaggerConfig {
+    /// Enable Swagger UI
+    #[serde(default = "default_swagger_enabled")]
+    pub enabled: bool,
+    /// Swagger UI path
+    #[serde(default = "default_swagger_path")]
+    pub path: String,
+}
+
+fn default_swagger_enabled() -> bool {
+    true
+}
+
+fn default_swagger_path() -> String {
+    "/swagger-ui".to_string()
+}
+
+impl Default for SwaggerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: "/swagger-ui".to_string(),
+        }
+    }
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
@@ -102,7 +164,71 @@ pub struct BrowserConfig {
 /// Authentication configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
+    /// Enable Bearer token authentication
+    #[serde(default = "default_auth_enabled")]
+    pub enabled: bool,
+    /// API token for Bearer authentication
     pub api_token: String,
+}
+
+fn default_auth_enabled() -> bool {
+    true
+}
+
+/// Local authentication configuration (JWT-based)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LocalAuthConfig {
+    /// Enable local authentication with JWT tokens
+    #[serde(default)]
+    pub enabled: bool,
+    /// JWT secret key for signing tokens
+    #[serde(default = "default_jwt_secret")]
+    pub jwt_secret: String,
+    /// Access token expiry in hours
+    #[serde(default = "default_token_expiry_hours")]
+    pub token_expiry_hours: i64,
+    /// Refresh token expiry in days
+    #[serde(default = "default_refresh_token_expiry_days")]
+    pub refresh_token_expiry_days: i64,
+    /// Default admin username
+    #[serde(default = "default_username")]
+    pub default_username: String,
+    /// Default admin password
+    #[serde(default = "default_password")]
+    pub default_password: String,
+}
+
+fn default_jwt_secret() -> String {
+    "your-super-secret-jwt-key-change-this-in-production-32chars".to_string()
+}
+
+fn default_token_expiry_hours() -> i64 {
+    24
+}
+
+fn default_refresh_token_expiry_days() -> i64 {
+    7
+}
+
+fn default_username() -> String {
+    "admin".to_string()
+}
+
+fn default_password() -> String {
+    "admin123".to_string()
+}
+
+impl Default for LocalAuthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            jwt_secret: default_jwt_secret(),
+            token_expiry_hours: default_token_expiry_hours(),
+            refresh_token_expiry_days: default_refresh_token_expiry_days(),
+            default_username: default_username(),
+            default_password: default_password(),
+        }
+    }
 }
 
 /// Logging configuration
@@ -155,8 +281,10 @@ impl Default for AppConfig {
                 ],
             },
             auth: AuthConfig {
+                enabled: true,
                 api_token: "your-secure-api-token-change-this".to_string(),
             },
+            local_auth: LocalAuthConfig::default(),
             logging: LoggingConfig {
                 level: "info".to_string(),
             },
@@ -180,6 +308,8 @@ impl Default for AppConfig {
                 max_upload_size: 10 * 1024 * 1024, // 10MB
             },
             environment: EnvironmentConfig::default(),
+            web: WebConfig::default(),
+            swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
         }
@@ -216,12 +346,27 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        if self.auth.api_token == "your-secure-api-token-change-this" {
-            return Err("Please change the default API token in configuration".to_string());
+        // Validate auth config - either static token or local auth must be enabled
+        if self.auth.enabled && !self.local_auth.enabled {
+            // Static token auth mode
+            if self.auth.api_token == "your-secure-api-token-change-this" {
+                return Err("Please change the default API token in configuration".to_string());
+            }
+
+            if self.auth.api_token.len() < 16 {
+                return Err("API token must be at least 16 characters long".to_string());
+            }
         }
 
-        if self.auth.api_token.len() < 16 {
-            return Err("API token must be at least 16 characters long".to_string());
+        // Validate local auth config
+        if self.local_auth.enabled {
+            if self.local_auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
+                tracing::warn!("Using default JWT secret - please change in production!");
+            }
+
+            if self.local_auth.jwt_secret.len() < 32 {
+                return Err("JWT secret must be at least 32 characters long".to_string());
+            }
         }
 
         if self.browser.timeout_ms == 0 {

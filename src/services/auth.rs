@@ -14,13 +14,52 @@ use std::time::Duration;
 use tracing::{debug, info};
 
 // ============================================================================
+// Types
+// ============================================================================
+
+/// Authentication check result with status information
+#[derive(Debug, Clone)]
+pub struct AuthCheckResult {
+    /// Whether the user is authorized
+    pub authorized: bool,
+    /// Status reason: "authenticated", "not_authenticated", "checking"
+    pub status: String,
+}
+
+impl AuthCheckResult {
+    pub fn authenticated() -> Self {
+        Self {
+            authorized: true,
+            status: "authenticated".to_string(),
+        }
+    }
+
+    pub fn not_authenticated() -> Self {
+        Self {
+            authorized: false,
+            status: "not_authenticated".to_string(),
+        }
+    }
+
+    pub fn checking() -> Self {
+        Self {
+            authorized: false,
+            status: "checking".to_string(),
+        }
+    }
+}
+
+// ============================================================================
 // Trait Definition
 // ============================================================================
 
 /// Authentication service trait
 #[async_trait]
 pub trait AuthServiceTrait: Send + Sync {
-    /// Check if user is authorized (logged in)
+    /// Check if user is authorized (logged in) - returns detailed status
+    async fn check_auth_status(&self) -> Result<AuthCheckResult>;
+
+    /// Check if user is authorized (simple bool for compatibility)
     async fn is_authorized(&self) -> Result<bool>;
 
     /// Get the sender's phone number/ID
@@ -174,7 +213,7 @@ impl AuthService {
 
 #[async_trait]
 impl AuthServiceTrait for AuthService {
-    async fn is_authorized(&self) -> Result<bool> {
+    async fn check_auth_status(&self) -> Result<AuthCheckResult> {
         let page = self.get_page().await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -223,7 +262,23 @@ impl AuthServiceTrait for AuthService {
             "Authorization check: authorized={}, reason={}",
             authorized, reason
         );
-        Ok(authorized)
+
+        // Map the reason to a user-friendly status
+        let status = match (authorized, reason) {
+            (true, _) => "authenticated",
+            (false, "login") | (false, "phone") | (false, "code") => "not_authenticated",
+            (false, "unclear") | (false, _) => "checking",
+        };
+
+        Ok(AuthCheckResult {
+            authorized,
+            status: status.to_string(),
+        })
+    }
+
+    async fn is_authorized(&self) -> Result<bool> {
+        let result = self.check_auth_status().await?;
+        Ok(result.authorized)
     }
 
     async fn get_sender_id(&self) -> Result<Option<String>> {

@@ -71,6 +71,7 @@ async fn run_server(
     use tower::ServiceBuilder;
     use tower_http::{
         cors::{Any, CorsLayer},
+        services::{ServeDir, ServeFile},
         trace::TraceLayer,
     };
     use utoipa::{
@@ -107,6 +108,10 @@ async fn run_server(
             auth::get_qr_code,
             auth::login_with_phone,
             auth::logout,
+            auth::get_local_auth_status,
+            auth::local_login,
+            auth::refresh_token,
+            auth::local_logout,
             chat::send_message,
             chat::list_chats,
             chat::get_chat_messages,
@@ -117,6 +122,7 @@ async fn run_server(
         components(
             schemas(
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
+                LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LocalAuthStatusResponse,
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
                 health::HealthResponse, health::ServiceHealth
             )
@@ -124,6 +130,7 @@ async fn run_server(
         modifiers(&SecurityAddon),
         tags(
             (name = "Authentication", description = "WhatsApp authentication endpoints"),
+            (name = "Local Authentication", description = "Local user authentication with JWT tokens"),
             (name = "Chat", description = "WhatsApp chat and messaging endpoints"),
             (name = "Messages", description = "Message management endpoints"),
             (name = "Health", description = "Health check endpoints")
@@ -151,7 +158,7 @@ async fn run_server(
     // Health endpoint
     let mut app = Router::new().route("/health", get(health::health_check));
 
-    // MCP endpoints (feature-gated)
+    // MCP endpoints (feature-gated and config-enabled)
     #[cfg(feature = "mcp")]
     if config.mcp.enabled {
         use was::handlers::mcp;
@@ -162,29 +169,71 @@ async fn run_server(
         );
     }
 
+    #[cfg(feature = "mcp")]
+    if !config.mcp.enabled {
+        info!("🤖 MCP disabled (set mcp.enabled = true to enable)");
+    }
+
+    #[cfg(not(feature = "mcp"))]
+    info!("🤖 MCP not compiled (build with --features mcp to enable)");
+
     info!("📖 REST API at /api/v1");
-    info!("📚 Swagger UI at /swagger-ui/");
 
     // REST API endpoints (always included)
-    app = app
-        .nest(
-            "/api/v1",
-            Router::new()
-                .route("/auth/status", get(auth::get_auth_status))
-                .route("/auth/qr", get(auth::get_qr_code))
-                .route("/auth/login", post(auth::login_with_phone))
-                .route("/auth/logout", post(auth::logout))
-                .route("/chats", get(chat::list_chats))
-                .route("/chats/events", get(chat::watch_messages))
-                .route("/chats/:chat_id", get(chat::get_chat_messages))
-                .route("/messages", post(chat::send_message))
-                .route("/messages/:message_id", get(chat::get_message))
-                .layer(middleware::from_fn_with_state(
-                    whatsapp_service.clone(),
-                    auth_middleware,
-                )),
-        )
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+    app = app.nest(
+        "/api/v1",
+        Router::new()
+            // WhatsApp auth routes (protected)
+            .route("/auth/status", get(auth::get_auth_status))
+            .route("/auth/qr", get(auth::get_qr_code))
+            .route("/auth/phone", post(auth::login_with_phone))
+            .route("/auth/logout", post(auth::logout))
+            // Chat routes (protected)
+            .route("/chats", get(chat::list_chats))
+            .route("/chats/events", get(chat::watch_messages))
+            .route("/chats/:chat_id", get(chat::get_chat_messages))
+            .route("/messages", post(chat::send_message))
+            .route("/messages/:message_id", get(chat::get_message))
+            .layer(middleware::from_fn_with_state(
+                whatsapp_service.clone(),
+                auth_middleware,
+            ))
+            // Local auth routes (public - no auth middleware)
+            .route("/auth/local-status", get(auth::get_local_auth_status))
+            .route("/auth/login", post(auth::local_login))
+            .route("/auth/refresh", post(auth::refresh_token))
+            .route("/auth/local-logout", post(auth::local_logout)),
+    );
+
+    // Swagger UI (configurable)
+    if config.swagger.enabled {
+        info!("📚 Swagger UI at {}", config.swagger.path);
+        let swagger_path = config.swagger.path.clone();
+        app = app.merge(
+            SwaggerUi::new(swagger_path).url("/api-docs/openapi.json", ApiDoc::openapi()),
+        );
+    } else {
+        info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
+    }
+
+    // Serve static frontend if enabled and app/dist exists
+    if config.web.enabled {
+        let frontend_path = std::path::Path::new(&config.web.path);
+        if frontend_path.exists() {
+            info!("🌐 Web UI at / (serving from {})", config.web.path);
+            app = app.fallback_service(
+                ServeDir::new(frontend_path)
+                    .not_found_service(ServeFile::new(frontend_path.join("index.html"))),
+            );
+        } else {
+            info!(
+                "💡 Web UI enabled but '{}' not found. Run 'cd app && npm install && npm run build' to build.",
+                config.web.path
+            );
+        }
+    } else {
+        info!("🌐 Web UI disabled (set web.enabled = true to enable)");
+    }
 
     // Middleware
     let app = app

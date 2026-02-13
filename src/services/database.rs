@@ -412,7 +412,7 @@ pub struct DatabaseService {
 impl DatabaseService {
     /// Create a new database service
     pub fn new(data_dir: &str) -> Result<Self> {
-        let db_path = Path::new(data_dir).join("messages.db");
+        let db_path = Path::new(data_dir).join("database.db");
         let db_path_str = db_path.to_string_lossy().to_string();
 
         // Ensure directory exists
