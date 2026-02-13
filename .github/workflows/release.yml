@@ -31,14 +31,14 @@ jobs:
             os: windows-latest
             artifact: was.exe
             cross: false
-          # macOS x86_64 (Intel runner)
+          # macOS x86_64 (cross-compile from ARM runner)
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             artifact: was
             cross: false
-          # macOS ARM64 (Apple Silicon runner)
+          # macOS ARM64 (native on ARM runner)
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
             artifact: was
             cross: false
 
@@ -54,10 +54,22 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo dpkg --add-architecture arm64
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev:arm64
 
       - name: Configure linker (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
+        env:
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
+          OPENSSL_DIR: /usr
+          OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
+          OPENSSL_INCLUDE_DIR: /usr/include
         run: |
           mkdir -p .cargo
           echo '[target.aarch64-unknown-linux-gnu]' >> .cargo/config.toml
@@ -70,6 +82,11 @@ jobs:
 
       - name: Build release
         run: cargo build --release --features mcp --target ${{ matrix.target }}
+        env:
+          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '1' || '' }}
+          PKG_CONFIG_PATH: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu/pkgconfig' || '' }}
+          OPENSSL_LIB_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu' || '' }}
+          OPENSSL_INCLUDE_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/include' || '' }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
