@@ -15,12 +15,27 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: was
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: was
+          # Windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: was.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            artifact: was.exe
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: was
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: was
 
     steps:
       - uses: actions/checkout@v4
