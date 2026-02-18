@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Webhooks - WAS{% endblock %}
+{% block page_title %}Webhooks{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Webhooks</h1>
+            <p class="text-muted-foreground">Configure webhook endpoints for message notifications</p>
+        </div>
+        <button 
+            class="btn btn-whatsapp"
+            @click="$dispatch('open-webhook-modal')"
+        >
+            <i data-lucide="plus" class="h-4 w-4 mr-2"></i>
+            Add Webhook
+        </button>
+    </div>
+
+    <!-- Webhook List -->
+    <div 
+        id="webhook-list"
+        hx-get="/partials/webhook-list"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+    >
+        <!-- Loading state -->
+        <div class="card">
+            <div class="p-6 space-y-4">
+                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/3"></div><div class="h-3 bg-muted rounded w-1/2"></div></div></div>
+                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/3"></div><div class="h-3 bg-muted rounded w-1/2"></div></div></div>
+                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/3"></div><div class="h-3 bg-muted rounded w-1/2"></div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Card -->
+    <div class="card bg-muted/50">
+        <div class="p-6">
+            <h3 class="font-semibold flex items-center gap-2 mb-2">
+                <i data-lucide="info" class="h-5 w-5 text-blue-500"></i>
+                Webhook Signature Verification
+            </h3>
+            <p class="text-sm text-muted-foreground mb-4">
+                Each webhook request includes an <code class="bg-background px-1.5 py-0.5 rounded text-xs">X-Webhook-Signature</code> header 
+                containing an HMAC-SHA256 signature. Use your secret to verify the payload.
+            </p>
+            <div class="bg-background rounded-lg p-4 overflow-x-auto">
+                <pre class="text-xs"><code class="language-python"># Python example
+import hmac
+import hashlib
+
+def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Webhook Modal -->
+<div 
+    x-data="{ open: false, editing: null }"
+    @open-webhook-modal.window="open = true; editing = null"
+    @edit-webhook.window="open = true; editing = $event.detail"
+    @keydown.escape.window="open = false"
+>
+    <div 
+        x-show="open" 
+        x-cloak
+        class="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+        @click="open = false"
+    ></div>
+    
+    <div 
+        x-show="open"
+        x-cloak
+        class="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] card p-6"
+    >
+        <h2 class="text-lg font-semibold mb-4" x-text="editing ? 'Edit Webhook' : 'Add Webhook'"></h2>
+        
+        <form 
+            hx-post="/partials/webhook-save"
+            hx-target="#webhook-list"
+            hx-swap="innerHTML"
+            @htmx:after-request="open = false"
+            class="space-y-4"
+        >
+            <input type="hidden" name="id" x-bind:value="editing?.id || ''">
+            
+            <div class="space-y-2">
+                <label class="label">URL</label>
+                <input 
+                    type="url" 
+                    name="url" 
+                    class="input" 
+                    placeholder="https://your-server.com/webhook"
+                    x-bind:value="editing?.url || ''"
+                    required
+                >
+            </div>
+            
+            <div class="space-y-2">
+                <label class="label">Secret (for signature verification)</label>
+                <input 
+                    type="text" 
+                    name="secret" 
+                    class="input" 
+                    placeholder="your-secret-key"
+                    x-bind:value="editing?.secret || ''"
+                >
+            </div>
+            
+            <div class="flex justify-end gap-2 pt-4">
+                <button type="button" class="btn btn-outline" @click="open = false">Cancel</button>
+                <button type="submit" class="btn btn-whatsapp">Save Webhook</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

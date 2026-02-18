@@ -1,0 +1,150 @@
+<!-- Auth Panel Partial - Loaded via HTMX -->
+{% if status == "checking" %}
+<!-- Loading state -->
+<div class="card">
+    <div class="p-6">
+        <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
+            <i data-lucide="loader-2" class="h-6 w-6 text-whatsapp animate-spin"></i>
+            Connecting to WhatsApp
+        </h2>
+        <p class="text-center text-muted-foreground mb-6">Please wait while WhatsApp Web loads...</p>
+        
+        <div class="flex flex-col items-center gap-4 py-8">
+            <div class="w-16 h-16 flex items-center justify-center rounded-full bg-whatsapp/10">
+                <i data-lucide="loader-2" class="h-8 w-8 text-whatsapp animate-spin"></i>
+            </div>
+            <p class="text-sm text-muted-foreground text-center">Checking authentication status...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh while checking -->
+<div hx-get="/partials/auth-panel" hx-trigger="every 3s" hx-target="#auth-panel" hx-swap="innerHTML"></div>
+
+{% else if authenticated %}
+<!-- Connected state -->
+<div class="card">
+    <div class="p-6">
+        <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
+            <i data-lucide="check-circle-2" class="h-6 w-6 text-whatsapp"></i>
+            Device Connected
+        </h2>
+        <p class="text-center text-muted-foreground mb-6">Your WhatsApp device is linked and ready</p>
+        
+        <div class="flex flex-col items-center gap-4 py-4">
+            <div class="p-4 bg-whatsapp/10 rounded-lg text-center w-full">
+                <p class="text-whatsapp-dark font-medium">
+                    ✓ Connected
+                    {% match phone_number %}
+                        {% when Some with (phone) %}
+                        <span class="block text-sm text-muted-foreground mt-1">{{ phone }}</span>
+                        {% when None %}
+                    {% endmatch %}
+                </p>
+            </div>
+            <p class="text-sm text-muted-foreground text-center">You can now send and receive messages</p>
+            <a href="/chat" class="btn btn-whatsapp">Open Chats</a>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Auth required state -->
+<div class="card">
+    <div class="p-6">
+        <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
+            <span class="text-whatsapp">●</span>
+            WhatsApp Authentication
+        </h2>
+        <p class="text-center text-muted-foreground mb-6">Scan QR code or enter phone number to link your account</p>
+        
+        <!-- Tabs -->
+        <div x-data="{ tab: 'qr' }">
+            <div class="grid grid-cols-2 gap-1 bg-muted p-1 rounded-lg mb-6">
+                <button 
+                    @click="tab = 'qr'"
+                    class="flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                    :class="tab === 'qr' ? 'bg-background shadow' : 'hover:bg-background/50'"
+                >
+                    <i data-lucide="qr-code" class="h-4 w-4"></i>
+                    QR Code
+                </button>
+                <button 
+                    @click="tab = 'phone'"
+                    class="flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                    :class="tab === 'phone' ? 'bg-background shadow' : 'hover:bg-background/50'"
+                >
+                    <i data-lucide="smartphone" class="h-4 w-4"></i>
+                    Phone
+                </button>
+            </div>
+            
+            <!-- QR Code Tab -->
+            <div x-show="tab === 'qr'" class="flex flex-col items-center gap-4">
+                <div 
+                    id="qr-code-container"
+                    hx-get="/partials/qr-code"
+                    hx-trigger="load, every 30s"
+                    hx-swap="innerHTML"
+                >
+                    <div class="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
+                        <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground"></i>
+                    </div>
+                </div>
+                
+                <div class="text-center space-y-1 text-sm">
+                    <p class="text-muted-foreground">1. Open WhatsApp → Linked Devices</p>
+                    <p class="text-muted-foreground">2. Tap "Link a Device" → Scan QR</p>
+                </div>
+                
+                <button 
+                    class="btn btn-outline"
+                    hx-get="/partials/qr-code"
+                    hx-target="#qr-code-container"
+                    hx-swap="innerHTML"
+                >
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Refresh
+                </button>
+            </div>
+            
+            <!-- Phone Tab -->
+            <div x-show="tab === 'phone'" class="space-y-4">
+                <form 
+                    hx-post="/partials/phone-pair"
+                    hx-target="#pairing-result"
+                    hx-swap="innerHTML"
+                    class="space-y-4"
+                >
+                    <div class="space-y-2">
+                        <label class="label">Phone Number</label>
+                        <input 
+                            type="tel" 
+                            name="phone" 
+                            class="input" 
+                            placeholder="+1234567890"
+                            required
+                        >
+                        <p class="text-xs text-muted-foreground">Include country code (e.g., +1 for US)</p>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-whatsapp w-full">
+                        Get Pairing Code
+                    </button>
+                </form>
+                
+                <div id="pairing-result"></div>
+                
+                <div class="text-center space-y-1 text-sm pt-2">
+                    <p class="text-muted-foreground">1. Open WhatsApp → Linked Devices</p>
+                    <p class="text-muted-foreground">2. Tap "Link with phone number"</p>
+                    <p class="text-muted-foreground">3. Enter the pairing code above</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh to check if authenticated -->
+<div hx-get="/partials/auth-panel" hx-trigger="every 5s" hx-target="#auth-panel" hx-swap="innerHTML"></div>
+{% endif %}

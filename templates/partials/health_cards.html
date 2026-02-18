@@ -1,0 +1,76 @@
+<!-- Health Cards Partial - Loaded via HTMX -->
+<div class="row g-3 mb-4">
+    <!-- Server Status -->
+    <div class="col-md-6 col-lg-3">
+        <div class="stat-card h-100">
+            <div class="stat-title">
+                <span>Server Status</span>
+                <i class="bi bi-server"></i>
+            </div>
+            {% if health.status == "healthy" %}
+            <div class="stat-value text-success d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill"></i> Healthy
+            </div>
+            {% else %}
+            <div class="stat-value text-danger d-flex align-items-center gap-2">
+                <i class="bi bi-x-circle-fill"></i> Unhealthy
+            </div>
+            {% endif %}
+            <div class="stat-subtitle">Version: {{ health.version }}</div>
+        </div>
+    </div>
+
+    <!-- Uptime -->
+    <div class="col-md-6 col-lg-3">
+        <div class="stat-card h-100">
+            <div class="stat-title">
+                <span>Uptime</span>
+                <i class="bi bi-clock"></i>
+            </div>
+            <div class="stat-value">{{ uptime_formatted }}</div>
+            <div class="stat-subtitle">{{ health.uptime_seconds }} seconds</div>
+        </div>
+    </div>
+
+    <!-- Browser Status -->
+    <div class="col-md-6 col-lg-3">
+        <div class="stat-card h-100">
+            <div class="stat-title">
+                <span>Browser</span>
+                <i class="bi bi-activity"></i>
+            </div>
+            {% if browser_healthy %}
+            <div class="stat-value text-success d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill"></i> Ready
+            </div>
+            {% else %}
+            <div class="stat-value text-danger d-flex align-items-center gap-2">
+                <i class="bi bi-x-circle-fill"></i> Not Ready
+            </div>
+            {% endif %}
+            <div class="stat-subtitle">Chromium browser instance</div>
+        </div>
+    </div>
+
+    <!-- WhatsApp Status -->
+    <div class="col-md-6 col-lg-3">
+        <div class="stat-card h-100">
+            <div class="stat-title">
+                <span>WhatsApp</span>
+                <i class="bi bi-phone"></i>
+            </div>
+            {% if whatsapp_connected %}
+            <div class="stat-value text-success d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill"></i> Connected
+            </div>
+            {% else %}
+            <div class="stat-value text-warning d-flex align-items-center gap-2">
+                <i class="bi bi-x-circle-fill"></i> Not Linked
+            </div>
+            {% endif %}
+            <div class="stat-subtitle">
+                {% if whatsapp_connected %}Device linked{% else %}Scan QR to connect{% endif %}
+            </div>
+        </div>
+    </div>
+</div>

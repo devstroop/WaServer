@@ -1,6 +1,0 @@
-export { DashboardPage } from "./DashboardPage"
-export { ChatPage } from "./ChatPage"
-export { AuthPage } from "./AuthPage"
-export { SettingsPage } from "./SettingsPage"
-export { WebhooksPage } from "./WebhooksPage"
-export { AccessTokensPage } from "./AccessTokensPage"

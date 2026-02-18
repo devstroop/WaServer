@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - WAS{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 max-w-2xl">
+    <div>
+        <h1 class="text-3xl font-bold">Settings</h1>
+        <p class="text-muted-foreground">Configure your WAS server</p>
+    </div>
+
+    <!-- Appearance -->
+    <div class="card">
+        <div class="p-6 border-b">
+            <h2 class="text-lg font-semibold">Appearance</h2>
+            <p class="text-sm text-muted-foreground">Customize the look and feel</p>
+        </div>
+        <div class="p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="label">Theme</label>
+                    <p class="text-sm text-muted-foreground">Choose light or dark mode</p>
+                </div>
+                <div x-data="{ theme: localStorage.getItem('theme') || 'light' }">
+                    <select 
+                        class="input w-32"
+                        x-model="theme"
+                        @change="
+                            localStorage.setItem('theme', theme);
+                            document.documentElement.classList.toggle('dark', theme === 'dark');
+                        "
+                    >
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="label">Collapsed Sidebar</label>
+                    <p class="text-sm text-muted-foreground">Show icons only in sidebar</p>
+                </div>
+                <button 
+                    class="btn btn-outline"
+                    @click="sidebarCollapsed = !sidebarCollapsed; localStorage.setItem('sidebarCollapsed', sidebarCollapsed)"
+                    x-text="sidebarCollapsed ? 'Expand' : 'Collapse'"
+                >
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Configuration -->
+    <div class="card">
+        <div class="p-6 border-b">
+            <h2 class="text-lg font-semibold">API Configuration</h2>
+            <p class="text-sm text-muted-foreground">Server and API settings</p>
+        </div>
+        <div class="p-6 space-y-4">
+            <div 
+                hx-get="/partials/server-info"
+                hx-trigger="load"
+                hx-swap="innerHTML"
+            >
+                <div class="animate-pulse space-y-3">
+                    <div class="h-4 bg-muted rounded w-1/3"></div>
+                    <div class="h-4 bg-muted rounded w-1/2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WhatsApp Session -->
+    <div class="card">
+        <div class="p-6 border-b">
+            <h2 class="text-lg font-semibold">WhatsApp Session</h2>
+            <p class="text-sm text-muted-foreground">Manage your WhatsApp connection</p>
+        </div>
+        <div class="p-6">
+            <div 
+                id="session-controls"
+                hx-get="/partials/session-controls"
+                hx-trigger="load"
+                hx-swap="innerHTML"
+            >
+                <div class="animate-pulse space-y-3">
+                    <div class="h-10 bg-muted rounded w-32"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card border-destructive/50">
+        <div class="p-6 border-b border-destructive/50">
+            <h2 class="text-lg font-semibold text-destructive">Danger Zone</h2>
+            <p class="text-sm text-muted-foreground">Irreversible actions</p>
+        </div>
+        <div class="p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="label">Logout from WhatsApp</label>
+                    <p class="text-sm text-muted-foreground">Disconnect your WhatsApp account</p>
+                </div>
+                <button 
+                    class="btn bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    hx-post="/api/v1/auth/logout"
+                    hx-confirm="Are you sure you want to logout? You will need to scan the QR code again."
+                    hx-target="#session-controls"
+                    hx-swap="innerHTML"
+                >
+                    <i data-lucide="log-out" class="h-4 w-4 mr-2"></i>
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

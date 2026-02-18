@@ -4,7 +4,7 @@ A high-performance WhatsApp Web automation server built in Rust. Provides REST A
 
 ## Features
 
-- **Web UI** - Modern React dashboard for chat management
+- **Web UI** - Built-in HTMX dashboard (no build step required)
 - **Dual Authentication** - QR code and phone number authentication
 - **REST API** - Full CRUD endpoints with OpenAPI/Swagger docs
 - **MCP Server** - Model Context Protocol over Streamable HTTP (spec 2025-06-18)
@@ -18,7 +18,6 @@ A high-performance WhatsApp Web automation server built in Rust. Provides REST A
 
 - Rust 1.70+ 
 - Chrome/Chromium browser
-- Node.js 18+ (for web UI)
 - Windows, Linux, or macOS
 
 ### Install & Run
@@ -37,9 +36,6 @@ cargo build --release
 # Build with MCP support
 cargo build --release --features mcp
 
-# Optional: Build web UI
-cd app && npm install && npm run build && cd ..
-
 # Run
 cargo run
 ```
@@ -48,21 +44,15 @@ Server starts at `http://localhost:3000`
 
 ## Web UI
 
-Build the React frontend to enable the web dashboard:
+The HTMX-powered web dashboard is built into the server - no separate build step required.
 
-```bash
-cd app
-npm install
-npm run build
-```
-
-The UI will be served at the root path (`/`) when running WAS. Features include:
+The UI is served at the root path (`/`) when running WAS. Features include:
 - **Dashboard** - Server health, connection status, uptime
-- **Authentication** - QR code scanning, phone number pairing
-- **Chat Interface** - WhatsApp-style messaging UI
-- **Settings** - API token configuration, theme selection
-
-For development with hot-reload: `npm run dev` (proxies to backend on :3000)
+- **Authentication** - QR code scanning, phone number pairing  
+- **Chat Interface** - WhatsApp-style messaging UI with real-time updates
+- **Settings** - Theme selection, session management
+- **Webhooks** - Configure webhook endpoints
+- **Access Tokens** - Manage API tokens
 
 ## API Reference
 

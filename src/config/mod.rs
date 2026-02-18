@@ -96,7 +96,7 @@ pub struct WebConfig {
     /// Enable Web UI serving
     #[serde(default = "default_web_enabled")]
     pub enabled: bool,
-    /// Path to the frontend build directory
+    /// Deprecated: templates are now built-in
     #[serde(default = "default_web_path")]
     pub path: String,
 }
@@ -106,14 +106,14 @@ fn default_web_enabled() -> bool {
 }
 
 fn default_web_path() -> String {
-    "app/dist".to_string()
+    "templates".to_string()
 }
 
 impl Default for WebConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            path: "app/dist".to_string(),
+            path: "templates".to_string(),
         }
     }
 }

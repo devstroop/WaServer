@@ -71,7 +71,7 @@ async fn run_server(
     use tower::ServiceBuilder;
     use tower_http::{
         cors::{Any, CorsLayer},
-        services::{ServeDir, ServeFile},
+        services::ServeDir,
         trace::TraceLayer,
     };
     use utoipa::{
@@ -80,7 +80,7 @@ async fn run_server(
     };
     use utoipa_swagger_ui::SwaggerUi;
     use was::{
-        handlers::{auth, chat, health},
+        handlers::{auth, chat, health, pages, partials},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware,
@@ -205,6 +205,33 @@ async fn run_server(
             .route("/auth/local-logout", post(auth::local_logout)),
     );
 
+    // HTMX Page routes
+    info!("🌐 HTMX Web UI at /");
+    app = app
+        .route("/", get(pages::dashboard_page))
+        .route("/auth", get(pages::auth_page))
+        .route("/chat", get(pages::chat_page))
+        .route("/settings", get(pages::settings_page))
+        .route("/webhooks", get(pages::webhooks_page))
+        .route("/tokens", get(pages::tokens_page));
+
+    // HTMX Partial routes (for dynamic updates)
+    app = app
+        .route("/partials/health-cards", get(partials::health_cards))
+        .route("/partials/auth-panel", get(partials::auth_panel))
+        .route("/partials/qr-code", get(partials::qr_code))
+        .route("/partials/auth-indicator", get(partials::auth_indicator))
+        .route("/partials/phone-pair", post(partials::phone_pair))
+        .route("/partials/chat-list", get(partials::chat_list))
+        .route("/partials/chat-view/:chat_id", get(partials::chat_view))
+        .route("/partials/link-device-card", get(partials::link_device_card))
+        .route("/partials/connected-account", get(partials::connected_account))
+        .route("/partials/server-info", get(partials::server_info))
+        .route("/partials/session-controls", get(partials::session_controls));
+
+    // Static files (JS, CSS, images)
+    app = app.nest_service("/static", ServeDir::new("static"));
+
     // Swagger UI (configurable)
     if config.swagger.enabled {
         info!("📚 Swagger UI at {}", config.swagger.path);
@@ -216,24 +243,8 @@ async fn run_server(
         info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
 
-    // Serve static frontend if enabled and app/dist exists
-    if config.web.enabled {
-        let frontend_path = std::path::Path::new(&config.web.path);
-        if frontend_path.exists() {
-            info!("🌐 Web UI at / (serving from {})", config.web.path);
-            app = app.fallback_service(
-                ServeDir::new(frontend_path)
-                    .not_found_service(ServeFile::new(frontend_path.join("index.html"))),
-            );
-        } else {
-            info!(
-                "💡 Web UI enabled but '{}' not found. Run 'cd app && npm install && npm run build' to build.",
-                config.web.path
-            );
-        }
-    } else {
-        info!("🌐 Web UI disabled (set web.enabled = true to enable)");
-    }
+    // Note: HTMX frontend is now served directly via page handlers above
+    // The old React app fallback has been replaced
 
     // Middleware
     let app = app

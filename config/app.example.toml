@@ -53,13 +53,11 @@ debug_mode = true
 health_check_interval = 30
 
 # =============================================================================
-# Web UI - React-based frontend for browser access
+# Web UI - Built-in HTMX dashboard (served from templates)
 # =============================================================================
 [web]
 # Enable Web UI serving (set to false for API-only mode)
 enabled = true
-# Path to the frontend build directory
-path = "app/dist"
 
 # =============================================================================
 # Swagger UI - Interactive API documentation

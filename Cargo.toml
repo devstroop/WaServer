@@ -85,6 +85,10 @@ hex = "0.4"
 jsonwebtoken = "9.3"
 bcrypt = "0.15"
 
+# Templating for HTMX frontend
+askama = "0.12"
+askama_axum = "0.4"
+
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
 tower = "0.4"

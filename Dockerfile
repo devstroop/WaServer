@@ -63,6 +63,10 @@ COPY --from=builder /app/target/release/was /usr/local/bin/
 # Copy config
 COPY config/app.example.toml /app/config/app.toml
 
+# Copy templates and static assets
+COPY templates /app/templates
+COPY static /app/static
+
 # Create data directory for browser profile
 RUN mkdir -p /app/data
 

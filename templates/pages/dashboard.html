@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - WAS{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="mb-4">
+        <h1 class="h3 fw-bold">Dashboard</h1>
+        <p class="text-secondary">Monitor your WhatsApp Server status</p>
+    </div>
+
+    <!-- Health Status Cards -->
+    <div 
+        id="health-cards"
+        hx-get="/partials/health-cards"
+        hx-trigger="load, every 10s"
+        hx-swap="innerHTML"
+    >
+        <!-- Loading state -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6 col-lg-3"><div class="stat-card"><div class="placeholder-glow"><span class="placeholder col-6 mb-2"></span><br><span class="placeholder col-4"></span></div></div></div>
+            <div class="col-md-6 col-lg-3"><div class="stat-card"><div class="placeholder-glow"><span class="placeholder col-6 mb-2"></span><br><span class="placeholder col-4"></span></div></div></div>
+            <div class="col-md-6 col-lg-3"><div class="stat-card"><div class="placeholder-glow"><span class="placeholder col-6 mb-2"></span><br><span class="placeholder col-4"></span></div></div></div>
+            <div class="col-md-6 col-lg-3"><div class="stat-card"><div class="placeholder-glow"><span class="placeholder col-6 mb-2"></span><br><span class="placeholder col-4"></span></div></div></div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row g-3 mb-4">
+        <!-- Link Device Card (shown when not authenticated) -->
+        <div class="col-md-6"
+            id="link-device-card"
+            hx-get="/partials/link-device-card"
+            hx-trigger="load, every 10s"
+            hx-swap="outerHTML"
+        ></div>
+
+        <!-- Start Messaging Card -->
+        <div class="col-md-6">
+            <div class="action-card h-100">
+                <h5><i class="bi bi-chat-dots"></i> Start Messaging</h5>
+                <p>Send and receive messages through the chat interface</p>
+                <a href="/chat" class="btn btn-was">Open Chats</a>
+            </div>
+        </div>
+
+        <!-- API Documentation Card -->
+        <div class="col-md-6">
+            <div class="action-card h-100">
+                <h5><i class="bi bi-book"></i> API Documentation</h5>
+                <p>Explore the REST API with interactive Swagger documentation</p>
+                <a href="/swagger-ui/" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary">
+                    Open Swagger UI
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connected Account Card (shown when authenticated) -->
+    <div 
+        id="connected-account"
+        hx-get="/partials/connected-account"
+        hx-trigger="load, every 10s"
+        hx-swap="outerHTML"
+    ></div>
+</div>
+{% endblock %}

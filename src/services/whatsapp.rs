@@ -13,8 +13,18 @@ use crate::{
 };
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{debug, error, info, warn};
+
+/// Cached auth status with expiration
+struct CachedAuthStatus {
+    status: AuthStatusResponse,
+    cached_at: Instant,
+}
+
+/// Cache TTL for auth status (5 seconds)
+const AUTH_CACHE_TTL: Duration = Duration::from_secs(5);
 
 /// Main WhatsApp service that coordinates all operations
 pub struct WhatsAppService {
@@ -30,6 +40,8 @@ pub struct WhatsAppService {
     operation_semaphore: Arc<Semaphore>,
     metrics: ServiceMetrics,
     initialized: Arc<Mutex<bool>>,
+    /// Cached auth status to avoid repeated browser calls
+    auth_cache: Arc<Mutex<Option<CachedAuthStatus>>>,
 }
 
 impl WhatsAppService {
@@ -104,6 +116,7 @@ impl WhatsAppService {
             operation_semaphore: Arc::new(Semaphore::new(1)), // Single permit for mutual exclusion
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
+            auth_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -320,8 +333,20 @@ impl WhatsAppService {
         self.metrics.snapshot()
     }
 
-    /// Get authentication status with metrics tracking
+    /// Get authentication status with caching (5 second TTL)
     pub async fn get_auth_status(&self) -> Result<AuthStatusResponse> {
+        // Check cache first
+        {
+            let cache = self.auth_cache.lock().await;
+            if let Some(cached) = cache.as_ref() {
+                if cached.cached_at.elapsed() < AUTH_CACHE_TTL {
+                    debug!("Returning cached auth status");
+                    return Ok(cached.status.clone());
+                }
+            }
+        }
+        
+        // Cache miss or expired - fetch fresh status
         self.metrics.increment_auth_attempts();
         match self.auth_service.check_auth_status().await {
             Ok(auth_result) => {
@@ -334,17 +359,34 @@ impl WhatsAppService {
                     None
                 };
                 
-                Ok(AuthStatusResponse {
+                let status = AuthStatusResponse {
                     authenticated: auth_result.authorized,
                     status: auth_result.status,
                     phone_number,
-                })
+                };
+                
+                // Update cache
+                {
+                    let mut cache = self.auth_cache.lock().await;
+                    *cache = Some(CachedAuthStatus {
+                        status: status.clone(),
+                        cached_at: Instant::now(),
+                    });
+                }
+                
+                Ok(status)
             }
             Err(e) => {
                 self.metrics.increment_error_count();
                 Err(e)
             }
         }
+    }
+
+    /// Invalidate auth cache (call after login/logout)
+    pub async fn invalidate_auth_cache(&self) {
+        let mut cache = self.auth_cache.lock().await;
+        *cache = None;
     }
 
     /// Track message sending with metrics

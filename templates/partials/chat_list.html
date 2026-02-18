@@ -1,0 +1,46 @@
+<!-- Chat List Partial -->
+{% if !chats.is_empty() %}
+<div class="divide-y">
+    {% for chat in chats %}
+    <button 
+        class="w-full flex items-center gap-3 p-4 hover:bg-accent text-left transition-colors"
+        data-chat-item
+        data-chat-id="{{ chat.id }}"
+        onclick="selectChat('{{ chat.id }}', '{{ chat.name }}')"
+    >
+        <div class="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
+            {% if chat.is_group %}
+            <i data-lucide="users" class="h-6 w-6 text-muted-foreground"></i>
+            {% else %}
+            <i data-lucide="user" class="h-6 w-6 text-muted-foreground"></i>
+            {% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+                <span class="font-medium truncate">{{ chat.name }}</span>
+                {% match chat.last_message_time %}
+                    {% when Some with (time) %}
+                    <span class="text-xs text-muted-foreground shrink-0">{{ time }}</span>
+                    {% when None %}
+                {% endmatch %}
+            </div>
+            {% match chat.last_message %}
+                {% when Some with (msg) %}
+                <p class="text-sm text-muted-foreground truncate">{{ msg }}</p>
+                {% when None %}
+            {% endmatch %}
+        </div>
+        {% if chat.unread_count > 0 %}
+        <span class="bg-whatsapp text-white text-xs font-medium px-2 py-0.5 rounded-full">
+            {{ chat.unread_count }}
+        </span>
+        {% endif %}
+    </button>
+    {% endfor %}
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
+    <i data-lucide="inbox" class="h-12 w-12 mb-4 opacity-50"></i>
+    <p class="text-sm">No chats found</p>
+</div>
+{% endif %}
