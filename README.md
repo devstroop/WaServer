@@ -1,143 +1,180 @@
-# WAS - WhatsApp Server 🚀
+<div align="center">
 
-A high-performance WhatsApp Web automation server built in Rust. Provides REST API, MCP (Model Context Protocol), and a modern web UI for WhatsApp messaging.
+# WAS - WhatsApp Server
+
+**High-performance WhatsApp Web automation server built in Rust**
+
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+
+[Features](#features) • [Quick Start](#quick-start) • [API](#api-reference) • [MCP](#mcp-model-context-protocol) • [Configuration](#configuration)
+
+</div>
+
+---
 
 ## Features
 
-- **Web UI** - Built-in HTMX dashboard (no build step required)
-- **Dual Authentication** - QR code and phone number authentication
-- **REST API** - Full CRUD endpoints with OpenAPI/Swagger docs
-- **MCP Server** - Model Context Protocol over Streamable HTTP (spec 2025-06-18)
-- **Real-time Events** - SSE streams for message watching
-- **Webhooks** - Push notifications for incoming messages
-- **Modular Build** - Feature flags for lean deployments
+| Feature | Description |
+|---------|-------------|
+| **Web Dashboard** | Built-in HTMX UI with WhatsApp-style design - no build step |
+| **REST API** | Full messaging API with OpenAPI/Swagger documentation |
+| **MCP Server** | Model Context Protocol for AI agent integration (Claude, etc.) |
+| **Dual Auth** | QR code scanning and phone number pairing |
+| **Real-time** | SSE event streams for live message updates |
+| **Webhooks** | Push notifications with HMAC signature verification |
+| **Local Auth** | Optional JWT-based authentication for multi-user setups |
 
 ## Quick Start
 
 ### Prerequisites
 
-- Rust 1.70+ 
-- Chrome/Chromium browser
-- Windows, Linux, or macOS
+- **Rust** 1.70+
+- **Chrome/Chromium** browser installed
+- macOS, Linux, or Windows
 
-### Install & Run
+### Installation
 
 ```bash
-# Clone repository
+# Clone
 git clone https://github.com/devstroop/was.git
 cd was
 
-# Copy config
+# Configure
 cp config/app.example.toml config/app.toml
 
-# Build (REST API included by default)
-cargo build --release
-
-# Build with MCP support
-cargo build --release --features mcp
-
-# Run
-cargo run
+# Build & Run
+cargo run --release --features mcp
 ```
 
-Server starts at `http://localhost:3000`
+Server starts at **http://localhost:3000**
 
-## Web UI
+### Docker
 
-The HTMX-powered web dashboard is built into the server - no separate build step required.
+```bash
+docker-compose up -d
+```
 
-The UI is served at the root path (`/`) when running WAS. Features include:
-- **Dashboard** - Server health, connection status, uptime
-- **Authentication** - QR code scanning, phone number pairing  
-- **Chat Interface** - WhatsApp-style messaging UI with real-time updates
-- **Settings** - Theme selection, session management
-- **Webhooks** - Configure webhook endpoints
-- **Access Tokens** - Manage API tokens
+## Web Dashboard
+
+The web UI is served automatically at `/` - no separate build required.
+
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/` | Server health, connection status, quick actions |
+| Authentication | `/auth` | QR code & phone pairing |
+| Chats | `/chats` | WhatsApp-style chat interface |
+| Webhooks | `/webhooks` | Configure webhook endpoints |
+| Tokens | `/tokens` | Manage API access tokens |
+| Settings | `/settings` | Theme, session management |
 
 ## API Reference
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/auth/status` | Get authentication status |
-| `GET` | `/api/v1/auth/qr` | Get QR code for authentication |
-| `POST` | `/api/v1/auth/login` | Login with phone number |
-| `POST` | `/api/v1/auth/logout` | Logout and clear session |
+```bash
+# Get auth status
+GET /api/v1/auth/status
 
-### Chats
+# Get QR code (base64 PNG)
+GET /api/v1/auth/qr
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/chats` | List all chats |
-| `GET` | `/api/v1/chats/:id` | Get messages for a chat |
-| `GET` | `/api/v1/chats/events` | SSE stream for real-time messages |
+# Login with phone number
+POST /api/v1/auth/phone
+{"phone": "+1234567890"}
 
-### Messages
+# Logout
+POST /api/v1/auth/logout
+```
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/messages` | Send a message |
-| `GET` | `/api/v1/messages/:id` | Get message by ID |
+### Messaging
 
-### MCP (Model Context Protocol)
+```bash
+# Send text message
+POST /api/v1/messages
+{"phone": "+1234567890", "message": "Hello!"}
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/mcp` | SSE event stream |
-| `POST` | `/mcp` | Send MCP messages |
-| `DELETE` | `/mcp` | Terminate session |
+# Send file with caption
+POST /api/v1/messages
+{"phone": "+1234567890", "message": "Check this out", "file_path": "/path/to/image.jpg"}
+
+# List chats
+GET /api/v1/chats
+
+# Get chat messages
+GET /api/v1/chats/:chat_id
+
+# Watch messages (SSE stream)
+GET /api/v1/chats/events
+```
 
 ### Health
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
+```bash
+GET /health          # Health check
+GET /ready           # Readiness probe (K8s)
+GET /live            # Liveness probe (K8s)
+GET /metrics         # Service metrics
+```
 
-## Usage Examples
-
-### Send a Message
+### Examples
 
 ```bash
+# Send a message
 curl -X POST http://localhost:3000/api/v1/messages \
   -H "Authorization: Bearer your-api-token" \
   -H "Content-Type: application/json" \
   -d '{"phone": "+1234567890", "message": "Hello from WAS!"}'
-```
 
-### Check Auth Status
-
-```bash
-curl http://localhost:3000/api/v1/auth/status \
-  -H "Authorization: Bearer your-api-token"
-```
-
-### Get QR Code
-
-```bash
-curl http://localhost:3000/api/v1/auth/qr \
-  -H "Authorization: Bearer your-api-token"
-```
-
-### Login with Phone
-
-```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Authorization: Bearer your-api-token" \
-  -H "Content-Type: application/json" \
-  -d '{"phone": "+1234567890"}'
-```
-
-### Watch Messages (SSE)
-
-```bash
+# Watch for new messages
 curl -N http://localhost:3000/api/v1/chats/events \
   -H "Authorization: Bearer your-api-token"
 ```
 
+**Swagger UI**: http://localhost:3000/swagger-ui/
+
+## MCP (Model Context Protocol)
+
+WAS implements MCP for AI agent integration. Works with Claude Desktop, Cursor, and other MCP clients.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `whatsapp_get_auth_status` | Check WhatsApp connection status |
+| `whatsapp_get_qr_code` | Get QR code for device linking |
+| `whatsapp_login_with_phone` | Request phone pairing code |
+| `whatsapp_logout` | Disconnect WhatsApp session |
+| `whatsapp_send_message` | Send text or file message |
+| `whatsapp_health_check` | Check service health |
+
+### Claude Desktop Configuration
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3000/mcp"]
+    }
+  }
+}
+```
+
+### MCP Endpoints
+
+```bash
+GET  /mcp              # SSE event stream
+POST /mcp              # Send JSON-RPC messages
+DELETE /mcp            # Terminate session
+```
+
 ## Configuration
 
-Edit `config/app.toml`:
+Copy `config/app.example.toml` to `config/app.toml`:
 
 ```toml
 [server]
