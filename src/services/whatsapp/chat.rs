@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use chromiumoxide::page::Page;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info};
@@ -59,6 +60,8 @@ pub struct ChatService {
     browser_service: Arc<BrowserService>,
     message_queue: Semaphore,
     db: Option<Arc<DatabaseService>>,
+    /// Track if message listener has been injected into the browser
+    listener_injected: AtomicBool,
 }
 
 impl ChatService {
@@ -68,6 +71,7 @@ impl ChatService {
             browser_service,
             message_queue: Semaphore::new(1),
             db: None,
+            listener_injected: AtomicBool::new(false),
         }
     }
 
@@ -82,6 +86,7 @@ impl ChatService {
             browser_service,
             message_queue: Semaphore::new(1),
             db: Some(db),
+            listener_injected: AtomicBool::new(false),
         }
     }
 
@@ -117,6 +122,224 @@ impl ChatService {
                 Ok(false)
             }
         }
+    }
+
+    /// Inject message listener into the browser page.
+    /// This sets up MutationObserver + Notification API interception to capture
+    /// incoming messages without polling the DOM.
+    async fn inject_message_listener(&self, page: &Page) -> Result<()> {
+        // Check if already injected (using atomic flag)
+        if self.listener_injected.swap(true, Ordering::SeqCst) {
+            // Already injected, but verify it's still active in the page
+            let check_script = "typeof window.__WAS_MESSAGE_QUEUE !== 'undefined'";
+            if let Ok(result) = page.evaluate(check_script).await {
+                if result.into_value::<bool>().unwrap_or(false) {
+                    return Ok(());
+                }
+            }
+            // Queue was lost (page reload?), re-inject
+            debug!("Re-injecting message listener (queue lost)");
+        }
+
+        info!("Injecting message listener into WhatsApp Web page");
+
+        let listener_script = r##"
+        (function() {
+            // Prevent double injection
+            if (window.__WAS_LISTENER_ACTIVE) return { status: 'already_active' };
+            window.__WAS_LISTENER_ACTIVE = true;
+
+            // Message queue for incoming messages
+            window.__WAS_MESSAGE_QUEUE = [];
+            
+            // Track processed message IDs to avoid duplicates
+            window.__WAS_PROCESSED_IDS = new Set();
+            
+            // Helper: Generate unique message ID
+            function generateId() {
+                return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+            }
+            
+            // Helper: Extract message info from chat row element
+            function extractMessageFromRow(row) {
+                if (!row) return null;
+                
+                const nameEl = row.querySelector('span[title]');
+                const msgEl = row.querySelector('[data-testid="last-msg-status"]')?.parentElement 
+                           || row.querySelector('[data-testid="cell-frame-secondary"]');
+                const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]');
+                const unreadBadge = row.querySelector('[data-testid="icon-unread-count"]');
+                
+                if (!nameEl || !msgEl) return null;
+                
+                const chatName = nameEl.title || nameEl.innerText;
+                const messageText = msgEl.innerText;
+                const uniqueKey = chatName + ':' + messageText;
+                
+                // Skip if already processed
+                if (window.__WAS_PROCESSED_IDS.has(uniqueKey)) return null;
+                window.__WAS_PROCESSED_IDS.add(uniqueKey);
+                
+                // Limit processed IDs set size
+                if (window.__WAS_PROCESSED_IDS.size > 500) {
+                    const arr = Array.from(window.__WAS_PROCESSED_IDS);
+                    window.__WAS_PROCESSED_IDS = new Set(arr.slice(-250));
+                }
+                
+                return {
+                    id: generateId(),
+                    from_me: false,
+                    sender: chatName,
+                    text: messageText,
+                    message_type: 'chat',
+                    timestamp: timeEl ? timeEl.innerText : null,
+                    timestamp_unix: Date.now(),
+                    status: 'received',
+                    media_info: null,
+                    has_unread: !!unreadBadge
+                };
+            }
+            
+            // 1. MutationObserver on chat list for new messages
+            function setupChatListObserver() {
+                const chatList = document.querySelector('#pane-side') 
+                              || document.querySelector('[data-testid="chat-list"]')
+                              || document.querySelector('div[aria-label="Chat list"]');
+                
+                if (!chatList) {
+                    console.warn('[WAS] Chat list not found, retrying in 2s...');
+                    setTimeout(setupChatListObserver, 2000);
+                    return;
+                }
+                
+                const observer = new MutationObserver((mutations) => {
+                    for (const mutation of mutations) {
+                        // Check for attribute changes (unread badge appearing)
+                        if (mutation.type === 'attributes' || mutation.type === 'childList') {
+                            const target = mutation.target;
+                            const row = target.closest('[role="listitem"], [role="row"]');
+                            
+                            if (row) {
+                                const msgInfo = extractMessageFromRow(row);
+                                if (msgInfo && msgInfo.has_unread) {
+                                    window.__WAS_MESSAGE_QUEUE.push(msgInfo);
+                                    console.log('[WAS] New message detected:', msgInfo.sender);
+                                }
+                            }
+                        }
+                        
+                        // Check added nodes
+                        if (mutation.addedNodes) {
+                            mutation.addedNodes.forEach(node => {
+                                if (node.nodeType === Node.ELEMENT_NODE) {
+                                    const rows = node.querySelectorAll ? 
+                                        [node, ...node.querySelectorAll('[role="listitem"], [role="row"]')] : [];
+                                    rows.forEach(row => {
+                                        const msgInfo = extractMessageFromRow(row);
+                                        if (msgInfo && msgInfo.has_unread) {
+                                            window.__WAS_MESSAGE_QUEUE.push(msgInfo);
+                                            console.log('[WAS] New message (added node):', msgInfo.sender);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                });
+                
+                observer.observe(chatList, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['data-testid', 'aria-label']
+                });
+                
+                console.log('[WAS] Chat list observer installed');
+                window.__WAS_CHAT_OBSERVER = observer;
+            }
+            
+            // 2. Intercept Notification API to capture browser notifications
+            function interceptNotifications() {
+                const OriginalNotification = window.Notification;
+                
+                window.Notification = function(title, options) {
+                    // Queue the notification as a message
+                    const msgInfo = {
+                        id: generateId(),
+                        from_me: false,
+                        sender: title,
+                        text: options?.body || '',
+                        message_type: 'chat',
+                        timestamp: new Date().toLocaleTimeString(),
+                        timestamp_unix: Date.now(),
+                        status: 'received',
+                        media_info: null,
+                        source: 'notification'
+                    };
+                    
+                    const uniqueKey = title + ':' + (options?.body || '');
+                    if (!window.__WAS_PROCESSED_IDS.has(uniqueKey)) {
+                        window.__WAS_PROCESSED_IDS.add(uniqueKey);
+                        window.__WAS_MESSAGE_QUEUE.push(msgInfo);
+                        console.log('[WAS] Notification intercepted:', title);
+                    }
+                    
+                    // Still show the original notification
+                    return new OriginalNotification(title, options);
+                };
+                
+                // Copy static properties
+                Object.setPrototypeOf(window.Notification, OriginalNotification);
+                window.Notification.permission = OriginalNotification.permission;
+                window.Notification.requestPermission = OriginalNotification.requestPermission.bind(OriginalNotification);
+                
+                console.log('[WAS] Notification API intercepted');
+            }
+            
+            // 3. Provide a drain function for the Rust side
+            window.__WAS_DRAIN_QUEUE = function() {
+                const messages = window.__WAS_MESSAGE_QUEUE.splice(0);
+                return messages;
+            };
+            
+            // 4. Provide a function to check listener status
+            window.__WAS_LISTENER_STATUS = function() {
+                return {
+                    active: window.__WAS_LISTENER_ACTIVE,
+                    queue_size: window.__WAS_MESSAGE_QUEUE.length,
+                    processed_count: window.__WAS_PROCESSED_IDS.size,
+                    has_chat_observer: !!window.__WAS_CHAT_OBSERVER
+                };
+            };
+            
+            // Initialize
+            setupChatListObserver();
+            interceptNotifications();
+            
+            return { status: 'installed' };
+        })();
+        "##;
+
+        let result = page.evaluate(listener_script).await?;
+        let status: serde_json::Value = result.into_value().unwrap_or_default();
+        
+        let status_str = status
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        
+        match status_str {
+            "installed" => info!("Message listener installed successfully"),
+            "already_active" => debug!("Message listener already active"),
+            _ => debug!("Message listener status: {}", status_str),
+        }
+
+        Ok(())
+    }
+
+    /// Reset the listener injection flag (call after page reload/reconnect)
+    pub fn reset_listener(&self) {
+        self.listener_injected.store(false, Ordering::SeqCst);
     }
 
     async fn navigate_to_chat(&self, page: &Page, phone: &str) -> Result<()> {
@@ -1211,6 +1434,10 @@ impl ChatServiceTrait for ChatService {
     }
 
     /// Watch for new incoming messages (returns new messages since last check)
+    /// 
+    /// This uses an event-driven approach with MutationObserver and Notification API
+    /// interception instead of polling the DOM. Much more efficient for real-time
+    /// message detection.
     async fn watch_messages(&self) -> Result<Vec<crate::models::chat::MessageInfo>> {
         let page = self.get_page().await?;
 
@@ -1218,43 +1445,27 @@ impl ChatServiceTrait for ChatService {
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
-        // Get unread messages from visible chats
-        let script = r##"
+        // Ensure the message listener is injected
+        self.inject_message_listener(&page).await?;
+
+        // Drain the message queue (returns and clears all queued messages)
+        let drain_script = r##"
         (function() {
-            const newMessages = [];
-            
-            // Look for unread indicators in chat list
-            const unreadChats = document.querySelectorAll('[data-testid="icon-unread-count"]');
-            unreadChats.forEach(badge => {
-                const row = badge.closest('[role="listitem"], [role="row"]');
-                if (row) {
-                    const nameEl = row.querySelector('span[title]');
-                    const msgEl = row.querySelector('[data-testid="last-msg-status"]')?.parentElement;
-                    const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]');
-                    
-                    if (nameEl && msgEl) {
-                        newMessages.push({
-                            id: 'unread_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                            from_me: false,
-                            sender: nameEl.title || nameEl.innerText,
-                            text: msgEl.innerText,
-                            message_type: 'chat',
-                            timestamp: timeEl ? timeEl.innerText : null,
-                            timestamp_unix: Date.now(),
-                            status: 'received',
-                            media_info: null
-                        });
-                    }
-                }
-            });
-            
-            return newMessages;
+            if (typeof window.__WAS_DRAIN_QUEUE === 'function') {
+                return window.__WAS_DRAIN_QUEUE();
+            }
+            // Fallback: listener not ready, return empty
+            return [];
         })();
         "##;
 
-        let result = page.evaluate(script).await?;
+        let result = page.evaluate(drain_script).await?;
         let messages: Vec<crate::models::chat::MessageInfo> =
             result.into_value().unwrap_or_default();
+
+        if !messages.is_empty() {
+            debug!("Drained {} messages from queue", messages.len());
+        }
 
         Ok(messages)
     }
