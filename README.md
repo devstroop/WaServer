@@ -235,70 +235,62 @@ WAS pushes incoming messages to configured endpoints with HMAC-SHA256 signatures
 
 ### Signature Verification
 
-Each webhook request includes an `X-Webhook-Signature` header containing an HMAC-SHA256 signature. Verify it like this:
-
 ```python
-import hmac
-import hashlib
+import hmac, hashlib
 
-def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
+def verify(payload: bytes, signature: str, secret: str) -> bool:
     expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", signature)
 ```
 
-```javascript
-const crypto = require('crypto');
-
-function verifySignature(payload, signature, secret) {
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-}
-```
-
-## Docker
+## Build Options
 
 ```bash
-# Development
-docker-compose -f docker/docker-compose.yml up
+# Default (REST API only)
+cargo build --release
 
-# Production
-docker-compose -f docker/docker-compose.production.yml up
+# With MCP server
+cargo build --release --features mcp
 ```
 
 ## Project Structure
 
 ```
 src/
-├── lib.rs              # Library entry point
-├── main.rs             # Alternative entry
-├── error.rs            # Error types
-├── session.rs          # Session management
-├── bin/
-│   └── whatsapp-server.rs  # Server binary
-├── config/             # Configuration
-├── handlers/           # HTTP handlers
-│   ├── auth.rs         # Auth endpoints
-│   ├── chat.rs         # Chat endpoints
-│   ├── health.rs       # Health endpoint
-│   └── mcp.rs          # MCP handlers
+├── api/                # REST API handlers
+│   ├── auth.rs         # Authentication endpoints
+│   ├── chat.rs         # Chat/messaging endpoints
+│   ├── health.rs       # Health & metrics
+│   └── mcp.rs          # MCP protocol handlers
+├── handlers/           # Web UI handlers
+│   ├── pages.rs        # Full page renders
+│   └── partials.rs     # HTMX partial updates
 ├── services/           # Business logic
-│   ├── whatsapp.rs     # Main service
-│   ├── auth_service.rs # Authentication
-│   ├── chat_service.rs # Chat/messaging
-│   ├── webhook.rs      # Webhook notifications
-│   └── browser.rs      # Browser automation
-├── models/             # Data models
-└── utils/              # Utilities
+│   ├── whatsapp.rs     # Core WhatsApp service
+│   ├── auth.rs         # Browser auth automation
+│   ├── chat.rs         # Chat operations
+│   └── webhook.rs      # Webhook delivery
+├── browser/            # Chromium automation
+├── config/             # Configuration loading
+└── models/             # Data structures
+
+templates/              # HTMX templates
+├── base.html           # Layout
+├── components/         # Reusable UI components
+├── pages/              # Full pages
+└── partials/           # Dynamic fragments
+
+static/                 # CSS, JS, fonts
 ```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE)
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
-
 ---
 
-**Built with ❤️ by Devstroop Technologies**
+<div align="center">
+
+**Built with ❤️ by [Devstroop Technologies](https://devstroop.com)**
+
+</div>
