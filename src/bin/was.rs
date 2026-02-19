@@ -133,21 +133,9 @@ async fn run_server(
             account::link_phone,
             account::logout,
             account::get_profile,
-            account::update_profile_name,
-            account::update_profile_about,
-            account::update_profile_picture,
+            account::update_profile,
             account::get_privacy,
-            account::update_privacy_last_seen,
-            account::update_privacy_online,
-            account::update_privacy_profile_photo,
-            account::update_privacy_about,
-            account::update_privacy_read_receipts,
-            account::update_privacy_groups,
-            // WhatsApp auth (requires X-Account-Id)
-            auth::get_auth_status,
-            auth::get_qr_code,
-            auth::login_with_phone,
-            auth::logout,
+            account::update_privacy,
             // Local auth (JWT)
             auth::get_local_auth_status,
             auth::local_login,
@@ -245,13 +233,8 @@ async fn run_server(
         auth_token_service,
     };
 
-    // Health endpoint (uses AccountManager for metrics)
-    let mut app = Router::new()
-        .route("/health", get(health::health_check))
-        .route("/ready", get(health::readiness_check))
-        .route("/live", get(health::liveness_check))
-        .route("/metrics", get(health::get_metrics))
-        .with_state(account_manager.clone());
+    // Start building the app
+    let mut app = Router::new();
 
     // MCP endpoints (feature-gated and config-enabled)
     #[cfg(feature = "mcp")]
@@ -272,9 +255,20 @@ async fn run_server(
     #[cfg(not(feature = "mcp"))]
     info!("🤖 MCP not compiled (build with --features mcp to enable)");
 
-    info!("📖 REST API at /api/v1");
+    // ==========================================================================
+    // Admin API Routes (/api/admin) - Server administration, no X-Account-Id
+    // ==========================================================================
+    info!("📖 Admin API at /api/admin");
 
-    // Account management routes (no X-Account-Id required, but API auth required)
+    // Health check routes (no auth required)
+    let health_routes = Router::new()
+        .route("/health", get(health::health_check))
+        .route("/ready", get(health::readiness_check))
+        .route("/live", get(health::liveness_check))
+        .route("/metrics", get(health::get_metrics))
+        .with_state(account_manager.clone());
+
+    // Account management routes (API auth required)
     let accounts_routes = Router::new()
         .route("/", get(accounts::list_accounts))
         .route("/", post(accounts::create_account))
@@ -289,34 +283,39 @@ async fn run_server(
         ))
         .with_state(account_manager.clone());
 
-    // Account operations routes (requires X-Account-Id header)
+    // Local auth routes (JWT-based server authentication)
+    let admin_auth_routes = Router::new()
+        .route("/status", get(auth::get_local_auth_status))
+        .route("/login", post(auth::local_login))
+        .route("/refresh", post(auth::refresh_token))
+        .route("/logout", post(auth::local_logout))
+        .with_state(local_auth_state);
+
+    // Mount admin routes
+    app = app.nest(
+        "/api/admin",
+        Router::new()
+            .merge(health_routes)
+            .nest("/accounts", accounts_routes)
+            .nest("/auth", admin_auth_routes),
+    );
+
+    // ==========================================================================
+    // WhatsApp API Routes (/api/v1) - Account operations, require X-Account-Id
+    // ==========================================================================
+    info!("📖 WhatsApp API at /api/v1 (requires X-Account-Id header)");
+
+    // Account operations routes (auth, profile, privacy)
     let account_routes = Router::new()
+        // Auth/status
         .route("/status", get(account::get_account_status))
         .route("/qr", get(account::get_qr_code))
         .route("/phone", post(account::link_phone))
         .route("/logout", post(account::logout))
-        // Profile management
-        .route("/profile", get(account::get_profile))
-        .route("/profile/name", put(account::update_profile_name))
-        .route("/profile/about", put(account::update_profile_about))
-        .route("/profile/picture", put(account::update_profile_picture))
-        // Privacy settings
-        .route("/privacy", get(account::get_privacy))
-        .route(
-            "/privacy/last-seen",
-            put(account::update_privacy_last_seen),
-        )
-        .route("/privacy/online", put(account::update_privacy_online))
-        .route(
-            "/privacy/profile-photo",
-            put(account::update_privacy_profile_photo),
-        )
-        .route("/privacy/about", put(account::update_privacy_about))
-        .route(
-            "/privacy/read-receipts",
-            put(account::update_privacy_read_receipts),
-        )
-        .route("/privacy/groups", put(account::update_privacy_groups))
+        // Profile management (GET + PUT with all fields optional)
+        .route("/profile", get(account::get_profile).put(account::update_profile))
+        // Privacy settings (GET + PUT with all fields optional)
+        .route("/privacy", get(account::get_privacy).put(account::update_privacy))
         .layer(middleware::from_fn_with_state(
             account_manager.clone(),
             account_middleware,
@@ -326,36 +325,11 @@ async fn run_server(
             auth_middleware,
         ));
 
-    // WhatsApp auth routes (requires X-Account-Id header)
-    let whatsapp_auth_routes = Router::new()
-        .route("/status", get(auth::get_auth_status))
-        .route("/qr", get(auth::get_qr_code))
-        .route("/phone", post(auth::login_with_phone))
-        .route("/logout", post(auth::logout))
-        .layer(middleware::from_fn_with_state(
-            account_manager.clone(),
-            account_middleware,
-        ))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Local auth routes (public - no auth middleware, no account needed)
-    let local_auth_routes = Router::new()
-        .route("/local-status", get(auth::get_local_auth_status))
-        .route("/login", post(auth::local_login))
-        .route("/refresh", post(auth::refresh_token))
-        .route("/local-logout", post(auth::local_logout))
-        .with_state(local_auth_state);
-
-    // Chat routes (requires X-Account-Id header)
+    // Chat routes
     let chat_routes = Router::new()
-        .route("/chats", get(chat::list_chats))
-        .route("/chats/events", get(chat::watch_messages))
-        .route("/chats/:chat_id", get(chat::get_chat_messages))
-        .route("/messages", post(chat::send_message))
-        .route("/messages/:message_id", get(chat::get_message))
+        .route("/", get(chat::list_chats))
+        .route("/events", get(chat::watch_messages))
+        .route("/:chat_id", get(chat::get_chat_messages))
         .layer(middleware::from_fn_with_state(
             account_manager.clone(),
             account_middleware,
@@ -365,20 +339,26 @@ async fn run_server(
             auth_middleware,
         ));
 
-    // REST API endpoints
+    // Message routes
+    let message_routes = Router::new()
+        .route("/", post(chat::send_message))
+        .route("/:message_id", get(chat::get_message))
+        .layer(middleware::from_fn_with_state(
+            account_manager.clone(),
+            account_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
+    // Mount WhatsApp routes
     app = app.nest(
         "/api/v1",
         Router::new()
-            // Account management (no X-Account-Id)
-            .nest("/accounts", accounts_routes)
-            // Account operations (requires X-Account-Id)
             .nest("/account", account_routes)
-            // WhatsApp authentication (requires X-Account-Id)
-            .nest("/auth", whatsapp_auth_routes)
-            // Local auth routes (public, no X-Account-Id)
-            .merge(local_auth_routes)
-            // Chat operations (requires X-Account-Id)
-            .merge(chat_routes),
+            .nest("/chats", chat_routes)
+            .nest("/messages", message_routes),
     );
 
     // HTMX Page routes (no state required)
