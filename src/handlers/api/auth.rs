@@ -278,17 +278,16 @@ pub struct LocalAuthState {
 /// Get local authentication status
 #[utoipa::path(
     get,
-    path = "/api/v1/auth/local-status",
+    path = "/api/admin/auth/status",
     responses(
         (status = 200, description = "Local auth status retrieved successfully", body = LocalAuthStatusResponse)
     ),
-    tag = "Authentication"
+    tag = "Admin - Auth"
 )]
 pub async fn get_local_auth_status(
-    State(state): State<LocalAuthState>,
+    State(_state): State<LocalAuthState>,
 ) -> Json<LocalAuthStatusResponse> {
     Json(LocalAuthStatusResponse {
-        local_auth_enabled: state.config.local_auth.enabled,
         logged_in: false, // Determined by frontend based on having valid token
         username: None,
     })
@@ -297,30 +296,19 @@ pub async fn get_local_auth_status(
 /// Login with username and password
 #[utoipa::path(
     post,
-    path = "/api/v1/auth/login",
+    path = "/api/admin/auth/login",
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
-        (status = 400, description = "Local auth not enabled", body = ErrorResponse),
         (status = 401, description = "Invalid credentials", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Authentication"
+    tag = "Admin - Auth"
 )]
 pub async fn local_login(
     State(state): State<LocalAuthState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Check if local auth is enabled
-    if !state.config.local_auth.enabled {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Local authentication is not enabled".to_string(),
-            }),
-        ));
-    }
-
     // Get auth token service
     let auth_token_service = state.auth_token_service.as_ref().ok_or((
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -350,30 +338,19 @@ pub async fn local_login(
 /// Refresh access token
 #[utoipa::path(
     post,
-    path = "/api/v1/auth/refresh",
+    path = "/api/admin/auth/refresh",
     request_body = RefreshTokenRequest,
     responses(
         (status = 200, description = "Token refreshed successfully", body = RefreshTokenResponse),
-        (status = 400, description = "Local auth not enabled", body = ErrorResponse),
         (status = 401, description = "Invalid or expired refresh token", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Authentication"
+    tag = "Admin - Auth"
 )]
 pub async fn refresh_token(
     State(state): State<LocalAuthState>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Json<RefreshTokenResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Check if local auth is enabled
-    if !state.config.local_auth.enabled {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Local authentication is not enabled".to_string(),
-            }),
-        ));
-    }
-
     // Get auth token service
     let auth_token_service = state.auth_token_service.as_ref().ok_or((
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -403,31 +380,20 @@ pub async fn refresh_token(
 /// Logout from local auth (revoke refresh token)
 #[utoipa::path(
     post,
-    path = "/api/v1/auth/local-logout",
+    path = "/api/admin/auth/logout",
     request_body = RefreshTokenRequest,
     responses(
-        (status = 200, description = "Logged out successfully", body = SuccessResponse),
-        (status = 400, description = "Local auth not enabled", body = ErrorResponse)
+        (status = 200, description = "Logged out successfully", body = SuccessResponse)
     ),
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Authentication"
+    tag = "Admin - Auth"
 )]
 pub async fn local_logout(
     State(state): State<LocalAuthState>,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Json<SuccessResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Check if local auth is enabled
-    if !state.config.local_auth.enabled {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Local authentication is not enabled".to_string(),
-            }),
-        ));
-    }
-
     // Get auth token service
     if let Some(auth_token_service) = state.auth_token_service.as_ref() {
         auth_token_service.logout(&request.refresh_token);

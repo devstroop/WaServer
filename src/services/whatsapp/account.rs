@@ -107,23 +107,19 @@ impl WhatsAppAccount {
         // Create webhook service
         let webhook_service = WebhookService::new(app_config.webhooks.clone()).start_worker();
 
-        // Create auth token service if enabled
-        let auth_token_service = if app_config.local_auth.enabled {
-            match AuthTokenService::new(
-                app_config.local_auth.jwt_secret.clone(),
-                app_config.local_auth.token_expiry_hours,
-                app_config.local_auth.refresh_token_expiry_days,
-                Some(app_config.local_auth.default_username.clone()),
-                Some(app_config.local_auth.default_password.clone()),
-            ) {
-                Ok(service) => Some(Arc::new(service)),
-                Err(e) => {
-                    error!("Failed to initialize auth token service: {}", e);
-                    None
-                }
+        // Create auth token service (JWT - always enabled)
+        let auth_token_service = match AuthTokenService::new(
+            app_config.local_auth.jwt_secret.clone(),
+            app_config.local_auth.token_expiry_hours,
+            app_config.local_auth.refresh_token_expiry_days,
+            Some(app_config.local_auth.default_username.clone()),
+            Some(app_config.local_auth.default_password.clone()),
+        ) {
+            Ok(service) => Some(Arc::new(service)),
+            Err(e) => {
+                error!("Failed to initialize auth token service: {}", e);
+                None
             }
-        } else {
-            None
         };
 
         // Create auth and chat services

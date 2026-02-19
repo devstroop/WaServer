@@ -21,11 +21,9 @@ use crate::{services::AuthTokenService, utils::logging::CorrelationId};
 pub struct AuthState {
     /// Whether authentication is enabled
     pub auth_enabled: bool,
-    /// Whether local JWT auth is enabled
-    pub local_auth_enabled: bool,
     /// Static API token for authentication
     pub api_token: String,
-    /// JWT token service (if local auth enabled)
+    /// JWT token service (always available for local auth)
     pub auth_token_service: Option<Arc<AuthTokenService>>,
 }
 
@@ -33,13 +31,11 @@ impl AuthState {
     /// Create new auth state
     pub fn new(
         auth_enabled: bool,
-        local_auth_enabled: bool,
         api_token: String,
         auth_token_service: Option<Arc<AuthTokenService>>,
     ) -> Self {
         Self {
             auth_enabled,
-            local_auth_enabled,
             api_token,
             auth_token_service,
         }
@@ -81,17 +77,15 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            // First, try JWT validation if local auth is enabled
-            if auth_state.local_auth_enabled {
-                if let Some(ref auth_token_service) = auth_state.auth_token_service {
-                    if auth_token_service.validate_access_token(token).is_ok() {
-                        tracing::debug!(
-                            correlation_id = %correlation_id.0,
-                            path = %path,
-                            "JWT authentication successful"
-                        );
-                        return Ok(next.run(request).await);
-                    }
+            // First, try JWT validation (always available)
+            if let Some(ref auth_token_service) = auth_state.auth_token_service {
+                if auth_token_service.validate_access_token(token).is_ok() {
+                    tracing::debug!(
+                        correlation_id = %correlation_id.0,
+                        path = %path,
+                        "JWT authentication successful"
+                    );
+                    return Ok(next.run(request).await);
                 }
             }
 

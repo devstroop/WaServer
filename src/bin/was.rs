@@ -77,7 +77,7 @@ async fn run_server(
         extract::DefaultBodyLimit,
         http::Method,
         middleware,
-        routing::{delete, get, post, put},
+        routing::{delete, get, post},
         Router,
     };
     use tower::ServiceBuilder;
@@ -90,7 +90,6 @@ async fn run_server(
         openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
         Modify, OpenApi,
     };
-    use utoipa_swagger_ui::SwaggerUi;
     use was::{
         api::{account, accounts, auth, chat, health},
         handlers::{partials, templates},
@@ -198,32 +197,27 @@ async fn run_server(
         }
     }
 
-    // Initialize auth token service for local auth (JWT)
-    let auth_token_service = if config.local_auth.enabled {
-        match AuthTokenService::new(
-            config.local_auth.jwt_secret.clone(),
-            config.local_auth.token_expiry_hours,
-            config.local_auth.refresh_token_expiry_days,
-            Some(config.local_auth.default_username.clone()),
-            Some(config.local_auth.default_password.clone()),
-        ) {
-            Ok(service) => {
-                info!("🔐 Local authentication enabled with JWT tokens");
-                Some(Arc::new(service))
-            }
-            Err(e) => {
-                tracing::error!("Failed to initialize auth token service: {}", e);
-                None
-            }
+    // Initialize auth token service for local auth (JWT - always enabled)
+    let auth_token_service = match AuthTokenService::new(
+        config.local_auth.jwt_secret.clone(),
+        config.local_auth.token_expiry_hours,
+        config.local_auth.refresh_token_expiry_days,
+        Some(config.local_auth.default_username.clone()),
+        Some(config.local_auth.default_password.clone()),
+    ) {
+        Ok(service) => {
+            info!("🔐 JWT authentication service initialized");
+            Some(Arc::new(service))
         }
-    } else {
-        None
+        Err(e) => {
+            tracing::error!("Failed to initialize auth token service: {}", e);
+            None
+        }
     };
 
     // Create auth state for middleware
     let auth_state = AuthState::new(
         config.auth.enabled,
-        config.local_auth.enabled,
         config.auth.api_token.clone(),
         auth_token_service.clone(),
     );

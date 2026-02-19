@@ -197,12 +197,10 @@ fn default_auth_enabled() -> bool {
 }
 
 /// Local authentication configuration (JWT-based)
+/// JWT authentication is always enabled - use this for username/password login.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LocalAuthConfig {
-    /// Enable local authentication with JWT tokens
-    #[serde(default)]
-    pub enabled: bool,
-    /// JWT secret key for signing tokens
+    /// JWT secret key for signing tokens (min 32 characters)
     #[serde(default = "default_jwt_secret")]
     pub jwt_secret: String,
     /// Access token expiry in hours
@@ -242,7 +240,6 @@ fn default_password() -> String {
 impl Default for LocalAuthConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             jwt_secret: default_jwt_secret(),
             token_expiry_hours: default_token_expiry_hours(),
             refresh_token_expiry_days: default_refresh_token_expiry_days(),
@@ -368,9 +365,8 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate auth config - either static token or local auth must be enabled
-        if self.auth.enabled && !self.local_auth.enabled {
-            // Static token auth mode
+        // Validate static API token (for programmatic access)
+        if self.auth.enabled {
             if self.auth.api_token == "your-secure-api-token-change-this" {
                 return Err("Please change the default API token in configuration".to_string());
             }
@@ -380,15 +376,13 @@ impl AppConfig {
             }
         }
 
-        // Validate local auth config
-        if self.local_auth.enabled {
-            if self.local_auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
-                tracing::warn!("Using default JWT secret - please change in production!");
-            }
+        // Validate local auth config (JWT is always enabled)
+        if self.local_auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
+            tracing::warn!("Using default JWT secret - please change in production!");
+        }
 
-            if self.local_auth.jwt_secret.len() < 32 {
-                return Err("JWT secret must be at least 32 characters long".to_string());
-            }
+        if self.local_auth.jwt_secret.len() < 32 {
+            return Err("JWT secret must be at least 32 characters long".to_string());
         }
 
         if self.browser.timeout_ms == 0 {
