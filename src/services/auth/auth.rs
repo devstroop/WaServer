@@ -353,7 +353,7 @@ impl AuthServiceTrait for AuthService {
 
         // Wait for QR code to be visible
         if !self
-            .wait_for_element(&page, Locators::QR_CODE_CANVAS, 20000)
+            .wait_for_element(&page, Locators::qr_code_canvas(), 20000)
             .await?
         {
             // Check if we need to reload the QR code
@@ -364,7 +364,7 @@ impl AuthServiceTrait for AuthService {
 
         // Wait again after potential reload
         if !self
-            .wait_for_element(&page, Locators::QR_CODE_CANVAS, 15000)
+            .wait_for_element(&page, Locators::qr_code_canvas(), 15000)
             .await?
         {
             return Err(anyhow::anyhow!("QR code not available"));
@@ -419,7 +419,7 @@ impl AuthServiceTrait for AuthService {
 
             let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
                 loop {
-                    if let Ok(input) = page.find_element(Locators::PHONE_INPUT).await {
+                    if let Ok(input) = page.find_element(Locators::phone_input()).await {
                         return Ok::<_, anyhow::Error>(input);
                     }
                     if let Ok(input) = page.find_element("input[type='tel']").await {
@@ -459,7 +459,7 @@ impl AuthServiceTrait for AuthService {
                 if content.contains("Enter code") || content.contains("verification") {
                     return true;
                 }
-                if page.find_element(Locators::PHONE_CODE).await.is_ok() {
+                if page.find_element(Locators::phone_code()).await.is_ok() {
                     return true;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
@@ -502,13 +502,13 @@ impl AuthServiceTrait for AuthService {
         debug!("Logging out");
 
         // Click menu
-        if let Ok(menu) = page.find_element(Locators::MENU_BUTTON).await {
+        if let Ok(menu) = page.find_element(Locators::menu_button()).await {
             menu.click().await?;
         }
 
         // Click logout
         tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Ok(logout) = page.find_element(Locators::LOGOUT_BUTTON).await {
+        if let Ok(logout) = page.find_element(Locators::logout_button()).await {
             logout.click().await?;
         }
 

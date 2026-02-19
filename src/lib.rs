@@ -52,32 +52,26 @@
 
 pub mod browser;
 pub mod config;
-pub mod engine;
 pub mod error;
 pub mod models;
 pub mod services;
 pub mod utils;
 
-// Legacy modules (for backwards compatibility during transition)
-pub mod locators;
-pub mod session;
-
 // ============================================================================
 // Server Modules (always included)
 // ============================================================================
 
-/// HTTP API handlers
-pub mod api;
-
-/// HTTP handlers - legacy alias for api
+/// HTTP handlers (pages, partials, and REST API)
 pub mod handlers;
 
 /// HTTP middleware
 pub mod middleware;
 
+// Re-export api at crate root for convenience
+pub use handlers::api;
+
 // Re-export public API
-pub use browser::{BrowserService, Locators, Timeouts};
+pub use browser::{BrowserService, LocatorConfig, Locators, SessionManager, Timeouts, WhatsAppEngine};
 pub use config::AppConfig;
-pub use engine::WhatsAppEngine;
 pub use error::{Result, WhatsAppError};
 pub use models::domain::*;

@@ -6,24 +6,11 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::RwLock;
-use thiserror::Error;
 
 use crate::models::auth::{Claims, LoginResponse, RefreshTokenResponse};
 
-/// Errors that can occur during authentication
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error("Invalid credentials")]
-    InvalidCredentials,
-    #[error("Token expired")]
-    TokenExpired,
-    #[error("Invalid token")]
-    InvalidToken,
-    #[error("Token generation failed: {0}")]
-    TokenGenerationFailed(String),
-    #[error("Password hashing failed: {0}")]
-    HashingFailed(String),
-}
+// Re-export AuthError from models
+pub use crate::models::error::AuthError;
 
 /// Local user storage (in-memory for simplicity)
 #[derive(Debug, Clone)]

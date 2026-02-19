@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-use environment::EnvironmentConfig;
-
-pub mod environment;
+use super::environment::EnvironmentConfig;
 
 /// Application configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -25,6 +24,28 @@ pub struct AppConfig {
     pub mcp: McpConfig,
     #[serde(default)]
     pub webhooks: WebhookConfig,
+    /// Multi-account configuration
+    #[serde(default)]
+    pub accounts: Option<AccountsConfig>,
+}
+
+/// Multi-account configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AccountsConfig {
+    /// Base directory for all account data (default: ~/.was/accounts)
+    pub base_directory: Option<PathBuf>,
+    /// Default browser settings for new accounts
+    #[serde(default)]
+    pub defaults: AccountDefaultsConfig,
+}
+
+/// Default settings for new accounts
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct AccountDefaultsConfig {
+    /// Default headless mode
+    pub headless: Option<bool>,
+    /// Auto-start accounts on server startup
+    pub auto_start: bool,
 }
 
 /// Webhook configuration for event callbacks
@@ -312,6 +333,7 @@ impl Default for AppConfig {
             swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
+            accounts: None,
         }
     }
 }

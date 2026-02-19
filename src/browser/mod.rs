@@ -1,11 +1,14 @@
-//! Browser Module
+//! Engine Module
 //!
-//! Handles Chrome/Chromium browser automation for WhatsApp Web.
-//! This module provides browser lifecycle management, page navigation,
-//! and element locators.
+//! Core WAS (WhatsApp Server) implementation including browser automation,
+//! element locators, and the main WhatsApp engine interface.
 
+mod core;
 mod driver;
 mod locators;
+mod session;
 
-pub use driver::BrowserService;
-pub use locators::{Locators, Timeouts};
+pub use core::WhatsAppEngine;
+pub use driver::{BrowserService, BrowserServiceConfig};
+pub use locators::{LocatorConfig, Locators, Timeouts};
+pub use session::SessionManager;

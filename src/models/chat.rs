@@ -1,3 +1,5 @@
+use crate::models::message as db;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -62,54 +64,6 @@ pub struct ChatListResponse {
     pub total: usize,
 }
 
-// ============================================================================
-// Unified Message Model - Contains ALL message information with status
-// NO separate queue - everything is a Message with status tracking
-// ============================================================================
-
-/// A complete message with all information and status
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Message {
-    /// Unique message ID
-    pub id: String,
-    /// Sender (phone number or "me" for outgoing)
-    pub sender: String,
-    /// Recipient (phone number or group JID)
-    pub recipient: String,
-    /// Sender display name
-    pub sender_name: Option<String>,
-    /// Message text content
-    pub text: Option<String>,
-    /// Whether this is a group message
-    pub is_group: bool,
-    /// Message status: pending, processing, sent, delivered, read, failed, received
-    pub status: String,
-    /// Media type: none, image, video, document, voice, sticker
-    pub media_type: String,
-    /// Local file path for media
-    pub media_path: Option<String>,
-    /// Original filename for documents
-    pub media_filename: Option<String>,
-    /// File extension (e.g., "PDF", "TOML")
-    pub media_extension: Option<String>,
-    /// File size in bytes
-    pub media_size: Option<i64>,
-    /// Duration in seconds (for voice/video)
-    pub media_duration: Option<i32>,
-    /// Quoted message ID (for replies)
-    pub quoted_message_id: Option<String>,
-    /// Error message if failed
-    pub error: Option<String>,
-    /// Retry count
-    pub retry_count: i32,
-    /// WhatsApp timestamp
-    pub message_timestamp: Option<chrono::DateTime<chrono::Utc>>,
-    /// When we created this record
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// When the message was processed/sent
-    pub processed_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
 /// Response for listing messages
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct MessageListResponse {
@@ -153,36 +107,6 @@ pub struct SendMessageMultipartForm {
     pub file: Option<String>,
 }
 
-// ============================================================================
-// Conversions from Database Models
-// ============================================================================
-
-impl From<crate::services::database::Message> for Message {
-    fn from(msg: crate::services::database::Message) -> Self {
-        Message {
-            id: msg.id,
-            sender: msg.sender,
-            recipient: msg.recipient,
-            sender_name: msg.sender_name,
-            text: msg.text,
-            is_group: msg.is_group,
-            status: msg.status.to_string(),
-            media_type: msg.media_type.to_string(),
-            media_path: msg.media_path,
-            media_filename: msg.media_filename,
-            media_extension: msg.media_extension,
-            media_size: msg.media_size,
-            media_duration: msg.media_duration,
-            quoted_message_id: msg.quoted_message_id,
-            error: msg.error,
-            retry_count: msg.retry_count,
-            message_timestamp: msg.message_timestamp,
-            created_at: msg.created_at,
-            processed_at: msg.processed_at,
-        }
-    }
-}
-
 /// Simplified message info for DOM-scraped messages (before DB storage)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MessageInfo {
@@ -204,4 +128,70 @@ pub struct MessageInfo {
     pub status: Option<String>,
     /// Media URL or file info
     pub media_info: Option<String>,
+}
+
+/// Full message details (from database) - API response DTO
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Message {
+    /// Unique message ID
+    pub id: String,
+    /// Sender JID/phone
+    pub sender: String,
+    /// Recipient JID/phone
+    pub recipient: String,
+    /// Sender display name
+    pub sender_name: Option<String>,
+    /// Message text content
+    pub text: Option<String>,
+    /// Whether this is a group message
+    pub is_group: bool,
+    /// Message status
+    pub status: String,
+    /// Media type (none, image, video, document, voice)
+    pub media_type: String,
+    /// Local file path for media
+    pub media_path: Option<String>,
+    /// Original filename for documents
+    pub media_filename: Option<String>,
+    /// File extension/type
+    pub media_extension: Option<String>,
+    /// File size in bytes
+    pub media_size: Option<i64>,
+    /// Duration in seconds (for voice/video)
+    pub media_duration: Option<i32>,
+    /// Quoted message ID (for replies)
+    pub quoted_message_id: Option<String>,
+    /// Error message if failed
+    pub error: Option<String>,
+    /// WhatsApp timestamp
+    pub message_timestamp: Option<DateTime<Utc>>,
+    /// When we created this record
+    pub created_at: DateTime<Utc>,
+    /// When the message was processed
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+impl From<db::Message> for Message {
+    fn from(msg: db::Message) -> Self {
+        Self {
+            id: msg.id,
+            sender: msg.sender,
+            recipient: msg.recipient,
+            sender_name: msg.sender_name,
+            text: msg.text,
+            is_group: msg.is_group,
+            status: msg.status.to_string(),
+            media_type: msg.media_type.to_string(),
+            media_path: msg.media_path,
+            media_filename: msg.media_filename,
+            media_extension: msg.media_extension,
+            media_size: msg.media_size,
+            media_duration: msg.media_duration,
+            quoted_message_id: msg.quoted_message_id,
+            error: msg.error,
+            message_timestamp: msg.message_timestamp,
+            created_at: msg.created_at,
+            processed_at: msg.processed_at,
+        }
+    }
 }

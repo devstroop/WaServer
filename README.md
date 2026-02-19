@@ -1,6 +1,6 @@
 <div align="center">
 
-# WAS - WhatsApp Server
+# WAS - WhatsAppServer
 
 **High-performance WhatsApp Web automation server built in Rust**
 

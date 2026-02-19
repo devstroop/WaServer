@@ -1,13 +1,14 @@
 // Health Check and Metrics Endpoints
 //
-// Production-ready health checking and metrics for monitoring and observability
+// Production-ready health checking for monitoring and observability
+// Now uses AccountManager for multi-account status
 
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use utoipa::ToSchema;
 
-use crate::services::whatsapp::WhatsAppService;
+use crate::services::AccountManager;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
@@ -15,6 +16,7 @@ pub struct HealthResponse {
     pub timestamp: u64,
     pub version: String,
     pub uptime_seconds: u64,
+    pub accounts_count: usize,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -31,11 +33,17 @@ pub struct MetricsResponse {
     pub timestamp: u64,
     pub uptime_seconds: u64,
     pub memory_usage_bytes: u64,
-    pub whatsapp_connection_status: String,
+    pub accounts_count: usize,
+    pub accounts: Vec<AccountMetrics>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct AccountMetrics {
+    pub id: String,
+    pub status: String,
+    pub authorized: bool,
     pub total_messages_sent: u64,
-    pub total_auth_attempts: u64,
     pub error_count: u64,
-    pub last_activity: Option<u64>,
 }
 
 static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
@@ -46,7 +54,7 @@ fn get_start_time() -> SystemTime {
 
 /// Health Check Endpoint
 ///
-/// Returns the overall health status of the WAS (WhatsApp Server) API and its dependencies.
+/// Returns the overall health status of the WAS (WhatsApp Server) API.
 /// This endpoint is typically used by load balancers and monitoring systems.
 #[utoipa::path(
     get,
@@ -58,7 +66,7 @@ fn get_start_time() -> SystemTime {
     tag = "Health"
 )]
 pub async fn health_check(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> Result<Json<HealthResponse>, StatusCode> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -70,32 +78,29 @@ pub async fn health_check(
         .unwrap()
         .as_secs();
 
-    // Check WhatsApp service health
-    let whatsapp_health = check_whatsapp_service_health(&whatsapp_service).await;
+    let accounts_count = manager.count().await;
 
-    // Determine overall status
-    let overall_status = if whatsapp_health.status == "healthy" {
-        "healthy"
-    } else {
-        "unhealthy"
+    // Server is healthy if it's running (accounts health is separate concern)
+    let server_health = ServiceHealth {
+        status: "healthy".to_string(),
+        last_check: now,
+        response_time_ms: Some(0),
+        details: None,
     };
 
     let mut services = HashMap::new();
-    services.insert("whatsapp".to_string(), whatsapp_health);
+    services.insert("server".to_string(), server_health);
 
     let response = HealthResponse {
-        status: overall_status.to_string(),
+        status: "healthy".to_string(),
         timestamp: now,
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
+        accounts_count,
         services,
     };
 
-    if overall_status == "healthy" {
-        Ok(Json(response))
-    } else {
-        Err(StatusCode::SERVICE_UNAVAILABLE)
-    }
+    Ok(Json(response))
 }
 
 /// Readiness Check Endpoint
@@ -111,15 +116,9 @@ pub async fn health_check(
     ),
     tag = "Health"
 )]
-pub async fn readiness_check(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
-) -> Result<(), StatusCode> {
-    // Check if the service is initialized and ready
-    if whatsapp_service.is_initialized().await {
-        Ok(())
-    } else {
-        Err(StatusCode::SERVICE_UNAVAILABLE)
-    }
+pub async fn readiness_check() -> Result<(), StatusCode> {
+    // Server is ready if we can respond
+    Ok(())
 }
 
 /// Liveness Check Endpoint
@@ -136,7 +135,6 @@ pub async fn readiness_check(
     tag = "Health"
 )]
 pub async fn liveness_check() -> Result<(), StatusCode> {
-    // Simple liveness check - if we can respond, we're alive
     Ok(())
 }
 
@@ -153,7 +151,7 @@ pub async fn liveness_check() -> Result<(), StatusCode> {
     tag = "Metrics"
 )]
 pub async fn get_metrics(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> Json<MetricsResponse> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -165,68 +163,43 @@ pub async fn get_metrics(
         .unwrap()
         .as_secs();
 
-    // Get memory usage (simple approximation)
     let memory_usage = get_memory_usage();
 
-    // Get WhatsApp connection status
-    let connection_status = match whatsapp_service.get_auth_status().await {
-        Ok(status) => {
-            if status.authenticated {
-                "connected".to_string()
-            } else {
-                "disconnected".to_string()
-            }
-        }
-        Err(_) => "disconnected".to_string(),
-    };
+    // Get metrics from all accounts
+    let account_list = manager.list_accounts().await;
+    let mut account_metrics = Vec::new();
 
-    // Get service metrics (these would be tracked by the service in a real implementation)
-    let metrics = whatsapp_service.get_metrics().await;
+    for info in account_list.accounts {
+        // Get the account to retrieve metrics
+        if let Some(account) = manager.get_account(&info.id).await {
+            let metrics = account.get_metrics();
+            let status_str = match &info.status {
+                crate::models::account::AccountStatus::Stopped => "stopped",
+                crate::models::account::AccountStatus::Starting => "starting",
+                crate::models::account::AccountStatus::Running => "running",
+                crate::models::account::AccountStatus::Error(_) => "error",
+            };
+            
+            account_metrics.push(AccountMetrics {
+                id: info.id,
+                status: status_str.to_string(),
+                authorized: info.authorized,
+                total_messages_sent: metrics.total_messages_sent,
+                error_count: metrics.error_count,
+            });
+        }
+    }
 
     Json(MetricsResponse {
         timestamp: now,
         uptime_seconds: uptime,
         memory_usage_bytes: memory_usage,
-        whatsapp_connection_status: connection_status,
-        total_messages_sent: metrics.total_messages_sent,
-        total_auth_attempts: metrics.total_auth_attempts,
-        error_count: metrics.error_count,
-        last_activity: metrics.last_activity,
+        accounts_count: account_metrics.len(),
+        accounts: account_metrics,
     })
 }
 
-async fn check_whatsapp_service_health(service: &WhatsAppService) -> ServiceHealth {
-    let start = SystemTime::now();
-
-    match service.health_check().await {
-        Ok(_) => {
-            let response_time = SystemTime::now().duration_since(start).unwrap().as_millis() as u64;
-
-            ServiceHealth {
-                status: "healthy".to_string(),
-                last_check: SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-                response_time_ms: Some(response_time),
-                details: None,
-            }
-        }
-        Err(e) => ServiceHealth {
-            status: "unhealthy".to_string(),
-            last_check: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            response_time_ms: None,
-            details: Some(e.to_string()),
-        },
-    }
-}
-
 fn get_memory_usage() -> u64 {
-    // This is a simple approximation. In production, you might want to use
-    // a more sophisticated memory tracking solution like `jemalloc` or `tikv-jemallocator`
-    // For now, we'll return a placeholder value
-    std::process::id() as u64 * 1024 * 1024 // Placeholder
+    // Placeholder - in production use jemalloc or similar
+    std::process::id() as u64 * 1024 * 1024
 }
