@@ -58,12 +58,12 @@ fn get_start_time() -> SystemTime {
 /// This endpoint is typically used by load balancers and monitoring systems.
 #[utoipa::path(
     get,
-    path = "/health",
+    path = "/api/admin/health",
     responses(
         (status = 200, description = "Service is healthy", body = HealthResponse),
         (status = 503, description = "Service is unhealthy", body = HealthResponse)
     ),
-    tag = "Health"
+    tag = "Admin - Health"
 )]
 pub async fn health_check(
     State(manager): State<Arc<AccountManager>>,
@@ -109,12 +109,12 @@ pub async fn health_check(
 /// This is typically used by Kubernetes readiness probes.
 #[utoipa::path(
     get,
-    path = "/ready",
+    path = "/api/admin/ready",
     responses(
         (status = 200, description = "Service is ready"),
         (status = 503, description = "Service is not ready")
     ),
-    tag = "Health"
+    tag = "Admin - Health"
 )]
 pub async fn readiness_check() -> Result<(), StatusCode> {
     // Server is ready if we can respond
@@ -127,12 +127,12 @@ pub async fn readiness_check() -> Result<(), StatusCode> {
 /// This is typically used by Kubernetes liveness probes.
 #[utoipa::path(
     get,
-    path = "/live",
+    path = "/api/admin/live",
     responses(
         (status = 200, description = "Service is alive"),
         (status = 503, description = "Service is not responding")
     ),
-    tag = "Health"
+    tag = "Admin - Health"
 )]
 pub async fn liveness_check() -> Result<(), StatusCode> {
     Ok(())
@@ -144,7 +144,7 @@ pub async fn liveness_check() -> Result<(), StatusCode> {
 /// This endpoint provides performance and usage statistics.
 #[utoipa::path(
     get,
-    path = "/metrics",
+    path = "/api/admin/metrics",
     responses(
         (status = 200, description = "Metrics data", body = MetricsResponse)
     ),

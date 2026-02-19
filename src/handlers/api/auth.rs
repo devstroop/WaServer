@@ -34,7 +34,7 @@ use utoipa;
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsAppAccount"
+    tag = "WhatsApp - Auth"
 )]
 pub async fn get_auth_status(
     Extension(current): Extension<CurrentAccount>,
@@ -80,7 +80,7 @@ pub async fn get_auth_status(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsAppAccount"
+    tag = "WhatsApp - Auth"
 )]
 pub async fn get_qr_code(
     Extension(current): Extension<CurrentAccount>,
@@ -92,7 +92,7 @@ pub async fn get_qr_code(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/accounts/{id}/start".to_string(),
+                error: "Browser not running. Start account first via POST /api/admin/accounts/{id}/start".to_string(),
             }),
         ));
     }
@@ -147,7 +147,7 @@ pub async fn get_qr_code(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsAppAccount"
+    tag = "WhatsApp - Auth"
 )]
 pub async fn login_with_phone(
     Extension(current): Extension<CurrentAccount>,
@@ -225,7 +225,7 @@ pub async fn login_with_phone(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsAppAccount"
+    tag = "WhatsApp - Auth"
 )]
 pub async fn logout(
     Extension(current): Extension<CurrentAccount>,

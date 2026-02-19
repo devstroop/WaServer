@@ -42,7 +42,7 @@ fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
 #[utoipa::path(
     get,
     path = "/api/v1/account/status",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -80,7 +80,7 @@ pub async fn get_account_status(
 #[utoipa::path(
     get,
     path = "/api/v1/account/qr",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     responses(
         (status = 200, description = "QR code"),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -130,7 +130,7 @@ pub async fn get_qr_code(
 #[utoipa::path(
     post,
     path = "/api/v1/account/phone",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     request_body = PhoneLinkRequest,
     responses(
         (status = 200, description = "Phone linking initiated"),
@@ -225,7 +225,7 @@ pub async fn link_phone(
 #[utoipa::path(
     post,
     path = "/api/v1/account/logout",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     responses(
         (status = 200, description = "Logged out"),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -267,7 +267,7 @@ pub async fn logout(
 #[utoipa::path(
     get,
     path = "/api/v1/account/profile",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -364,7 +364,7 @@ pub async fn update_profile(
 #[utoipa::path(
     get,
     path = "/api/v1/account/privacy",
-    tag = "WhatsAppAccount",
+    tag = "WhatsApp - Account",
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
         (status = 400, description = "Missing X-Account-Id header"),

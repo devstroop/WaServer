@@ -45,7 +45,7 @@ use uuid::Uuid;
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp - Chat"
 )]
 pub async fn list_chats(
     Extension(current): Extension<CurrentAccount>,
@@ -57,7 +57,7 @@ pub async fn list_chats(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/accounts/{id}/start".to_string(),
+                error: "Browser not running. Start account first via POST /api/admin/accounts/{id}/start".to_string(),
             }),
         ));
     }
@@ -135,7 +135,7 @@ pub async fn list_chats(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp - Chat"
 )]
 pub async fn get_chat_messages(
     Extension(current): Extension<CurrentAccount>,
@@ -234,7 +234,7 @@ pub async fn get_chat_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp - Chat"
 )]
 pub async fn watch_messages(
     Extension(current): Extension<CurrentAccount>,
@@ -311,7 +311,7 @@ pub async fn watch_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp - Chat"
 )]
 pub async fn send_message(
     Extension(current): Extension<CurrentAccount>,
@@ -324,7 +324,7 @@ pub async fn send_message(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/accounts/{id}/start".to_string(),
+                error: "Browser not running. Start account first via POST /api/admin/accounts/{id}/start".to_string(),
             }),
         ));
     }
@@ -576,7 +576,7 @@ pub async fn send_message(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messages"
+    tag = "WhatsApp - Messages"
 )]
 pub async fn get_message(
     Extension(current): Extension<CurrentAccount>,

@@ -162,25 +162,26 @@ async fn run_server(
                 DeleteAccountResponse, DeleteAccountQuery, AccountActionResponse, ListAccountsQuery,
                 // Account operations
                 WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo, PrivacySettings,
-                UpdateProfileNameRequest, UpdateProfileAboutRequest,
-                UpdatePrivacyLastSeenRequest, UpdatePrivacyOnlineRequest, UpdatePrivacyProfilePhotoRequest,
-                UpdatePrivacyAboutRequest, UpdatePrivacyReadReceiptsRequest, UpdatePrivacyGroupsRequest,
+                UpdateProfileRequest, UpdatePrivacyRequest,
                 PrivacyVisibility, OnlineVisibility, GroupAddPermission
             )
         ),
         modifiers(&SecurityAddon),
         tags(
-            (name = "Health", description = "Health check endpoints"),
-            (name = "Accounts", description = "Account management (create, list, delete)"),
-            (name = "Account", description = "WhatsApp account operations (requires X-Account-Id)"),
-            (name = "Authentication", description = "User authentication with JWT tokens"),
-            (name = "Chat", description = "WhatsApp chat and messaging endpoints (requires X-Account-Id)"),
-            (name = "Messages", description = "Message management endpoints (requires X-Account-Id)")
+            // Admin API tags
+            (name = "Admin - Health", description = "Server health and metrics endpoints"),
+            (name = "Admin - Accounts", description = "Account management (create, list, delete, start, stop)"),
+            (name = "Admin - Auth", description = "Server authentication with JWT tokens"),
+            // WhatsApp API tags (require X-Account-Id)
+            (name = "WhatsApp - Account", description = "WhatsApp account operations (profile, privacy)"),
+            (name = "WhatsApp - Auth", description = "WhatsApp Web authentication (QR, phone login)"),
+            (name = "WhatsApp - Chat", description = "Chat listing and message retrieval"),
+            (name = "WhatsApp - Messages", description = "Send and manage messages")
         ),
         info(
             title = "WhatsApp Server - API",
             version = "0.3.0",
-            description = "REST API for WhatsApp Web with multi-account support. All WhatsApp operations require X-Account-Id header to specify which account to use. Built with Rust and Axum.",
+            description = "REST API for WhatsApp Web automation with multi-account support.\n\n## API Structure\n\n- **Admin API** (`/api/admin/*`): Server administration endpoints (no X-Account-Id required)\n- **WhatsApp API** (`/api/v1/*`): Account-specific operations (require X-Account-Id header)",
         )
     )]
     struct ApiDoc;
