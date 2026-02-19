@@ -3035,7 +3035,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "utoipa",
- "utoipa-swagger-ui",
  "uuid",
 ]
 
