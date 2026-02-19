@@ -19,10 +19,7 @@ use crate::{
     models::account::{
         PrivacySettings, PhoneLinkRequest,
         ProfileInfo, WhatsAppStatusResponse,
-        UpdateProfileNameRequest, UpdateProfileAboutRequest,
-        UpdatePrivacyLastSeenRequest, UpdatePrivacyOnlineRequest,
-        UpdatePrivacyProfilePhotoRequest, UpdatePrivacyAboutRequest,
-        UpdatePrivacyReadReceiptsRequest, UpdatePrivacyGroupsRequest,
+        UpdateProfileRequest, UpdatePrivacyRequest,
     },
     services::WhatsAppAccount,
 };
@@ -306,23 +303,26 @@ pub async fn get_profile(
     .into_response()
 }
 
-/// Update profile name
+/// Update profile
+///
+/// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/profile/name",
-    tag = "WhatsAppAccount",
-    request_body = UpdateProfileNameRequest,
+    path = "/api/v1/account/profile",
+    tag = "WhatsApp - Account",
+    request_body = UpdateProfileRequest,
     responses(
-        (status = 200, description = "Name updated"),
+        (status = 200, description = "Profile updated"),
         (status = 400, description = "Invalid request"),
+        (status = 503, description = "Browser not running"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
-pub async fn update_profile_name(
+pub async fn update_profile(
     Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdateProfileNameRequest>,
+    Json(request): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
     let account = current.0;
 
@@ -337,67 +337,23 @@ pub async fn update_profile_name(
             .into_response();
     }
 
-    // TODO: Implement actual name update via WhatsApp Web automation
+    // TODO: Implement actual profile update via WhatsApp Web automation
+    let mut updated = Vec::new();
+    if request.name.is_some() {
+        updated.push("name");
+    }
+    if request.about.is_some() {
+        updated.push("about");
+    }
+    if request.picture.is_some() {
+        updated.push("picture");
+    }
+
     Json(json!({
         "success": true,
-        "message": "Profile name update not yet implemented",
-        "name": request.name
-    }))
-    .into_response()
-}
-
-/// Update profile about
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/profile/about",
-    tag = "WhatsAppAccount",
-    request_body = UpdateProfileAboutRequest,
-    responses(
-        (status = 200, description = "About updated"),
-        (status = 400, description = "Invalid request"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_profile_about(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdateProfileAboutRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    // TODO: Implement actual about update via WhatsApp Web automation
-    Json(json!({
-        "success": true,
-        "message": "Profile about update not yet implemented",
-        "about": request.about
-    }))
-    .into_response()
-}
-
-/// Update profile picture
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/profile/picture",
-    tag = "WhatsAppAccount",
-    responses(
-        (status = 200, description = "Picture updated"),
-        (status = 400, description = "Invalid request"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_profile_picture(
-    Extension(current): Extension<CurrentAccount>,
-    // TODO: Accept multipart form data for image upload
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    // TODO: Implement actual picture update via WhatsApp Web automation
-    Json(json!({
-        "success": true,
-        "message": "Profile picture update not yet implemented"
+        "message": "Profile update not yet implemented",
+        "fields_requested": updated,
+        "profile": request
     }))
     .into_response()
 }
@@ -426,165 +382,54 @@ pub async fn get_privacy(
     Json(json!(PrivacySettings::default())).into_response()
 }
 
-/// Update last seen privacy
+/// Update privacy settings
+///
+/// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/privacy/last-seen",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyLastSeenRequest,
+    path = "/api/v1/account/privacy",
+    tag = "WhatsApp - Account",
+    request_body = UpdatePrivacyRequest,
     responses(
-        (status = 200, description = "Last seen privacy updated"),
+        (status = 200, description = "Privacy settings updated"),
+        (status = 400, description = "Invalid request"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
-pub async fn update_privacy_last_seen(
+pub async fn update_privacy(
     Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyLastSeenRequest>,
+    Json(request): Json<UpdatePrivacyRequest>,
 ) -> impl IntoResponse {
     let _account = current.0;
 
-    // TODO: Implement
-    Json(json!({
-        "success": true,
-        "message": "Last seen privacy update not yet implemented",
-        "visibility": request.visibility
-    }))
-    .into_response()
-}
-
-/// Update online privacy
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/privacy/online",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyOnlineRequest,
-    responses(
-        (status = 200, description = "Online privacy updated"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_privacy_online(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyOnlineRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
+    // TODO: Implement actual privacy update via WhatsApp Web automation
+    let mut updated = Vec::new();
+    if request.last_seen.is_some() {
+        updated.push("last_seen");
+    }
+    if request.online.is_some() {
+        updated.push("online");
+    }
+    if request.profile_photo.is_some() {
+        updated.push("profile_photo");
+    }
+    if request.about.is_some() {
+        updated.push("about");
+    }
+    if request.read_receipts.is_some() {
+        updated.push("read_receipts");
+    }
+    if request.groups.is_some() {
+        updated.push("groups");
+    }
 
     Json(json!({
         "success": true,
-        "message": "Online privacy update not yet implemented",
-        "visibility": request.visibility
-    }))
-    .into_response()
-}
-
-/// Update profile photo privacy
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/privacy/profile-photo",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyProfilePhotoRequest,
-    responses(
-        (status = 200, description = "Profile photo privacy updated"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_privacy_profile_photo(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyProfilePhotoRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    Json(json!({
-        "success": true,
-        "message": "Profile photo privacy update not yet implemented",
-        "visibility": request.visibility
-    }))
-    .into_response()
-}
-
-/// Update about privacy
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/privacy/about",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyAboutRequest,
-    responses(
-        (status = 200, description = "About privacy updated"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_privacy_about(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyAboutRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    Json(json!({
-        "success": true,
-        "message": "About privacy update not yet implemented",
-        "visibility": request.visibility
-    }))
-    .into_response()
-}
-
-/// Update read receipts privacy
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/privacy/read-receipts",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyReadReceiptsRequest,
-    responses(
-        (status = 200, description = "Read receipts updated"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_privacy_read_receipts(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyReadReceiptsRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    Json(json!({
-        "success": true,
-        "message": "Read receipts update not yet implemented",
-        "enabled": request.enabled
-    }))
-    .into_response()
-}
-
-/// Update groups privacy
-#[utoipa::path(
-    put,
-    path = "/api/v1/account/privacy/groups",
-    tag = "WhatsAppAccount",
-    request_body = UpdatePrivacyGroupsRequest,
-    responses(
-        (status = 200, description = "Groups privacy updated"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_privacy_groups(
-    Extension(current): Extension<CurrentAccount>,
-    Json(request): Json<UpdatePrivacyGroupsRequest>,
-) -> impl IntoResponse {
-    let _account = current.0;
-
-    Json(json!({
-        "success": true,
-        "message": "Groups privacy update not yet implemented",
-        "permission": request.permission
+        "message": "Privacy update not yet implemented",
+        "fields_requested": updated,
+        "privacy": request
     }))
     .into_response()
 }

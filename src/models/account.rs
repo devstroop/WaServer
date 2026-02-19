@@ -234,6 +234,45 @@ pub struct WhatsAppStatusResponse {
     pub last_activity: Option<String>,
 }
 
+/// Combined profile update request (all fields optional - update what's provided)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateProfileRequest {
+    /// Display name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// About/status text
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+    /// Profile picture (base64 encoded)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+}
+
+/// Combined privacy settings update request (all fields optional)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdatePrivacyRequest {
+    /// Who can see last seen
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen: Option<PrivacyVisibility>,
+    /// Who can see online status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online: Option<OnlineVisibility>,
+    /// Who can see profile photo
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_photo: Option<PrivacyVisibility>,
+    /// Who can see about
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub about: Option<PrivacyVisibility>,
+    /// Read receipts enabled (blue ticks)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_receipts: Option<bool>,
+    /// Who can add to groups
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<GroupAddPermission>,
+}
+
+// Legacy individual request types (kept for backwards compatibility)
+
 /// Profile update request
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateProfileNameRequest {
