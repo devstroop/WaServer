@@ -120,10 +120,11 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
         "referrer-policy",
         "strict-origin-when-cross-origin".parse().unwrap(),
     );
-    // CSP: allow self, data: for QR code images, and unsafe-inline for React styles
+    // CSP: allow self, data: for QR code images, unsafe-inline for React styles
+    // Also allow cdn.jsdelivr.net for Scalar API docs
     headers.insert(
         "content-security-policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
             .parse()
             .unwrap(),
     );
