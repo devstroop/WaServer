@@ -186,132 +186,48 @@ headless = true
 timeout_ms = 30000
 
 [auth]
+enabled = true
 api_token = "your-secure-api-token"
-
-[logging]
-level = "info"
 
 [mcp]
 enabled = true
 endpoint = "/mcp"
-sse_enabled = true
-heartbeat_interval_secs = 30
 
-[limits]
-max_concurrent_requests = 50
-request_timeout_ms = 30000
-max_upload_size = 10485760
+[swagger]
+enabled = true
+path = "/swagger-ui"
 
 [webhooks]
-enabled = true
-timeout_ms = 5000
-retry_count = 3
-retry_delay_ms = 1000
+enabled = false
 
 [[webhooks.endpoints]]
-url = "https://your-server.com/webhook/whatsapp"
-secret = "your-hmac-secret"
+url = "https://your-server.com/webhook"
+secret = "hmac-secret"
 ```
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `WHATSAPP_HOST` | Server host |
-| `WHATSAPP_PORT` | Server port |
-| `WHATSAPP_API_TOKEN` | API authentication token |
-
-## Feature Flags
-
-Build with optional features:
-
-```bash
-# Default build (REST API server)
-cargo build --release
-
-# With MCP server support
-cargo build --release --features mcp
-```
-
-## Server Usage
-
-```bash
-# Run with defaults
-was
-
-# Run with environment variables
-WHATSAPP_PORT=8080 WHATSAPP_API_TOKEN=secret was
-```
-
-## MCP Tools
-
-When MCP is enabled, these tools are available:
-
-| Tool | Description |
-|------|-------------|
-| `whatsapp_get_auth_status` | Check authentication status |
-| `whatsapp_get_qr_code` | Get QR code for authentication |
-| `whatsapp_login_with_phone` | Login with phone number |
-| `whatsapp_logout` | Logout from WhatsApp |
-| `whatsapp_send_message` | Send a message |
-| `whatsapp_health_check` | Check service health |
-
-### MCP Configuration (Claude Desktop)
-
-Add to your Claude Desktop config:
-
-```json
-{
-  "mcpServers": {
-    "was": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000/mcp"]
-    }
-  }
-}
-```
-
-## API Documentation
-
-Swagger UI available at: `http://localhost:3000/swagger-ui/`
-
-OpenAPI spec at: `http://localhost:3000/api-docs/openapi.json`
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WHATSAPP_HOST` | Server host | `0.0.0.0` |
+| `WHATSAPP_PORT` | Server port | `3000` |
+| `WHATSAPP_API_TOKEN` | API bearer token | - |
+| `RUST_LOG` | Log level | `info` |
 
 ## Webhooks
 
-WAS can push incoming messages to your server via webhooks with HMAC-SHA256 signature verification.
+WAS pushes incoming messages to configured endpoints with HMAC-SHA256 signatures.
 
-### Webhook Configuration
-
-```toml
-[webhooks]
-enabled = true
-timeout_ms = 5000
-retry_count = 3
-retry_delay_ms = 1000
-
-[[webhooks.endpoints]]
-url = "https://your-server.com/webhook/whatsapp"
-secret = "your-hmac-secret-for-signature-verification"
-headers = { "X-Custom-Header" = "value" }
-
-# Multiple endpoints supported
-[[webhooks.endpoints]]
-url = "https://n8n.example.com/webhook/abc123"
-```
-
-### Webhook Payload
+### Payload
 
 ```json
 {
   "event": "message.received",
-  "timestamp": "2026-02-12T10:30:00Z",
+  "timestamp": "2026-02-19T10:30:00Z",
   "data": {
-    "id": "message-id",
+    "id": "msg-abc123",
     "sender": "+1234567890",
-    "recipient": "me",
     "text": "Hello!",
-    "timestamp": "2026-02-12T10:30:00Z",
     "is_group": false
   }
 }
