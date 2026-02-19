@@ -1,0 +1,29 @@
+{#
+  Component Index
+  Include all design system components at once
+  
+  Usage in base.html:
+    {% include "components/_all.html" %}
+    
+  Or include individual components:
+    {% include "components/button.html" %}
+    {% include "components/input.html" %}
+#}
+
+{# Design Tokens (required) #}
+{% include "components/_tokens.html" %}
+
+{# Core Components #}
+{% include "components/button.html" %}
+{% include "components/input.html" %}
+{% include "components/card.html" %}
+{% include "components/badge.html" %}
+{% include "components/avatar.html" %}
+{% include "components/alert.html" %}
+{% include "components/code.html" %}
+{% include "components/chat.html" %}
+{% include "components/dropdown.html" %}
+{% include "components/table.html" %}
+{% include "components/skeleton.html" %}
+{% include "components/modal.html" %}
+{% include "components/toast.html" %}

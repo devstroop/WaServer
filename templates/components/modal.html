@@ -1,0 +1,382 @@
+{#
+  Modal/Dialog Component
+  
+  Parts: modal-overlay, modal, modal-header, modal-title, modal-description, modal-content, modal-footer
+  Sizes: sm, md, lg, xl, full
+  
+  Usage:
+    {% include "components/modal.html" %}
+    
+    HTML:
+    <div class="modal-overlay" data-modal="example">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Title</h2>
+          <button class="modal-close"><i class="bi bi-x"></i></button>
+        </div>
+        <div class="modal-content">Content</div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">Cancel</button>
+          <button class="btn btn-default">Confirm</button>
+        </div>
+      </div>
+    </div>
+#}
+<style>
+/* ===========================================
+   MODAL/DIALOG COMPONENT
+   =========================================== */
+
+/* Overlay - WhatsApp style */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    
+    background-color: rgba(11, 20, 26, 0.85);
+    
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--duration-normal), visibility var(--duration-normal);
+}
+
+.modal-overlay.is-open,
+.modal-overlay[open] {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Modal Box - WhatsApp style */
+.modal {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    
+    width: 100%;
+    max-width: 500px;
+    max-height: calc(100vh - var(--space-8));
+    
+    background-color: var(--color-background-panel);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    
+    transform: scale(0.95);
+    transition: transform var(--duration-normal) var(--ease-out);
+}
+
+[data-bs-theme="dark"] .modal {
+    background-color: var(--color-background-subtle);
+}
+
+.modal-overlay.is-open .modal,
+.modal-overlay[open] .modal {
+    transform: scale(1);
+}
+
+/* ─────────────────────────────────────────
+   MODAL SIZES
+   ───────────────────────────────────────── */
+
+.modal-sm {
+    max-width: 24rem;
+}
+
+.modal-lg {
+    max-width: 48rem;
+}
+
+.modal-xl {
+    max-width: 64rem;
+}
+
+.modal-full {
+    max-width: calc(100vw - var(--space-8));
+    max-height: calc(100vh - var(--space-8));
+}
+
+/* ─────────────────────────────────────────
+   MODAL PARTS
+   ───────────────────────────────────────── */
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    padding-bottom: 0;
+}
+
+.modal-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-foreground);
+    margin: 0;
+}
+
+.modal-description {
+    font-size: var(--font-size-base);
+    color: var(--color-foreground-muted);
+    margin: var(--space-1) 0 0;
+}
+
+.modal-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-sm);
+    height: var(--size-sm);
+    
+    border: none;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    
+    color: var(--color-foreground-subtle);
+    cursor: pointer;
+    
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+    flex-shrink: 0;
+}
+
+.modal-close:hover {
+    background-color: var(--color-background-muted);
+    color: var(--color-foreground);
+}
+
+.modal-close i,
+.modal-close svg {
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-6);
+    scrollbar-width: thin;
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    padding-top: 0;
+}
+
+.modal-footer-bordered {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+}
+
+.modal-footer-spread {
+    justify-content: space-between;
+}
+
+/* ─────────────────────────────────────────
+   ALERT DIALOG VARIANT
+   ───────────────────────────────────────── */
+
+.alert-dialog .modal {
+    max-width: 28rem;
+    text-align: center;
+}
+
+.alert-dialog .modal-header {
+    flex-direction: column;
+    align-items: center;
+}
+
+.alert-dialog .modal-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius-full);
+}
+
+.alert-dialog .modal-icon-danger {
+    background-color: var(--color-danger-muted);
+    color: var(--color-danger);
+}
+
+.alert-dialog .modal-icon-warning {
+    background-color: var(--color-warning-muted);
+    color: #8b6914;
+}
+
+.alert-dialog .modal-icon-success {
+    background-color: var(--color-success-muted);
+    color: var(--color-success);
+}
+
+.alert-dialog .modal-icon-info {
+    background-color: var(--color-info-muted);
+    color: #0e7490;
+}
+
+.alert-dialog .modal-footer {
+    justify-content: center;
+}
+
+/* ─────────────────────────────────────────
+   SHEET/DRAWER VARIANT (Side Panel)
+   ───────────────────────────────────────── */
+
+.sheet-overlay {
+    justify-content: flex-end;
+    padding: 0;
+}
+
+.sheet-overlay.sheet-left {
+    justify-content: flex-start;
+}
+
+.sheet {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    
+    width: 100%;
+    max-width: 24rem;
+    height: 100%;
+    max-height: 100vh;
+    
+    background-color: var(--color-background);
+    box-shadow: var(--shadow-xl);
+    border-radius: 0;
+    
+    transform: translateX(100%);
+    transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.sheet-left .sheet {
+    transform: translateX(-100%);
+}
+
+.sheet-overlay.is-open .sheet,
+.sheet-overlay[open] .sheet {
+    transform: translateX(0);
+}
+
+.sheet-header,
+.sheet-content,
+.sheet-footer {
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+}
+
+/* ─────────────────────────────────────────
+   COMMAND PALETTE VARIANT
+   ───────────────────────────────────────── */
+
+.command-overlay {
+    align-items: flex-start;
+    padding-top: 15vh;
+}
+
+.command-palette {
+    max-width: 40rem;
+    max-height: 60vh;
+}
+
+.command-input-wrapper {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.command-input-wrapper .input {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.command-input-wrapper .input:focus {
+    box-shadow: none;
+}
+
+.command-list {
+    overflow-y: auto;
+    padding: var(--space-2);
+}
+
+.command-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2-5) var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--duration-fast);
+}
+
+.command-item:hover,
+.command-item.is-active {
+    background-color: var(--color-background-muted);
+}
+
+.command-item-icon {
+    color: var(--color-foreground-subtle);
+}
+
+.command-item-label {
+    flex: 1;
+    font-size: var(--font-size-base);
+}
+
+.command-item-shortcut {
+    font-size: var(--font-size-xs);
+    color: var(--color-foreground-subtle);
+}
+
+.command-item-shortcut kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 var(--space-1);
+    font-family: var(--font-family);
+    font-size: var(--font-size-xs);
+    background-color: var(--color-background-emphasized);
+    border-radius: var(--radius-sm);
+}
+</style>
+
+<script>
+// Simple modal toggle utility
+window.toggleModal = function(modalId) {
+    const overlay = document.querySelector(`[data-modal="${modalId}"]`);
+    if (overlay) {
+        overlay.classList.toggle('is-open');
+    }
+};
+
+// Close modal on overlay click
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal-overlay')) {
+        e.target.classList.remove('is-open');
+    }
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.is-open').forEach(function(modal) {
+            modal.classList.remove('is-open');
+        });
+    }
+});
+</script>

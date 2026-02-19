@@ -1,17 +1,17 @@
 <!-- Chat View Partial -->
-<div class="flex flex-col h-full">
+<div class="d-flex flex-column h-100">
     <!-- Chat Header -->
-    <div class="h-16 border-b bg-card flex items-center gap-3 px-4">
-        <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+    <div class="border-bottom bg-body d-flex align-items-center gap-3 px-3" style="height: 64px;">
+        <div class="rounded-circle bg-secondary bg-opacity-10 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
             {% if chat.is_group %}
-            <i data-lucide="users" class="h-5 w-5 text-muted-foreground"></i>
+            <i class="bi bi-people text-secondary"></i>
             {% else %}
-            <i data-lucide="user" class="h-5 w-5 text-muted-foreground"></i>
+            <i class="bi bi-person text-secondary"></i>
             {% endif %}
         </div>
         <div>
-            <h3 class="font-semibold">{{ chat.name }}</h3>
-            <p class="text-xs text-muted-foreground">
+            <h3 class="fw-semibold mb-0 fs-6">{{ chat.name }}</h3>
+            <p class="small text-secondary mb-0">
                 {% if chat.is_group %}Group{% else %}{{ chat.id }}{% endif %}
             </p>
         </div>
@@ -20,25 +20,26 @@
     <!-- Messages -->
     <div 
         id="chat-messages" 
-        class="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/30"
+        class="flex-grow-1 overflow-auto p-3"
+        style="background: var(--bs-tertiary-bg);"
         hx-ext="sse"
         sse-connect="/api/v1/chats/events?chat_id={{ chat.id }}"
         sse-swap="message"
         hx-swap="beforeend"
     >
         {% for message in messages %}
-        <div class="flex {% if message.is_outgoing %}justify-end{% else %}justify-start{% endif %}">
-            <div class="max-w-[70%] rounded-lg p-3 {% if message.is_outgoing %}bg-whatsapp-light dark:bg-whatsapp/20 text-foreground{% else %}bg-card shadow-sm{% endif %}">
+        <div class="d-flex mb-3 {% if message.is_outgoing %}justify-content-end{% else %}justify-content-start{% endif %}">
+            <div class="rounded-3 p-2 px-3 {% if message.is_outgoing %}text-dark{% else %}bg-body shadow-sm{% endif %}" style="max-width: 70%; {% if message.is_outgoing %}background-color: rgba(37, 211, 102, 0.2);{% endif %}">
                 {% if chat.is_group %}
                     {% if !message.is_outgoing %}
-                    <p class="text-xs font-medium text-whatsapp mb-1">{{ message.sender_name }}</p>
+                    <p class="small fw-medium mb-1" style="color: var(--was-green);">{{ message.sender_name }}</p>
                     {% endif %}
                 {% endif %}
-                <p class="text-sm whitespace-pre-wrap">{{ message.text }}</p>
-                <div class="flex items-center justify-end gap-1 mt-1">
-                    <span class="text-[10px] text-muted-foreground">{{ message.time }}</span>
+                <p class="small mb-1" style="white-space: pre-wrap;">{{ message.text }}</p>
+                <div class="d-flex align-items-center justify-content-end gap-1">
+                    <span class="text-secondary" style="font-size: 10px;">{{ message.time }}</span>
                     {% if message.is_outgoing %}
-                    <i data-lucide="{% if message.is_read %}check-check{% else %}check{% endif %}" class="h-3 w-3 {% if message.is_read %}text-blue-500{% else %}text-muted-foreground{% endif %}"></i>
+                    <i class="bi {% if message.is_read %}bi-check2-all text-primary{% else %}bi-check2 text-secondary{% endif %}" style="font-size: 12px;"></i>
                     {% endif %}
                 </div>
             </div>
@@ -47,9 +48,9 @@
     </div>
 
     <!-- Message Input -->
-    <div class="border-t bg-card p-4">
+    <div class="border-top bg-body p-3">
         <form 
-            class="flex gap-2"
+            class="d-flex gap-2"
             hx-post="/api/v1/messages"
             hx-target="#chat-messages"
             hx-swap="beforeend"
@@ -60,12 +61,12 @@
             <input 
                 type="text" 
                 name="message" 
-                class="input flex-1"
+                class="form-control"
                 placeholder="Type a message..."
                 autocomplete="off"
             >
-            <button type="submit" class="btn btn-whatsapp">
-                <i data-lucide="send" class="h-4 w-4"></i>
+            <button type="submit" class="btn btn-was">
+                <i class="bi bi-send"></i>
             </button>
         </form>
     </div>

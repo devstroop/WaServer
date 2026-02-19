@@ -2,16 +2,16 @@
 {% if status == "checking" %}
 <!-- Loading state -->
 <div class="card">
-    <div class="p-6">
+    <div class="card-content">
         <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
-            <i data-lucide="loader-2" class="h-6 w-6 text-whatsapp animate-spin"></i>
+            <!-- <div class="spinner" style="width:1.5rem;height:1.5rem;border-color:var(--color-brand);border-right-color:transparent"></div> -->
             Connecting to WhatsApp
         </h2>
         <p class="text-center text-muted-foreground mb-6">Please wait while WhatsApp Web loads...</p>
         
         <div class="flex flex-col items-center gap-4 py-8">
-            <div class="w-16 h-16 flex items-center justify-center rounded-full bg-whatsapp/10">
-                <i data-lucide="loader-2" class="h-8 w-8 text-whatsapp animate-spin"></i>
+            <div class="flex items-center justify-center rounded-full" style="width:4rem;height:4rem;background-color:var(--color-brand-muted)">
+                <div class="spinner" style="width:2rem;height:2rem;border-color:var(--color-brand);border-right-color:transparent"></div>
             </div>
             <p class="text-sm text-muted-foreground text-center">Checking authentication status...</p>
         </div>
@@ -24,17 +24,17 @@
 {% else if authenticated %}
 <!-- Connected state -->
 <div class="card">
-    <div class="p-6">
-        <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
-            <i data-lucide="check-circle-2" class="h-6 w-6 text-whatsapp"></i>
+    <div class="card-content">
+        <h2 class="text-xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
+            <i class="bi bi-check-circle-fill icon-xl text-brand"></i>
             Device Connected
         </h2>
         <p class="text-center text-muted-foreground mb-6">Your WhatsApp device is linked and ready</p>
         
         <div class="flex flex-col items-center gap-4 py-4">
-            <div class="p-4 bg-whatsapp/10 rounded-lg text-center w-full">
-                <p class="text-whatsapp-dark font-medium">
-                    ✓ Connected
+            <div class="p-4 rounded-lg text-center w-full" style="background-color:var(--color-brand-muted)">
+                <p class="text-brand font-medium">
+                    <i class="bi bi-check-lg icon-md mr-1"></i> Connected
                     {% match phone_number %}
                         {% when Some with (phone) %}
                         <span class="block text-sm text-muted-foreground mt-1">{{ phone }}</span>
@@ -43,7 +43,7 @@
                 </p>
             </div>
             <p class="text-sm text-muted-foreground text-center">You can now send and receive messages</p>
-            <a href="/chat" class="btn btn-whatsapp">Open Chats</a>
+            <a href="/chats" class="btn btn-default">Open Chats</a>
         </div>
     </div>
 </div>
@@ -51,30 +51,30 @@
 {% else %}
 <!-- Auth required state -->
 <div class="card">
-    <div class="p-6">
+    <div class="card-content">
         <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
-            <span class="text-whatsapp">●</span>
+            <span class="text-brand">●</span>
             WhatsApp Authentication
         </h2>
         <p class="text-center text-muted-foreground mb-6">Scan QR code or enter phone number to link your account</p>
         
         <!-- Tabs -->
         <div x-data="{ tab: 'qr' }">
-            <div class="grid grid-cols-2 gap-1 bg-muted p-1 rounded-lg mb-6">
+            <div class="flex gap-1 p-1 rounded-lg mb-6" style="background-color:var(--color-background-muted)">
                 <button 
                     @click="tab = 'qr'"
-                    class="flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    :class="tab === 'qr' ? 'bg-background shadow' : 'hover:bg-background/50'"
+                    class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium"
+                    :style="tab === 'qr' ? 'background-color:var(--color-background);box-shadow:var(--shadow-sm)' : ''"
                 >
-                    <i data-lucide="qr-code" class="h-4 w-4"></i>
+                    <i class="bi bi-qr-code icon-md"></i>
                     QR Code
                 </button>
                 <button 
                     @click="tab = 'phone'"
-                    class="flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    :class="tab === 'phone' ? 'bg-background shadow' : 'hover:bg-background/50'"
+                    class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium"
+                    :style="tab === 'phone' ? 'background-color:var(--color-background);box-shadow:var(--shadow-sm)' : ''"
                 >
-                    <i data-lucide="smartphone" class="h-4 w-4"></i>
+                    <i class="bi bi-phone icon-md"></i>
                     Phone
                 </button>
             </div>
@@ -87,8 +87,8 @@
                     hx-trigger="load, every 30s"
                     hx-swap="innerHTML"
                 >
-                    <div class="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
-                        <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground"></i>
+                    <div class="flex items-center justify-center rounded-lg" style="width:16rem;height:16rem;background-color:var(--color-background-muted)">
+                        <div class="spinner" style="width:2rem;height:2rem"></div>
                     </div>
                 </div>
                 
@@ -98,12 +98,12 @@
                 </div>
                 
                 <button 
-                    class="btn btn-outline"
+                    class="btn btn-secondary"
                     hx-get="/partials/qr-code"
                     hx-target="#qr-code-container"
                     hx-swap="innerHTML"
                 >
-                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    <i class="bi bi-arrow-clockwise icon-md mr-2"></i>
                     Refresh
                 </button>
             </div>
@@ -116,8 +116,8 @@
                     hx-swap="innerHTML"
                     class="space-y-4"
                 >
-                    <div class="space-y-2">
-                        <label class="label">Phone Number</label>
+                    <div class="form-field">
+                        <label class="form-label">Phone Number</label>
                         <input 
                             type="tel" 
                             name="phone" 
@@ -125,10 +125,10 @@
                             placeholder="+1234567890"
                             required
                         >
-                        <p class="text-xs text-muted-foreground">Include country code (e.g., +1 for US)</p>
+                        <span class="form-helper">Include country code (e.g., +1 for US)</span>
                     </div>
                     
-                    <button type="submit" class="btn btn-whatsapp w-full">
+                    <button type="submit" class="btn btn-default w-full">
                         Get Pairing Code
                     </button>
                 </form>

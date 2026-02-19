@@ -1,22 +1,10 @@
-//! HTTP Handlers for WAS (WhatsApp Server)
+//! Web UI Handlers for WAS (WhatsApp Server)
 //!
-//! This module contains Axum handlers for the REST API and MCP server.
+//! This module contains Axum handlers for the HTMX-based web interface.
+//! For REST API handlers, see the `api` module.
 
-/// Authentication handlers (REST API)
-pub mod auth;
-
-/// Chat/messaging handlers (REST API)
-pub mod chat;
-
-/// Health check handlers (shared between API and MCP)
-pub mod health;
-
-/// Page handlers for HTMX frontend
+/// Page handlers for full-page HTML responses
 pub mod pages;
 
-/// HTMX partial handlers
+/// HTMX partial handlers for dynamic content fragments
 pub mod partials;
-
-/// MCP (Model Context Protocol) handlers over SSE
-#[cfg(feature = "mcp")]
-pub mod mcp;

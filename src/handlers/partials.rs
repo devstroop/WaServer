@@ -282,8 +282,8 @@ pub async fn chat_list(
         Err(e) => {
             Html(format!(
                 r#"<div class="d-flex flex-column align-items-center justify-content-center text-secondary" style="height: 16rem;">
-                    <i class="bi bi-exclamation-circle fs-1 mb-3 opacity-50"></i>
-                    <p class="small">Error loading chats: {}</p>
+                    <i class="bi bi-exclamation-circle icon-3xl mb-3 opacity-50"></i>
+                    <p class="text-sm">Error loading chats: {}</p>
                 </div>"#,
                 e
             ))
@@ -325,8 +325,8 @@ pub async fn chat_view(
         Err(e) => {
             Html(format!(
                 r#"<div class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary">
-                    <i class="bi bi-exclamation-circle fs-1 mb-3 opacity-50"></i>
-                    <p class="small">Error loading messages: {}</p>
+                    <i class="bi bi-exclamation-circle icon-3xl mb-3 opacity-50"></i>
+                    <p class="text-sm">Error loading messages: {}</p>
                 </div>"#,
                 e
             ))
@@ -349,8 +349,8 @@ pub async fn link_device_card(
         Html(r#"
         <div id="link-device-card" class="col-md-6">
             <div class="action-card h-100" style="border-style: dashed !important;">
-                <h5><i class="bi bi-phone text-warning"></i> Link Your Device</h5>
-                <p>Scan the QR code or enter your phone number to connect WhatsApp</p>
+                <h5><i class="bi bi-phone icon-lg text-warning"></i> Link Your Device</h5>
+                <p class="text-sm">Scan the QR code or enter your phone number to connect WhatsApp</p>
                 <a href="/auth" class="btn btn-was">Link Device</a>
             </div>
         </div>
@@ -369,12 +369,12 @@ pub async fn connected_account(
             <div id="connected-account" class="action-card" style="border-color: var(--was-green); background: rgba(37, 211, 102, 0.05);">
                 <h5 style="color: var(--was-green-dark);">Connected Account</h5>
                 <div class="d-flex align-items-center gap-3 mt-3">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px; background: rgba(37, 211, 102, 0.2);">
-                        <i class="bi bi-phone fs-3" style="color: var(--was-green);"></i>
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(37, 211, 102, 0.2);">
+                        <i class="bi bi-phone icon-xl" style="color: var(--was-green);"></i>
                     </div>
                     <div>
-                        <p class="fw-semibold fs-5 mb-0">{}</p>
-                        <p class="text-secondary mb-0">Device linked and ready</p>
+                        <p class="font-semibold text-base mb-0">{}</p>
+                        <p class="text-sm text-muted mb-0">Device linked and ready</p>
                     </div>
                 </div>
             </div>
@@ -389,12 +389,12 @@ pub async fn server_info() -> impl IntoResponse {
     Html(format!(r#"
     <div>
         <div class="d-flex justify-content-between mb-2">
-            <span class="text-secondary">Version</span>
-            <span class="font-monospace small">{}</span>
+            <span class="text-muted">Version</span>
+            <span class="font-mono text-sm">{}</span>
         </div>
         <div class="d-flex justify-content-between">
-            <span class="text-secondary">Build</span>
-            <span class="font-monospace small">Release</span>
+            <span class="text-muted">Build</span>
+            <span class="font-mono text-sm">Release</span>
         </div>
     </div>
     "#, 
@@ -414,16 +414,16 @@ pub async fn session_controls(
     if authenticated {
         Html(r#"
         <div class="d-flex align-items-center gap-2" style="color: var(--was-green);">
-            <i class="bi bi-check-circle-fill"></i>
-            <span>Device Connected</span>
+            <i class="bi bi-check-circle-fill icon-md"></i>
+            <span class="text-sm">Device Connected</span>
         </div>
         "#.to_string())
     } else {
         Html(r#"
         <div class="d-flex align-items-center gap-3">
             <div class="d-flex align-items-center gap-2 text-warning">
-                <i class="bi bi-exclamation-circle-fill"></i>
-                <span>Not Connected</span>
+                <i class="bi bi-exclamation-circle-fill icon-md"></i>
+                <span class="text-sm">Not Connected</span>
             </div>
             <a href="/auth" class="btn btn-was btn-sm">Connect Device</a>
         </div>
@@ -456,4 +456,68 @@ fn format_uptime(seconds: u64) -> String {
     } else {
         parts.join(" ")
     }
+}
+
+// =============================================================================
+// Token List Partial
+// =============================================================================
+
+/// Token list partial - shows configured API tokens
+pub async fn token_list() -> impl IntoResponse {
+    // Tokens are configured via app.toml, not a CRUD system
+    // Show informational message
+    Html(r#"
+    <div class="card">
+        <div class="p-6">
+            <div class="d-flex flex-column align-items-center justify-content-center text-center py-4" style="color: var(--color-foreground-muted);">
+                <i class="bi bi-key icon-3xl mb-3 opacity-50"></i>
+                <h4 class="h5 mb-2">API Token Configured</h4>
+                <p class="small mb-3">
+                    API authentication is managed via <code class="code">config/app.toml</code>
+                </p>
+                <div class="alert alert-info alert-compact mb-0" style="max-width: 32rem;">
+                    <i class="bi bi-info-circle alert-icon"></i>
+                    <p class="alert-description">
+                        Set <code>[auth].api_token</code> in your config file. 
+                        Use <code>Authorization: Bearer &lt;token&gt;</code> header for API requests.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    "#.to_string())
+}
+
+// =============================================================================
+// Webhook List Partial
+// =============================================================================
+
+/// Webhook list partial - shows configured webhooks
+pub async fn webhook_list() -> impl IntoResponse {
+    // Webhooks are configured via app.toml
+    Html(r#"
+    <div class="card">
+        <div class="p-6">
+            <div class="d-flex flex-column align-items-center justify-content-center text-center py-4" style="color: var(--color-foreground-muted);">
+                <i class="bi bi-broadcast icon-3xl mb-3 opacity-50"></i>
+                <h4 class="h5 mb-2">Webhooks Configuration</h4>
+                <p class="small mb-3">
+                    Webhook endpoints are configured via <code class="code">config/app.toml</code>
+                </p>
+                <div class="alert alert-info alert-compact mb-0" style="max-width: 32rem;">
+                    <i class="bi bi-info-circle alert-icon"></i>
+                    <div class="alert-description">
+                        <p class="mb-2">Add webhook endpoints in your config file:</p>
+                        <pre class="text-start small" style="background: var(--color-background-subtle); padding: var(--space-2); border-radius: var(--radius-sm);">[webhooks]
+enabled = true
+
+[[webhooks.endpoints]]
+url = "https://your-server.com/webhook"
+secret = "your-hmac-secret"</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    "#.to_string())
 }

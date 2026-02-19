@@ -1,17 +1,12 @@
 <!-- Auth Indicator (Header) -->
 {% if authenticated %}
-<span class="status-indicator connected">
-    <i class="bi bi-check-circle-fill"></i>
+<span class="status-indicator status-connected">
+    <i class="bi bi-check-circle-fill icon-sm"></i>
     Connected
 </span>
-{% else if status == "checking" %}
-<span class="status-indicator">
-    <i class="bi bi-arrow-repeat spinner"></i>
-    Connecting...
-</span>
 {% else %}
-<a href="/auth" class="status-indicator disconnected text-decoration-none">
-    <i class="bi bi-exclamation-circle-fill"></i>
+<a href="/auth" class="status-indicator status-disconnected text-decoration-none">
+    <i class="bi bi-exclamation-circle-fill icon-sm"></i>
     Not Linked
 </a>
 {% endif %}

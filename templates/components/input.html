@@ -1,0 +1,457 @@
+{#
+  Input Component
+  
+  Types: text, email, password, number, search, textarea
+  States: default, error, disabled
+  
+  Usage:
+    {% include "components/input.html" %}
+    
+    HTML:
+    <input type="text" class="input" placeholder="Enter text...">
+    <input type="text" class="input input-error">
+    <textarea class="input textarea"></textarea>
+#}
+<style>
+/* ===========================================
+   INPUT COMPONENT
+   =========================================== */
+
+/* Base Input - WhatsApp Style */
+.input {
+    display: flex;
+    width: 100%;
+    height: var(--size-md);
+    padding: 0 var(--space-4);
+    
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-normal);
+    color: var(--color-foreground);
+    
+    background-color: var(--color-background-subtle);
+    border: none;
+    border-radius: var(--radius-lg);
+    
+    transition-property: background-color;
+    transition-duration: var(--duration-fast);
+}
+
+.input::placeholder {
+    color: var(--color-foreground-subtle);
+}
+
+.input:hover:not(:disabled):not(:focus) {
+    background-color: var(--color-background-muted);
+}
+
+.input:focus {
+    outline: none;
+    background-color: var(--color-background-muted);
+}
+
+.input:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    background-color: var(--color-background-muted);
+}
+
+[data-bs-theme="dark"] .input {
+    background-color: var(--color-background-subtle);
+}
+
+[data-bs-theme="dark"] .input:focus {
+    background-color: var(--color-background-emphasized);
+}
+
+/* ─────────────────────────────────────────
+   INPUT VARIANTS
+   ───────────────────────────────────────── */
+
+/* Error State */
+.input-error,
+.input.is-invalid {
+    border-color: var(--color-danger);
+}
+
+.input-error:focus,
+.input.is-invalid:focus {
+    border-color: var(--color-danger);
+    box-shadow: var(--shadow-focus-danger);
+}
+
+/* Success State */
+.input-success,
+.input.is-valid {
+    border-color: var(--color-success);
+}
+
+.input-success:focus,
+.input.is-valid:focus {
+    box-shadow: 0 0 0 2px var(--color-success-muted);
+}
+
+/* Ghost Input */
+.input-ghost {
+    border-color: transparent;
+    background-color: transparent;
+}
+
+.input-ghost:hover:not(:disabled):not(:focus) {
+    background-color: var(--color-background-muted);
+}
+
+.input-ghost:focus {
+    background-color: var(--color-background);
+    border-color: var(--color-border);
+}
+
+/* ─────────────────────────────────────────
+   INPUT SIZES
+   ───────────────────────────────────────── */
+
+.input-sm {
+    height: var(--size-sm);
+    padding: 0 var(--space-2-5);
+    font-size: var(--font-size-sm);
+}
+
+.input-lg {
+    height: var(--size-lg);
+    padding: 0 var(--space-4);
+    font-size: var(--font-size-md);
+}
+
+/* ─────────────────────────────────────────
+   TEXTAREA
+   ───────────────────────────────────────── */
+
+textarea.input,
+.textarea {
+    height: auto;
+    min-height: calc(var(--size-md) * 2);
+    padding: var(--space-3);
+    resize: vertical;
+    line-height: var(--line-height-normal);
+}
+
+textarea.input-sm,
+.textarea-sm {
+    min-height: calc(var(--size-sm) * 2);
+    padding: var(--space-2);
+}
+
+textarea.input-lg,
+.textarea-lg {
+    min-height: calc(var(--size-lg) * 2);
+    padding: var(--space-4);
+}
+
+/* No resize */
+.textarea-noresize {
+    resize: none;
+}
+
+/* ─────────────────────────────────────────
+   INPUT GROUP - WhatsApp message bar style
+   ───────────────────────────────────────── */
+
+.input-group {
+    display: flex;
+    width: 100%;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.input-group > .input {
+    flex: 1;
+    min-width: 0;
+}
+
+.input-group > .btn {
+    flex-shrink: 0;
+}
+
+/* Search Bar - WhatsApp pill style */
+.search-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--size-sm);
+    padding: 0 var(--space-3);
+    
+    background-color: var(--color-background-subtle);
+    border-radius: var(--radius-full);
+}
+
+.search-bar .search-icon {
+    color: var(--color-foreground-subtle);
+    flex-shrink: 0;
+}
+
+.search-bar .input {
+    flex: 1;
+    height: 100%;
+    padding: 0;
+    background: transparent;
+    font-size: var(--font-size-sm);
+}
+
+[data-bs-theme="dark"] .search-bar {
+    background-color: var(--color-background-subtle);
+}
+
+/* Input Addon */
+.input-addon {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-3);
+    
+    font-size: var(--font-size-base);
+    color: var(--color-foreground-muted);
+    
+    background-color: var(--color-background-muted);
+    border: 1px solid var(--color-border);
+    
+    white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────
+   INPUT WITH ICON
+   ───────────────────────────────────────── */
+
+.input-wrapper {
+    position: relative;
+    display: flex;
+    width: 100%;
+}
+
+.input-wrapper .input {
+    width: 100%;
+}
+
+.input-wrapper .input-icon {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-foreground-subtle);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-md);
+}
+
+.input-wrapper .input-icon-left {
+    left: 0;
+}
+
+.input-wrapper .input-icon-right {
+    right: 0;
+}
+
+.input-wrapper.has-icon-left .input {
+    padding-left: var(--size-md);
+}
+
+.input-wrapper.has-icon-right .input {
+    padding-right: var(--size-md);
+}
+
+/* Clickable Icon */
+.input-wrapper .input-icon-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--color-foreground-subtle);
+    transition: color var(--duration-fast);
+}
+
+.input-wrapper .input-icon-btn:hover {
+    color: var(--color-foreground);
+}
+
+/* ─────────────────────────────────────────
+   FORM FIELD (Label + Input + Helper)
+   ───────────────────────────────────────── */
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+}
+
+.form-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-foreground);
+}
+
+.form-label-required::after {
+    content: " *";
+    color: var(--color-danger);
+}
+
+.form-helper {
+    font-size: var(--font-size-xs);
+    color: var(--color-foreground-subtle);
+}
+
+.form-error {
+    font-size: var(--font-size-xs);
+    color: var(--color-danger);
+}
+
+/* ─────────────────────────────────────────
+   SELECT
+   ───────────────────────────────────────── */
+
+.select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667781' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-3) center;
+    padding-right: var(--space-10);
+    cursor: pointer;
+}
+
+.select:disabled {
+    cursor: not-allowed;
+}
+
+/* ─────────────────────────────────────────
+   CHECKBOX & RADIO
+   ───────────────────────────────────────── */
+
+.checkbox-wrapper,
+.radio-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.checkbox,
+.radio {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--color-border-hover);
+    background-color: var(--color-background);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+    flex-shrink: 0;
+}
+
+.checkbox {
+    border-radius: var(--radius-sm);
+}
+
+.radio {
+    border-radius: var(--radius-full);
+}
+
+.checkbox:hover,
+.radio:hover {
+    border-color: var(--color-brand);
+}
+
+.checkbox:checked,
+.radio:checked {
+    background-color: var(--color-brand);
+    border-color: var(--color-brand);
+}
+
+.checkbox:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.radio:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Ccircle cx='4' cy='4' r='4' fill='white'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.checkbox:focus-visible,
+.radio:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+.checkbox:disabled,
+.radio:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.checkbox-label,
+.radio-label {
+    font-size: var(--font-size-base);
+    color: var(--color-foreground);
+    user-select: none;
+}
+
+/* ─────────────────────────────────────────
+   SWITCH / TOGGLE
+   ───────────────────────────────────────── */
+
+.switch-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.switch {
+    appearance: none;
+    position: relative;
+    width: 2.75rem;
+    height: 1.5rem;
+    background-color: var(--color-background-emphasized);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: background-color var(--duration-normal);
+    flex-shrink: 0;
+}
+
+.switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(1.5rem - 4px);
+    height: calc(1.5rem - 4px);
+    background-color: white;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-normal) var(--ease-default);
+}
+
+.switch:checked {
+    background-color: var(--color-brand);
+}
+
+.switch:checked::after {
+    transform: translateX(1.25rem);
+}
+
+.switch:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+.switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.switch-label {
+    font-size: var(--font-size-base);
+    color: var(--color-foreground);
+    user-select: none;
+}
+</style>

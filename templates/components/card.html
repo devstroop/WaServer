@@ -1,0 +1,296 @@
+{#
+  Card Component
+  
+  Parts: card, card-header, card-title, card-description, card-content, card-footer
+  Variants: default, outlined, ghost, elevated
+  
+  Usage:
+    {% include "components/card.html" %}
+    
+    HTML:
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Title</h3>
+        <p class="card-description">Description</p>
+      </div>
+      <div class="card-content">Content here</div>
+      <div class="card-footer">Footer</div>
+    </div>
+#}
+<style>
+/* ===========================================
+   CARD COMPONENT
+   =========================================== */
+
+/* Base Card - WhatsApp panel style */
+.card {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-background-panel);
+    border: none;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+/* ─────────────────────────────────────────
+   CARD VARIANTS
+   ───────────────────────────────────────── */
+
+/* Outlined (default) */
+.card-outlined {
+    background-color: var(--color-background);
+    border: 1px solid var(--color-border);
+}
+
+/* Ghost */
+.card-ghost {
+    background-color: transparent;
+    border: none;
+}
+
+/* Elevated */
+.card-elevated {
+    border: none;
+    box-shadow: var(--shadow-md);
+}
+
+/* Interactive - WhatsApp hover style */
+.card-interactive {
+    cursor: pointer;
+    transition: background-color var(--duration-fast);
+}
+
+.card-interactive:hover {
+    background-color: var(--color-background-subtle);
+}
+
+[data-bs-theme="dark"] .card-interactive:hover {
+    background-color: var(--color-background-emphasized);
+}
+
+.card-elevated.card-interactive:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+/* Selected */
+.card-selected,
+.card.is-selected {
+    border-color: var(--color-brand);
+    box-shadow: var(--shadow-focus);
+}
+
+/* ─────────────────────────────────────────
+   CARD PARTS
+   ───────────────────────────────────────── */
+
+.card-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+    padding: var(--space-6);
+    padding-bottom: 0;
+}
+
+.card-header-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.card-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    color: var(--color-foreground);
+    margin: 0;
+}
+
+.card-description {
+    font-size: var(--font-size-base);
+    color: var(--color-foreground-muted);
+    margin: 0;
+}
+
+.card-content {
+    padding: var(--space-6);
+}
+
+.card-content:first-child {
+    padding-top: var(--space-6);
+}
+
+.card-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    padding-top: 0;
+}
+
+.card-footer-bordered {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+}
+
+/* ─────────────────────────────────────────
+   CARD SIZES
+   ───────────────────────────────────────── */
+
+.card-sm .card-header,
+.card-sm .card-content,
+.card-sm .card-footer {
+    padding: var(--space-4);
+}
+
+.card-sm .card-header {
+    padding-bottom: 0;
+}
+
+.card-sm .card-footer {
+    padding-top: 0;
+}
+
+.card-sm .card-title {
+    font-size: var(--font-size-base);
+}
+
+.card-lg .card-header,
+.card-lg .card-content,
+.card-lg .card-footer {
+    padding: var(--space-8);
+}
+
+.card-lg .card-header {
+    padding-bottom: 0;
+}
+
+.card-lg .card-footer {
+    padding-top: 0;
+}
+
+/* ─────────────────────────────────────────
+   STAT CARD (Specialized)
+   ───────────────────────────────────────── */
+
+.stat-card {
+    padding: var(--space-5);
+}
+
+.stat-card .stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+}
+
+.stat-card .stat-title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-foreground-muted);
+}
+
+.stat-card .stat-icon {
+    color: var(--color-foreground-subtle);
+}
+
+.stat-card .stat-value {
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-foreground);
+    line-height: 1;
+}
+
+.stat-card .stat-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--color-foreground-subtle);
+    margin-top: var(--space-1);
+}
+
+.stat-card .stat-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.stat-card .stat-trend-up {
+    color: var(--color-success);
+}
+
+.stat-card .stat-trend-down {
+    color: var(--color-danger);
+}
+
+/* Stat Value Colors */
+.stat-value-success { color: var(--color-success) !important; }
+.stat-value-warning { color: var(--color-warning) !important; }
+.stat-value-danger { color: var(--color-danger) !important; }
+.stat-value-brand { color: var(--color-brand) !important; }
+
+/* ─────────────────────────────────────────
+   ACTION CARD (Specialized)
+   ───────────────────────────────────────── */
+
+.action-card {
+    padding: var(--space-6);
+}
+
+.action-card .action-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+
+.action-card .action-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-md);
+    height: var(--size-md);
+    border-radius: var(--radius-md);
+    background-color: var(--color-brand-muted);
+    color: var(--color-brand);
+    flex-shrink: 0;
+}
+
+.action-card .action-title {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-foreground);
+    margin: 0;
+}
+
+.action-card .action-description {
+    font-size: var(--font-size-base);
+    color: var(--color-foreground-muted);
+    margin-bottom: var(--space-4);
+}
+
+/* ─────────────────────────────────────────
+   CARD LIST
+   ───────────────────────────────────────── */
+
+.card-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-list > .card {
+    border-radius: 0;
+    border-bottom-width: 0;
+}
+
+.card-list > .card:first-child {
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+}
+
+.card-list > .card:last-child {
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-lg);
+    border-bottom-width: 1px;
+}
+</style>

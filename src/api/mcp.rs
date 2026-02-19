@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse,
@@ -183,7 +183,7 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_send_message".to_string(),
-            description: "Send a text message to a WhatsApp contact or group".to_string(),
+            description: "Send a text message, file, or both to a WhatsApp contact or group".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -193,10 +193,14 @@ fn get_available_tools() -> Vec<McpTool> {
                     },
                     "message": {
                         "type": "string",
-                        "description": "Text message content to send"
+                        "description": "Text message content to send (optional if file_path is provided)"
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to a file to send (image, video, or document). Can be sent alone or with a caption (message)"
                     }
                 },
-                "required": ["phone", "message"]
+                "required": ["phone"]
             }),
         },
         McpTool {
@@ -346,10 +350,8 @@ async fn execute_tool(
                 .get("phone")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let message = arguments
-                .get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let message = arguments.get("message").and_then(|v| v.as_str());
+            let file_path = arguments.get("file_path").and_then(|v| v.as_str());
 
             if phone.is_empty() {
                 return McpToolResult {
@@ -361,19 +363,33 @@ async fn execute_tool(
                 };
             }
 
-            if message.is_empty() {
+            // At least one of message or file_path is required
+            if message.is_none() && file_path.is_none() {
                 return McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
-                        text: "Error: message is required".to_string(),
+                        text: "Error: either message or file_path is required".to_string(),
                     }],
                     is_error: Some(true),
                 };
             }
 
+            // Verify file exists if provided
+            if let Some(path) = file_path {
+                if !std::path::Path::new(path).exists() {
+                    return McpToolResult {
+                        content: vec![McpContent {
+                            content_type: "text".to_string(),
+                            text: format!("Error: file not found: {}", path),
+                        }],
+                        is_error: Some(true),
+                    };
+                }
+            }
+
             match whatsapp_service
                 .chat_service()
-                .send_message(phone, Some(message), None, None)
+                .send_message(phone, message, file_path, None)
                 .await
             {
                 Ok(_) => McpToolResult {
@@ -585,13 +601,12 @@ pub async fn mcp_sse_handler(
 
     // Create SSE stream
     let stream = async_stream::stream! {
-        // Send initial endpoint event with the message endpoint URL
-        let endpoint_msg = json!({
-            "endpoint": format!("/mcp/message?sessionId={}", session_id_clone)
-        });
+        // Send initial endpoint event with just the URL string (not JSON)
+        // This follows the legacy HTTP+SSE transport format
+        let endpoint_url = format!("/mcp/message?sessionId={}", session_id_clone);
         yield Ok(Event::default()
             .event("endpoint")
-            .data(endpoint_msg.to_string()));
+            .data(endpoint_url));
 
         // Send session ready event
         yield Ok(Event::default()
@@ -621,6 +636,41 @@ pub async fn mcp_sse_handler(
     };
 
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// Streamable HTTP POST handler for MCP (new 2025 protocol)
+///
+/// Handles POST requests to the SSE endpoint for the new Streamable HTTP transport.
+/// This enables clients to POST messages directly to /mcp/sse
+pub async fn mcp_streamable_handler(
+    State(state): State<McpState>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<McpRequest>,
+) -> impl IntoResponse {
+    // Get or create session from header
+    let session_id = headers
+        .get("Mcp-Session-Id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    info!(
+        "MCP Streamable: session={}, method={}",
+        session_id, request.method
+    );
+
+    // Handle the request
+    let response = handle_mcp_request(request, &state.whatsapp_service).await;
+
+    // For initialize, return session ID in header
+    let mut resp_headers = axum::http::HeaderMap::new();
+    resp_headers.insert(
+        "Mcp-Session-Id",
+        session_id.parse().unwrap_or_else(|_| "".parse().unwrap()),
+    );
+
+    // Return JSON response directly
+    (StatusCode::OK, resp_headers, Json(response))
 }
 
 /// HTTP POST endpoint for sending MCP requests
@@ -676,13 +726,34 @@ pub async fn mcp_info_handler() -> impl IntoResponse {
         "name": "was",
         "version": "0.2.0",
         "protocol": "MCP",
-        "transport": "SSE",
-        "endpoints": {
-            "sse": "/mcp/sse",
-            "message": "/mcp/message"
-        },
+        "transport": "Streamable HTTP",
+        "endpoint": "/mcp",
         "tools": get_available_tools().iter().map(|t| &t.name).collect::<Vec<_>>()
     }))
+}
+
+/// DELETE handler for session termination (per MCP spec)
+pub async fn mcp_session_delete_handler(
+    State(state): State<McpState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    // Get session ID from header
+    let session_id = headers
+        .get("Mcp-Session-Id")
+        .and_then(|v: &axum::http::HeaderValue| v.to_str().ok())
+        .map(|s: &str| s.to_string());
+
+    if let Some(session_id) = session_id {
+        let mut sessions = state.sessions.write().await;
+        if sessions.remove(&session_id).is_some() {
+            info!("MCP: Session {} terminated by client", session_id);
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        }
+    } else {
+        StatusCode::BAD_REQUEST
+    }
 }
 
 /// Health check for MCP service
@@ -691,7 +762,7 @@ pub async fn mcp_health_handler(State(state): State<McpState>) -> impl IntoRespo
     Json(json!({
         "status": "ok",
         "active_sessions": sessions.len(),
-        "protocol_version": "2024-11-05"
+        "protocol_version": "2025-06-18"
     }))
 }
 
@@ -699,7 +770,6 @@ pub async fn mcp_health_handler(State(state): State<McpState>) -> impl IntoRespo
 // Router Builder
 // ============================================================================
 
-use axum::routing::post;
 use axum::Router;
 
 /// Create MCP routes that can be nested into the main app
@@ -710,9 +780,12 @@ where
     let state = McpState::new(whatsapp_service);
 
     Router::new()
-        .route("/sse", axum::routing::get(mcp_sse_handler))
-        .route("/message", post(mcp_message_handler))
-        .route("/info", axum::routing::get(mcp_info_handler))
-        .route("/health", axum::routing::get(mcp_health_handler))
+        // Single MCP endpoint: GET for SSE stream, POST for messages, DELETE for session termination
+        .route(
+            "/",
+            axum::routing::get(mcp_sse_handler)
+                .post(mcp_streamable_handler)
+                .delete(mcp_session_delete_handler),
+        )
         .with_state(state)
 }

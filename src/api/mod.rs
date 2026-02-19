@@ -1,16 +1,17 @@
-//! HTTP Handlers for WAS (WhatsApp Server)
+//! REST API Handlers for WAS (WhatsApp Server)
 //!
-//! This module contains Axum handlers for the REST API and MCP server.
+//! This module contains Axum handlers for the REST API endpoints.
+//! These handlers serve external integrations and programmatic access.
 
-/// Authentication handlers (REST API)
+/// Authentication API handlers (login, logout, QR code, auth status)
 pub mod auth;
 
-/// Chat/messaging handlers (REST API)
+/// Chat/messaging API handlers (send message, get chats, message status)
 pub mod chat;
 
-/// Health check handlers (shared between API and MCP)
+/// Health check and metrics handlers (health, ready, live, metrics endpoints)
 pub mod health;
 
-/// MCP (Model Context Protocol) handlers over SSE
+/// MCP (Model Context Protocol) server handlers over SSE transport
 #[cfg(feature = "mcp")]
 pub mod mcp;

@@ -1,0 +1,280 @@
+{#
+  Badge Component
+  
+  Variants: default, secondary, outline, destructive, success, warning
+  Sizes: sm, md, lg
+  
+  Usage:
+    {% include "components/badge.html" %}
+    
+    HTML:
+    <span class="badge">Default</span>
+    <span class="badge badge-success">Active</span>
+    <span class="badge badge-outline badge-sm">Small</span>
+#}
+<style>
+/* ===========================================
+   BADGE COMPONENT
+   =========================================== */
+
+/* Base Badge - WhatsApp Style */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    
+    font-family: var(--font-family);
+    font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    line-height: 1;
+    white-space: nowrap;
+    
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    
+    border-radius: var(--radius-full);
+    
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+/* ─────────────────────────────────────────
+   BADGE VARIANTS
+   ───────────────────────────────────────── */
+
+/* Default (Brand) */
+.badge,
+.badge-default {
+    background-color: var(--color-brand);
+    color: white;
+}
+
+/* Secondary */
+.badge-secondary {
+    background-color: var(--color-background-muted);
+    color: var(--color-foreground);
+}
+
+/* Outline */
+.badge-outline {
+    background-color: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-foreground);
+}
+
+/* Destructive/Danger */
+.badge-destructive,
+.badge-danger {
+    background-color: var(--color-danger);
+    color: white;
+}
+
+/* Success */
+.badge-success {
+    background-color: var(--color-success);
+    color: white;
+}
+
+/* Warning */
+.badge-warning {
+    background-color: var(--color-warning);
+    color: var(--color-foreground);
+}
+
+/* Info */
+.badge-info {
+    background-color: var(--color-info);
+    color: white;
+}
+
+/* Muted variants (softer backgrounds) */
+.badge-default-muted {
+    background-color: var(--color-brand-muted);
+    color: var(--color-brand);
+}
+
+.badge-danger-muted {
+    background-color: var(--color-danger-muted);
+    color: var(--color-danger);
+}
+
+.badge-success-muted {
+    background-color: var(--color-success-muted);
+    color: var(--color-success);
+}
+
+.badge-warning-muted {
+    background-color: var(--color-warning-muted);
+    color: #8b6914;
+}
+
+.badge-info-muted {
+    background-color: var(--color-info-muted);
+    color: #0e7490;
+}
+
+/* ─────────────────────────────────────────
+   BADGE SIZES
+   ───────────────────────────────────────── */
+
+.badge-sm {
+    height: 1rem;
+    padding: 0 var(--space-1-5);
+    font-size: 0.625rem;
+}
+
+.badge-lg {
+    height: 1.5rem;
+    padding: 0 var(--space-3);
+    font-size: var(--font-size-sm);
+}
+
+/* ─────────────────────────────────────────
+   BADGE MODIFIERS
+   ───────────────────────────────────────── */
+
+/* Rounded */
+.badge-rounded {
+    border-radius: var(--radius-md);
+}
+
+/* Dot Badge (no text, just indicator) */
+.badge-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    padding: 0;
+    min-width: 0;
+}
+
+.badge-dot.badge-lg {
+    width: 0.625rem;
+    height: 0.625rem;
+}
+
+/* With Icon */
+.badge-icon {
+    padding-left: var(--space-1-5);
+}
+
+.badge-icon i,
+.badge-icon svg {
+    width: 0.75rem;
+    height: 0.75rem;
+}
+
+/* ─────────────────────────────────────────
+   STATUS INDICATOR
+   ───────────────────────────────────────── */
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-foreground-muted);
+}
+
+.status-indicator .status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background-color: currentColor;
+}
+
+.status-indicator.status-online,
+.status-indicator.status-connected {
+    color: var(--color-success);
+}
+
+.status-indicator.status-offline,
+.status-indicator.status-disconnected {
+    color: var(--color-danger);
+}
+
+.status-indicator.status-away,
+.status-indicator.status-pending {
+    color: var(--color-warning);
+}
+
+.status-indicator.status-busy {
+    color: var(--color-danger);
+}
+
+/* Animated pulse for online status */
+.status-indicator.status-online .status-dot,
+.status-indicator.status-connected .status-dot {
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ─────────────────────────────────────────
+   NOTIFICATION BADGE - WhatsApp unread count
+   ───────────────────────────────────────── */
+
+.notification-badge {
+    position: relative;
+}
+
+.notification-badge .badge-count {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    background-color: var(--color-brand);
+    color: white;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* WhatsApp muted notification (gray) */
+.notification-badge .badge-count.muted {
+    background-color: var(--color-foreground-subtle);
+}
+
+/* ─────────────────────────────────────────
+   TAG (Removable Badge)
+   ───────────────────────────────────────── */
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 1.5rem;
+    padding: 0 var(--space-1-5) 0 var(--space-2-5);
+    font-size: var(--font-size-sm);
+    background-color: var(--color-background-muted);
+    color: var(--color-foreground);
+    border-radius: var(--radius-md);
+}
+
+.tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-foreground-subtle);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.tag-remove:hover {
+    background-color: var(--color-background-emphasized);
+    color: var(--color-foreground);
+}
+</style>

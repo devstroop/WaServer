@@ -7,14 +7,14 @@
 <div class="p-6 space-y-6">
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-3xl font-bold">Access Tokens</h1>
-            <p class="text-muted-foreground">Manage API access tokens for authentication</p>
+            <h1 class="text-2xl font-bold">Access Tokens</h1>
+            <p class="text-sm text-muted">Manage API access tokens for authentication</p>
         </div>
         <button 
-            class="btn btn-whatsapp"
+            class="btn btn-default"
             @click="$dispatch('open-token-modal')"
         >
-            <i data-lucide="plus" class="h-4 w-4 mr-2"></i>
+            <i class="bi bi-plus icon-md mr-2"></i>
             Create Token
         </button>
     </div>
@@ -29,23 +29,21 @@
         <!-- Loading state -->
         <div class="card">
             <div class="p-6 space-y-4">
-                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/4"></div><div class="h-3 bg-muted rounded w-1/3"></div></div></div>
-                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/4"></div><div class="h-3 bg-muted rounded w-1/3"></div></div></div>
-                <div class="flex items-center gap-4 animate-pulse"><div class="h-10 w-10 rounded bg-muted"></div><div class="flex-1 space-y-2"><div class="h-4 bg-muted rounded w-1/4"></div><div class="h-3 bg-muted rounded w-1/3"></div></div></div>
+                <div class="flex items-center gap-4 animate-pulse"><div class="skeleton skeleton-circle" style="width:40px;height:40px"></div><div class="flex-1 space-y-2"><div class="skeleton skeleton-text" style="width:25%"></div><div class="skeleton skeleton-text" style="width:33%"></div></div></div>
+                <div class="flex items-center gap-4 animate-pulse"><div class="skeleton skeleton-circle" style="width:40px;height:40px"></div><div class="flex-1 space-y-2"><div class="skeleton skeleton-text" style="width:25%"></div><div class="skeleton skeleton-text" style="width:33%"></div></div></div>
+                <div class="flex items-center gap-4 animate-pulse"><div class="skeleton skeleton-circle" style="width:40px;height:40px"></div><div class="flex-1 space-y-2"><div class="skeleton skeleton-text" style="width:25%"></div><div class="skeleton skeleton-text" style="width:33%"></div></div></div>
             </div>
         </div>
     </div>
 
     <!-- Info Card -->
-    <div class="card bg-muted/50">
-        <div class="p-6">
-            <h3 class="font-semibold flex items-center gap-2 mb-2">
-                <i data-lucide="shield" class="h-5 w-5 text-blue-500"></i>
-                Token Security
-            </h3>
-            <p class="text-sm text-muted-foreground">
+    <div class="alert alert-info">
+        <i class="bi bi-shield alert-icon"></i>
+        <div class="alert-content">
+            <h4 class="alert-title">Token Security</h4>
+            <p class="alert-description">
                 Access tokens provide full API access. Keep them secure and never share them publicly. 
-                Use the <code class="bg-background px-1.5 py-0.5 rounded text-xs">Authorization: Bearer &lt;token&gt;</code> header 
+                Use the <code class="code">Authorization: Bearer &lt;token&gt;</code> header 
                 to authenticate API requests.
             </p>
         </div>
@@ -61,28 +59,31 @@
     <div 
         x-show="open" 
         x-cloak
-        class="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+        class="modal-overlay"
         @click="open = false"
     ></div>
     
     <div 
         x-show="open"
         x-cloak
-        class="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] card p-6"
+        class="modal"
+        style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:var(--z-modal);width:100%;max-width:32rem;"
     >
         <template x-if="!newToken">
             <div>
-                <h2 class="text-lg font-semibold mb-4">Create Access Token</h2>
+                <div class="modal-header">
+                    <h2 class="modal-title">Create Access Token</h2>
+                </div>
                 
                 <form 
                     hx-post="/partials/token-create"
                     hx-target="#token-list"
                     hx-swap="innerHTML"
                     @htmx:after-request="newToken = $event.detail.xhr.getResponseHeader('X-New-Token')"
-                    class="space-y-4"
+                    class="modal-content space-y-4"
                 >
-                    <div class="space-y-2">
-                        <label class="label">Token Name</label>
+                    <div class="form-field">
+                        <label class="form-label">Token Name</label>
                         <input 
                             type="text" 
                             name="name" 
@@ -90,13 +91,11 @@
                             placeholder="My API Token"
                             required
                         >
-                        <p class="text-xs text-muted-foreground">
-                            A descriptive name to identify this token
-                        </p>
+                        <span class="form-helper">A descriptive name to identify this token</span>
                     </div>
                     
-                    <div class="space-y-2">
-                        <label class="label">Expiration</label>
+                    <div class="form-field">
+                        <label class="form-label">Expiration</label>
                         <select name="expires_in" class="input">
                             <option value="30">30 days</option>
                             <option value="90">90 days</option>
@@ -105,9 +104,9 @@
                         </select>
                     </div>
                     
-                    <div class="flex justify-end gap-2 pt-4">
-                        <button type="button" class="btn btn-outline" @click="open = false">Cancel</button>
-                        <button type="submit" class="btn btn-whatsapp">Create Token</button>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @click="open = false">Cancel</button>
+                        <button type="submit" class="btn btn-default">Create Token</button>
                     </div>
                 </form>
             </div>
@@ -115,28 +114,35 @@
         
         <template x-if="newToken">
             <div>
-                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i data-lucide="check-circle" class="h-5 w-5 text-whatsapp"></i>
-                    Token Created
-                </h2>
-                
-                <div class="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4 mb-4">
-                    <p class="text-sm text-yellow-600 dark:text-yellow-400 mb-2">
-                        <strong>Important:</strong> Copy your token now. You won't be able to see it again!
-                    </p>
+                <div class="modal-header">
+                    <h2 class="modal-title flex items-center gap-2">
+                        <i class="bi bi-check-circle icon-lg text-brand"></i>
+                        Token Created
+                    </h2>
                 </div>
                 
-                <div class="bg-muted rounded-lg p-4 font-mono text-sm break-all" x-text="newToken"></div>
+                <div class="modal-content space-y-4">
+                    <div class="alert alert-warning alert-compact">
+                        <i class="bi bi-exclamation-triangle alert-icon"></i>
+                        <p class="alert-description">
+                            <strong>Important:</strong> Copy your token now. You won't be able to see it again!
+                        </p>
+                    </div>
+                    
+                    <div class="code-block code-block-simple">
+                        <pre class="code-pre break-all" x-text="newToken"></pre>
+                    </div>
+                </div>
                 
-                <div class="flex justify-end gap-2 pt-4">
+                <div class="modal-footer">
                     <button 
-                        class="btn btn-outline"
+                        class="btn btn-secondary"
                         @click="navigator.clipboard.writeText(newToken)"
                     >
-                        <i data-lucide="copy" class="h-4 w-4 mr-2"></i>
+                        <i class="bi bi-clipboard icon-md mr-2"></i>
                         Copy
                     </button>
-                    <button class="btn btn-primary" @click="open = false">Done</button>
+                    <button class="btn btn-default" @click="open = false">Done</button>
                 </div>
             </div>
         </template>

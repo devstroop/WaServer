@@ -80,7 +80,8 @@ async fn run_server(
     };
     use utoipa_swagger_ui::SwaggerUi;
     use was::{
-        handlers::{auth, chat, health, pages, partials},
+        api::{auth, chat, health},
+        handlers::{pages, partials},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware,
@@ -129,16 +130,16 @@ async fn run_server(
         ),
         modifiers(&SecurityAddon),
         tags(
-            (name = "Authentication", description = "WhatsApp authentication endpoints"),
-            (name = "Local Authentication", description = "Local user authentication with JWT tokens"),
-            (name = "Chat", description = "WhatsApp chat and messaging endpoints"),
-            (name = "Messages", description = "Message management endpoints"),
-            (name = "Health", description = "Health check endpoints")
+            (name = "Health", description = "Health check endpoints"),
+            (name = "Authentication", description = "User authentication with JWT tokens"),
+            (name = "Account", description = "WhatsApp account endpoints"),
+            (name = "Chats", description = "WhatsApp chat and messaging endpoints"),
+            (name = "Messages", description = "Message management endpoints")
         ),
         info(
-            title = "WAS - WhatsApp Server API",
+            title = "WhatsApp Server - API",
             version = "0.2.0",
-            description = "REST API for WhatsApp Web automation"
+            description = "REST API for WhatsApp Web. Provides endpoints for authentication, chat management, and messaging. Built with Rust and Axum.",
         )
     )]
     struct ApiDoc;
@@ -161,7 +162,7 @@ async fn run_server(
     // MCP endpoints (feature-gated and config-enabled)
     #[cfg(feature = "mcp")]
     if config.mcp.enabled {
-        use was::handlers::mcp;
+        use was::api::mcp;
         info!("🤖 MCP enabled at {}", config.mcp.endpoint);
         app = app.nest(
             &config.mcp.endpoint,
@@ -210,7 +211,7 @@ async fn run_server(
     app = app
         .route("/", get(pages::dashboard_page))
         .route("/auth", get(pages::auth_page))
-        .route("/chat", get(pages::chat_page))
+        .route("/chats", get(pages::chat_page))
         .route("/settings", get(pages::settings_page))
         .route("/webhooks", get(pages::webhooks_page))
         .route("/tokens", get(pages::tokens_page));
@@ -227,7 +228,9 @@ async fn run_server(
         .route("/partials/link-device-card", get(partials::link_device_card))
         .route("/partials/connected-account", get(partials::connected_account))
         .route("/partials/server-info", get(partials::server_info))
-        .route("/partials/session-controls", get(partials::session_controls));
+        .route("/partials/session-controls", get(partials::session_controls))
+        .route("/partials/token-list", get(partials::token_list))
+        .route("/partials/webhook-list", get(partials::webhook_list));
 
     // Static files (JS, CSS, images)
     app = app.nest_service("/static", ServeDir::new("static"));

@@ -1,0 +1,318 @@
+{#
+  Avatar Component
+  
+  Sizes: xs, sm, md, lg, xl
+  Variants: circle (default), square
+  
+  Usage:
+    {% include "components/avatar.html" %}
+    
+    HTML:
+    <div class="avatar">
+      <img src="..." class="avatar-image" alt="User">
+      <span class="avatar-fallback">JD</span>
+    </div>
+    <div class="avatar avatar-lg">
+      <span class="avatar-fallback">AB</span>
+    </div>
+#}
+<style>
+/* ===========================================
+   AVATAR COMPONENT
+   =========================================== */
+
+/* Base Avatar - WhatsApp Style */
+.avatar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 49px;
+    height: 49px;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background-color: #dfe5e7;
+    flex-shrink: 0;
+}
+
+[data-bs-theme="dark"] .avatar {
+    background-color: #6b7c85;
+}
+
+.avatar-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* WhatsApp default user icon fallback */
+.avatar-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: white;
+    text-transform: uppercase;
+}
+
+/* WhatsApp person icon (SVG) */
+.avatar-fallback-icon {
+    width: 60%;
+    height: 60%;
+    color: white;
+    opacity: 0.9;
+}
+
+/* Hide fallback when image loads */
+.avatar-image:not([src=""]):not([src="#"]) + .avatar-fallback {
+    display: none;
+}
+
+/* ─────────────────────────────────────────
+   AVATAR SIZES - WhatsApp dimensions
+   ───────────────────────────────────────── */
+
+.avatar-xs {
+    width: 24px;
+    height: 24px;
+}
+
+.avatar-xs .avatar-fallback {
+    font-size: 10px;
+}
+
+.avatar-sm {
+    width: 36px;
+    height: 36px;
+}
+
+.avatar-sm .avatar-fallback {
+    font-size: var(--font-size-sm);
+}
+
+/* Default is 49px (WhatsApp chat list size) */
+
+.avatar-lg {
+    width: 60px;
+    height: 60px;
+}
+
+.avatar-lg .avatar-fallback {
+    font-size: var(--font-size-lg);
+}
+
+.avatar-xl {
+    width: 80px;
+    height: 80px;
+}
+
+.avatar-xl .avatar-fallback {
+    font-size: var(--font-size-xl);
+}
+
+.avatar-2xl {
+    width: 120px;
+    height: 120px;
+}
+
+.avatar-2xl .avatar-fallback {
+    font-size: var(--font-size-2xl);
+}
+
+/* ─────────────────────────────────────────
+   AVATAR VARIANTS
+   ───────────────────────────────────────── */
+
+/* Square */
+.avatar-square {
+    border-radius: var(--radius-md);
+}
+
+/* Bordered */
+.avatar-bordered {
+    border: 2px solid var(--color-background);
+    box-shadow: var(--shadow-sm);
+}
+
+/* With status - WhatsApp online indicator */
+.avatar-with-status {
+    position: relative;
+}
+
+.avatar-status {
+    position: absolute;
+    bottom: 1px;
+    right: 1px;
+    width: 12px;
+    height: 12px;
+    border-radius: var(--radius-full);
+    border: 2px solid var(--color-background-panel);
+}
+
+.avatar-status-online {
+    background-color: var(--color-brand);
+}
+
+.avatar-status-offline {
+    background-color: var(--color-foreground-subtle);
+}
+
+.avatar-status-away {
+    background-color: var(--color-warning);
+}
+
+.avatar-status-busy {
+    background-color: var(--color-danger);
+}
+
+/* Size adjustments for status */
+.avatar-xs .avatar-status {
+    width: 8px;
+    height: 8px;
+    border-width: 1px;
+}
+
+.avatar-sm .avatar-status {
+    width: 10px;
+    height: 10px;
+}
+
+.avatar-lg .avatar-status,
+.avatar-xl .avatar-status {
+    width: 14px;
+    height: 14px;
+    border-width: 3px;
+}
+
+/* ─────────────────────────────────────────
+   AVATAR COLORS (Fallback backgrounds)
+   ───────────────────────────────────────── */
+
+.avatar-brand {
+    background-color: var(--color-brand-muted);
+}
+
+.avatar-brand .avatar-fallback {
+    color: var(--color-brand);
+}
+
+.avatar-accent {
+    background-color: var(--color-accent-muted);
+}
+
+.avatar-accent .avatar-fallback {
+    color: var(--color-accent);
+}
+
+.avatar-danger {
+    background-color: var(--color-danger-muted);
+}
+
+.avatar-danger .avatar-fallback {
+    color: var(--color-danger);
+}
+
+.avatar-warning {
+    background-color: var(--color-warning-muted);
+}
+
+.avatar-warning .avatar-fallback {
+    color: #8b6914;
+}
+
+.avatar-info {
+    background-color: var(--color-info-muted);
+}
+
+.avatar-info .avatar-fallback {
+    color: #0e7490;
+}
+
+/* ─────────────────────────────────────────
+   AVATAR GROUP
+   ───────────────────────────────────────── */
+
+.avatar-group {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+}
+
+.avatar-group .avatar {
+    border: 2px solid var(--color-background);
+    margin-left: -0.5rem;
+}
+
+.avatar-group .avatar:last-child {
+    margin-left: 0;
+}
+
+.avatar-group .avatar:hover {
+    z-index: 1;
+}
+
+/* Avatar count (for +N more) */
+.avatar-group .avatar-count {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-foreground-muted);
+    background-color: var(--color-background-emphasized);
+}
+
+/* ─────────────────────────────────────────
+   AVATAR STACK (Vertical)
+   ───────────────────────────────────────── */
+
+.avatar-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.avatar-stack .avatar {
+    border: 2px solid var(--color-background);
+    margin-top: -0.5rem;
+}
+
+.avatar-stack .avatar:first-child {
+    margin-top: 0;
+}
+
+/* ─────────────────────────────────────────
+   USER CELL (Avatar + Name + Meta)
+   ───────────────────────────────────────── */
+
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.user-cell-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.user-cell-name {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-cell-meta {
+    font-size: var(--font-size-sm);
+    color: var(--color-foreground-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+</style>

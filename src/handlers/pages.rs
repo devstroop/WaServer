@@ -24,7 +24,7 @@ pub struct AuthTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "pages/chat.html")]
+#[template(path = "pages/chats.html")]
 pub struct ChatTemplate {
     pub current_page: &'static str,
     pub theme: String,
@@ -76,7 +76,7 @@ pub async fn auth_page() -> impl IntoResponse {
 /// Chat page
 pub async fn chat_page() -> impl IntoResponse {
     let template = ChatTemplate {
-        current_page: "chat",
+        current_page: "chats",
         theme: "light".to_string(),
     };
     Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
