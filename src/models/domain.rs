@@ -1,13 +1,11 @@
 //! Domain models for the WAS (WhatsApp Server) library
 //!
 //! These are pure business objects for the library API.
-//! Database models are in services/database.rs - use conversions when needed.
 
 use serde::{Deserialize, Serialize};
 
-// Re-export database types as the canonical source for Message-related types
-// This avoids duplicate definitions and ensures consistency
-pub use crate::services::database::{MediaType, Message, MessageStatus, NewMessage, SELF_JID};
+// Re-export message types from models
+pub use crate::models::message::{MediaType, Message, MessageStatus, NewMessage, SELF_JID};
 
 /// Authentication status for the library API
 #[derive(Debug, Clone, Serialize, Deserialize)]

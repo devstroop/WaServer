@@ -1,6 +1,7 @@
 //! HTMX Partial Handlers
 //!
 //! Handlers that return HTML fragments for HTMX dynamic updates.
+//! Uses AccountManager for multi-account support - shows first available account by default.
 
 use askama::Template;
 use axum::{
@@ -12,7 +13,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use crate::services::whatsapp::WhatsAppService;
+use crate::services::whatsapp::AccountManager;
+use crate::models::account::AccountStatus;
 
 // =============================================================================
 // Template Definitions for Partials
@@ -90,12 +92,33 @@ pub struct MessageInfo {
 }
 
 // =============================================================================
+// Helper: Get first available account
+// =============================================================================
+
+async fn get_first_account(manager: &AccountManager) -> Option<Arc<crate::services::whatsapp::WhatsAppAccount>> {
+    // Try to get first running account
+    let response = manager.list_accounts().await;
+    for info in &response.accounts {
+        if matches!(info.status, AccountStatus::Running) {
+            if let Some(account) = manager.get_account(&info.id).await {
+                return Some(account);
+            }
+        }
+    }
+    // Fallback to first account if any
+    if let Some(info) = response.accounts.first() {
+        return manager.get_account(&info.id).await;
+    }
+    None
+}
+
+// =============================================================================
 // Partial Handlers
 // =============================================================================
 
 /// Health cards partial (for dashboard)
 pub async fn health_cards(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
     let _now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -110,12 +133,17 @@ pub async fn health_cards(
         .unwrap_or_default()
         .as_secs();
 
-    // Check services
-    let browser_healthy = whatsapp_service.health_check().await.is_ok();
-    
-    let whatsapp_connected = match whatsapp_service.get_auth_status().await {
-        Ok(status) => status.authenticated,
-        Err(_) => false,
+    // Check services - use first available account
+    let (browser_healthy, whatsapp_connected) = if let Some(account) = get_first_account(&manager).await {
+        let healthy = account.health_check().await.is_ok();
+        let connected = match account.get_auth_status().await {
+            Ok(status) => status.authenticated,
+            Err(_) => false,
+        };
+        (healthy, connected)
+    } else {
+        // No accounts - show as unhealthy
+        (false, false)
     };
 
     let uptime_formatted = format_uptime(uptime_seconds);
@@ -136,75 +164,87 @@ pub async fn health_cards(
 
 /// Auth panel partial
 pub async fn auth_panel(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    match whatsapp_service.get_auth_status().await {
-        Ok(status) => {
-            let template = AuthPanelTemplate {
-                status: status.status.clone(),
-                authenticated: status.authenticated,
-                phone_number: status.phone_number,
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
-        }
-        Err(_) => {
-            let template = AuthPanelTemplate {
-                status: "checking".to_string(),
-                authenticated: false,
-                phone_number: None,
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    if let Some(account) = get_first_account(&manager).await {
+        match account.get_auth_status().await {
+            Ok(status) => {
+                let template = AuthPanelTemplate {
+                    status: status.status.clone(),
+                    authenticated: status.authenticated,
+                    phone_number: status.phone_number,
+                };
+                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
+            }
+            Err(_) => {}
         }
     }
+    
+    let template = AuthPanelTemplate {
+        status: "no_account".to_string(),
+        authenticated: false,
+        phone_number: None,
+    };
+    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
 }
 
 /// QR code partial
 pub async fn qr_code(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    match whatsapp_service
-        .execute_with_busy_flag(async { 
-            whatsapp_service.auth_service().get_auth_qr_code().await 
-        })
-        .await
-    {
-        Ok(qr) => {
-            let template = QrCodeTemplate {
-                qrcode: Some(qr),
-                error: None,
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
-        }
-        Err(e) => {
-            let template = QrCodeTemplate {
-                qrcode: None,
-                error: Some(e.to_string()),
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    if let Some(account) = get_first_account(&manager).await {
+        match account
+            .execute_with_busy_flag(async { 
+                account.auth_service().get_auth_qr_code().await 
+            })
+            .await
+        {
+            Ok(qr) => {
+                let template = QrCodeTemplate {
+                    qrcode: Some(qr),
+                    error: None,
+                };
+                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
+            }
+            Err(e) => {
+                let template = QrCodeTemplate {
+                    qrcode: None,
+                    error: Some(e.to_string()),
+                };
+                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
+            }
         }
     }
+    
+    let template = QrCodeTemplate {
+        qrcode: None,
+        error: Some("No account available. Create an account first.".to_string()),
+    };
+    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
 }
 
 /// Auth indicator partial (header status)
 pub async fn auth_indicator(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    match whatsapp_service.get_auth_status().await {
-        Ok(status) => {
-            let template = AuthIndicatorTemplate {
-                authenticated: status.authenticated,
-                status: status.status,
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
-        }
-        Err(_) => {
-            let template = AuthIndicatorTemplate {
-                authenticated: false,
-                status: "checking".to_string(),
-            };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    if let Some(account) = get_first_account(&manager).await {
+        match account.get_auth_status().await {
+            Ok(status) => {
+                let template = AuthIndicatorTemplate {
+                    authenticated: status.authenticated,
+                    status: status.status,
+                };
+                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
+            }
+            Err(_) => {}
         }
     }
+    
+    let template = AuthIndicatorTemplate {
+        authenticated: false,
+        status: "no_account".to_string(),
+    };
+    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
 }
 
 /// Phone pairing partial
@@ -214,12 +254,18 @@ pub struct PhonePairForm {
 }
 
 pub async fn phone_pair(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
     Form(form): Form<PhonePairForm>,
 ) -> impl IntoResponse {
-    match whatsapp_service
+    let Some(account) = get_first_account(&manager).await else {
+        return Html(r#"<div class="p-4 bg-danger bg-opacity-10 rounded text-center">
+            <p class="small text-danger">No account available. Create an account first.</p>
+        </div>"#.to_string());
+    };
+    
+    match account
         .execute_with_busy_flag(async {
-            whatsapp_service
+            account
                 .auth_service()
                 .login_with_phone_number(&form.phone)
                 .await
@@ -254,10 +300,17 @@ pub struct ChatListQuery {
 }
 
 pub async fn chat_list(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
     Query(query): Query<ChatListQuery>,
 ) -> impl IntoResponse {
-    match whatsapp_service.chat_service().get_chat_list().await {
+    let Some(account) = get_first_account(&manager).await else {
+        return Html(r#"<div class="d-flex flex-column align-items-center justify-content-center text-secondary" style="height: 16rem;">
+            <i class="bi bi-exclamation-circle icon-3xl mb-3 opacity-50"></i>
+            <p class="text-sm">No account available. Create an account first.</p>
+        </div>"#.to_string());
+    };
+    
+    match account.chat_service().get_chat_list().await {
         Ok(chat_list) => {
             let mut chats: Vec<ChatInfo> = chat_list.into_iter().map(|c| {
                 ChatInfo {
@@ -293,11 +346,18 @@ pub async fn chat_list(
 
 /// Chat view partial
 pub async fn chat_view(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
     Path(chat_id): Path<String>,
 ) -> impl IntoResponse {
+    let Some(account) = get_first_account(&manager).await else {
+        return Html(r#"<div class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary">
+            <i class="bi bi-exclamation-circle icon-3xl mb-3 opacity-50"></i>
+            <p class="text-sm">No account available</p>
+        </div>"#.to_string());
+    };
+    
     // Get chat messages
-    match whatsapp_service.chat_service().get_messages(&chat_id, None, false).await {
+    match account.chat_service().get_messages(&chat_id, None, false).await {
         Ok(message_list) => {
             let messages: Vec<MessageInfo> = message_list.messages.into_iter().map(|m| {
                 MessageInfo {
@@ -336,11 +396,15 @@ pub async fn chat_view(
 
 /// Link device card partial (shown when not authenticated)
 pub async fn link_device_card(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    let authenticated = match whatsapp_service.get_auth_status().await {
-        Ok(status) => status.authenticated,
-        Err(_) => false,
+    let authenticated = if let Some(account) = get_first_account(&manager).await {
+        match account.get_auth_status().await {
+            Ok(status) => status.authenticated,
+            Err(_) => false,
+        }
+    } else {
+        false
     };
 
     if authenticated {
@@ -360,28 +424,32 @@ pub async fn link_device_card(
 
 /// Connected account card partial (shown when authenticated)
 pub async fn connected_account(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    match whatsapp_service.get_auth_status().await {
-        Ok(status) if status.authenticated => {
-            let phone = status.phone_number.unwrap_or_else(|| "WhatsApp User".to_string());
-            Html(format!(r#"
-            <div id="connected-account" class="action-card" style="border-color: var(--was-green); background: rgba(37, 211, 102, 0.05);">
-                <h5 style="color: var(--was-green-dark);">Connected Account</h5>
-                <div class="d-flex align-items-center gap-3 mt-3">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(37, 211, 102, 0.2);">
-                        <i class="bi bi-phone icon-xl" style="color: var(--was-green);"></i>
-                    </div>
-                    <div>
-                        <p class="font-semibold text-base mb-0">{}</p>
-                        <p class="text-sm text-muted mb-0">Device linked and ready</p>
+    if let Some(account) = get_first_account(&manager).await {
+        match account.get_auth_status().await {
+            Ok(status) if status.authenticated => {
+                let phone = status.phone_number.unwrap_or_else(|| "WhatsApp User".to_string());
+                return Html(format!(r#"
+                <div id="connected-account" class="action-card" style="border-color: var(--was-green); background: rgba(37, 211, 102, 0.05);">
+                    <h5 style="color: var(--was-green-dark);">Connected Account</h5>
+                    <div class="d-flex align-items-center gap-3 mt-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(37, 211, 102, 0.2);">
+                            <i class="bi bi-phone icon-xl" style="color: var(--was-green);"></i>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-base mb-0">{}</p>
+                            <p class="text-sm text-muted mb-0">Device linked and ready</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-            "#, phone))
+                "#, phone));
+            }
+            _ => {}
         }
-        _ => Html(r#"<div id="connected-account"></div>"#.to_string()),
     }
+    
+    Html(r#"<div id="connected-account"></div>"#.to_string())
 }
 
 /// Server info partial
@@ -404,11 +472,15 @@ pub async fn server_info() -> impl IntoResponse {
 
 /// Session controls partial
 pub async fn session_controls(
-    State(whatsapp_service): State<Arc<WhatsAppService>>,
+    State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    let authenticated = match whatsapp_service.get_auth_status().await {
-        Ok(status) => status.authenticated,
-        Err(_) => false,
+    let authenticated = if let Some(account) = get_first_account(&manager).await {
+        match account.get_auth_status().await {
+            Ok(status) => status.authenticated,
+            Err(_) => false,
+        }
+    } else {
+        false
     };
 
     if authenticated {

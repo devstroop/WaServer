@@ -3,7 +3,6 @@
 //! The main library interface for WhatsApp Web automation.
 
 use crate::{
-    browser::BrowserService,
     config::AppConfig,
     error::{Result, WhatsAppError},
     models::domain::*,
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{debug, error, info, warn};
 
+use super::driver::BrowserService;
 use super::session::SessionManager;
 
 /// The main WAS (WhatsApp Server) library interface.

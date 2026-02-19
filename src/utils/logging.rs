@@ -7,7 +7,7 @@ use std::fmt;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::config::environment::EnvironmentConfig;
+use crate::models::environment::EnvironmentConfig;
 
 /// Correlation ID for request tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]

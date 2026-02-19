@@ -71,4 +71,14 @@ impl ServiceMetrics {
         self.error_count.store(0, Ordering::Relaxed);
         self.last_activity.store(0, Ordering::Relaxed);
     }
+
+    /// Get last activity as DateTime<Utc>, or None if never active
+    pub fn last_activity(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let ts = self.last_activity.load(Ordering::Relaxed);
+        if ts == 0 {
+            None
+        } else {
+            chrono::DateTime::from_timestamp(ts as i64, 0)
+        }
+    }
 }

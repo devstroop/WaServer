@@ -3,6 +3,12 @@
 //! This module contains Axum handlers for the REST API endpoints.
 //! These handlers serve external integrations and programmatic access.
 
+/// Account management API (create, list, delete accounts - no X-Account-Id required)
+pub mod accounts;
+
+/// WhatsApp account operations API (status, QR, profile, privacy - requires X-Account-Id)
+pub mod account;
+
 /// Authentication API handlers (login, logout, QR code, auth status)
 pub mod auth;
 

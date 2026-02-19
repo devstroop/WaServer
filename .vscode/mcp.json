@@ -16,7 +16,7 @@
         "rest-api": {
             "command": "node",
             "args": [
-                "C:/Users/Administrator/mcp-servers/rest-mcp/build/index.js"
+                "~/McpServers/rest-mcp/build/index.js"
             ],
             "env": {
                 "REST_BASE_URL": "http://localhost:3000",

@@ -1,12 +1,19 @@
 //! WhatsApp Web Element Locators
 //!
-//! Type-safe CSS selectors and XPath for WhatsApp Web UI elements.
-//! Updated to match current WhatsApp Web UI (2024+).
-//!
-//! Also includes centralized timeout constants for consistency.
+//! Locators are loaded from `config/locators.toml` at runtime.
+//! Update the TOML file when WhatsApp Web UI changes - no recompilation needed.
+//! Falls back to built-in defaults if config file is missing.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chromiumoxide::page::Page;
+use serde::Deserialize;
+use std::fs;
+use std::path::Path;
+use std::sync::OnceLock;
+
+// ============================================================================
+// Timeout Constants
+// ============================================================================
 
 /// Centralized timeout constants (in milliseconds)
 pub struct Timeouts;
@@ -32,116 +39,306 @@ impl Timeouts {
     pub const POLL_INTERVAL_MS: u64 = 200;
 }
 
-/// WhatsApp Web element locators
+// ============================================================================
+// TOML Configuration Types
+// ============================================================================
+
+/// Global cached locator config
+static CONFIG: OnceLock<LocatorConfig> = OnceLock::new();
+
+/// Root locator configuration (loaded from TOML)
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocatorConfig {
+    pub dialog: DialogLocators,
+    pub auth: AuthLocators,
+    pub menu: MenuLocators,
+    pub loading: LoadingLocators,
+    pub chat: ChatLocators,
+    pub attachment: AttachmentLocators,
+    #[serde(default)]
+    pub scripts: ScriptLocators,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DialogLocators {
+    pub root: String,
+    pub backdrop: String,
+    pub popup: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthLocators {
+    pub login_with_phone_link: String,
+    pub login_with_qr_link: String,
+    pub login_label: String,
+    pub phone_number_label: String,
+    pub phone_number_input: String,
+    pub phone_submit_button: String,
+    pub invalid_phone_dialog: String,
+    pub code_on_phone_label: String,
+    pub code_on_phone_value: String,
+    pub link_code_element: String,
+    pub link_code_digits: String,
+    pub qr_loading: String,
+    pub qr_canvas: String,
+    pub qr_reload_button: String,
+    pub authorized_pane: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MenuLocators {
+    pub button: String,
+    pub dropdown: String,
+    pub logout: String,
+    pub logout_confirm: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoadingLocators {
+    pub progress: String,
+    pub phone_loader_parent: String,
+    pub phone_loader: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatLocators {
+    pub message_input: String,
+    pub message_contenteditable: String,
+    pub send_button: String,
+    pub send_button_parent: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AttachmentLocators {
+    pub button: String,
+    pub plus_icon: String,
+    pub menu_plus_icon: String,
+    pub photo_video_input: String,
+    pub caption_input: String,
+    pub document_input: String,
+    pub send_button: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ScriptLocators {
+    #[serde(default = "default_qr_script")]
+    pub qr_code_base64: String,
+}
+
+fn default_qr_script() -> String {
+    r#"(function() {
+    var canvas = document.querySelector("canvas[aria-label='Scan this QR code to link a device!']");
+    if (canvas) {
+        return canvas.toDataURL('image/png').split(',')[1];
+    }
+    return null;
+})();"#
+        .to_string()
+}
+
+impl LocatorConfig {
+    /// Load locators from TOML file
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let content = fs::read_to_string(path.as_ref())
+            .with_context(|| format!("Failed to read locators from {:?}", path.as_ref()))?;
+        toml::from_str(&content).context("Failed to parse locators TOML")
+    }
+
+    /// Load from default path (config/locators.toml)
+    pub fn load_default() -> Result<Self> {
+        Self::load("config/locators.toml")
+    }
+
+    /// Get or initialize the global locator config
+    pub fn global() -> &'static Self {
+        CONFIG.get_or_init(|| {
+            Self::load_default().unwrap_or_else(|e| {
+                tracing::warn!("Failed to load locators.toml, using defaults: {}", e);
+                Self::defaults()
+            })
+        })
+    }
+
+    /// Built-in defaults (fallback when config file is missing)
+    pub fn defaults() -> Self {
+        Self {
+            dialog: DialogLocators {
+                root: "[role='dialog']".into(),
+                backdrop: "div[data-animate-modal-backdrop='true']".into(),
+                popup: "div[data-animate-modal-popup='true']".into(),
+                body: "div[data-animate-modal-body='true']".into(),
+            },
+            auth: AuthLocators {
+                login_with_phone_link: "span[role='button']".into(),
+                login_with_qr_link: "span[role='button']".into(),
+                login_label: "text='Log into WhatsApp Web'".into(),
+                phone_number_label: "text='Enter phone number'".into(),
+                phone_number_input: "[aria-label='Type your phone number.']".into(),
+                phone_submit_button: "div[role='button']".into(),
+                invalid_phone_dialog: "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']".into(),
+                code_on_phone_label: "text='Enter code on phone'".into(),
+                code_on_phone_value: "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
+                link_code_element: "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
+                link_code_digits: "[data-link-code]".into(),
+                qr_loading: "svg[role='status']".into(),
+                qr_canvas: "canvas[aria-label='Scan this QR code to link a device!']".into(),
+                qr_reload_button: "[data-icon='refresh-large']".into(),
+                authorized_pane: "#pane-side".into(),
+            },
+            menu: MenuLocators {
+                button: "button[title='Menu']".into(),
+                dropdown: "[aria-label='Menu']".into(),
+                logout: "[aria-label='Log out']".into(),
+                logout_confirm: "[aria-label='Log out?']".into(),
+            },
+            loading: LoadingLocators {
+                progress: "progress[max='100']".into(),
+                phone_loader_parent: "#phoneLoaderParent".into(),
+                phone_loader: "#phoneLoader".into(),
+            },
+            chat: ChatLocators {
+                message_input: "#app #main footer div[aria-placeholder='Type a message']".into(),
+                message_contenteditable: "div[contenteditable='true'][aria-placeholder='Type a message']".into(),
+                send_button: "span[data-icon='send']".into(),
+                send_button_parent: "button span[data-icon='send']".into(),
+            },
+            attachment: AttachmentLocators {
+                button: "button[title='Attach']".into(),
+                plus_icon: "[data-icon='plus']".into(),
+                menu_plus_icon: "[data-icon='attach-menu-plus']".into(),
+                photo_video_input: "input[accept='image/*,video/mp4,video/3gpp,video/quicktime']".into(),
+                caption_input: "#app div[aria-placeholder='Add a caption']".into(),
+                document_input: "input[accept='*']".into(),
+                send_button: "#app div[aria-label='Send']".into(),
+            },
+            scripts: ScriptLocators {
+                qr_code_base64: default_qr_script(),
+            },
+        }
+    }
+}
+
+// ============================================================================
+// Static Locator Access (convenience methods using global config)
+// ============================================================================
+
+/// WhatsApp Web element locators - loads from config/locators.toml
 pub struct Locators;
 
 impl Locators {
+    /// Get the global config
+    pub fn config() -> &'static LocatorConfig {
+        LocatorConfig::global()
+    }
+
     // ========================================
     // Authentication
     // ========================================
 
-    /// QR code canvas element
-    pub const QR_CODE_CANVAS: &'static str =
-        "canvas[aria-label='Scan this QR code to link a device!']";
+    pub fn qr_code_canvas() -> &'static str {
+        &Self::config().auth.qr_canvas
+    }
 
-    /// Link with phone number button
-    pub const PHONE_AUTH_LINK: &'static str = "span[role='button']";
+    pub fn phone_auth_link() -> &'static str {
+        &Self::config().auth.login_with_phone_link
+    }
 
-    /// Phone number input field
-    pub const PHONE_INPUT: &'static str = "[aria-label='Type your phone number.']";
+    pub fn phone_input() -> &'static str {
+        &Self::config().auth.phone_number_input
+    }
 
-    /// Phone code display element
-    pub const PHONE_CODE: &'static str =
-        "[aria-details='link-device-phone-number-code-screen-instructions']";
+    pub fn phone_code() -> &'static str {
+        &Self::config().auth.link_code_element
+    }
 
-    /// Authorized side pane (indicates logged in)
-    pub const SIDE_PANE: &'static str = "#pane-side";
+    pub fn side_pane() -> &'static str {
+        &Self::config().auth.authorized_pane
+    }
 
-    /// Loading progress indicator
-    pub const LOADING_PROGRESS: &'static str = "progress[max='100']";
+    pub fn loading_progress() -> &'static str {
+        &Self::config().loading.progress
+    }
 
     // ========================================
     // Menu & Navigation
     // ========================================
 
-    /// Menu button
-    pub const MENU_BUTTON: &'static str = "button[title='Menu']";
+    pub fn menu_button() -> &'static str {
+        &Self::config().menu.button
+    }
 
-    /// Logout menu item
-    pub const LOGOUT_BUTTON: &'static str = "[aria-label='Log out']";
+    pub fn logout_button() -> &'static str {
+        &Self::config().menu.logout
+    }
 
-    /// Logout confirmation dialog
-    pub const LOGOUT_DIALOG: &'static str = "[aria-label='Log out?']";
+    pub fn logout_dialog() -> &'static str {
+        &Self::config().menu.logout_confirm
+    }
 
     // ========================================
     // Chat & Messaging
     // ========================================
 
-    /// Message input field
-    pub const MESSAGE_INPUT: &'static str =
-        "#app #main footer div[aria-placeholder='Type a message']";
+    pub fn message_input() -> &'static str {
+        &Self::config().chat.message_input
+    }
 
-    /// Send button (icon)
-    pub const SEND_BUTTON_ICON: &'static str = "span[data-icon='send']";
+    pub fn send_button_icon() -> &'static str {
+        &Self::config().chat.send_button
+    }
 
-    /// Send button (aria-label)
-    pub const SEND_BUTTON: &'static str = "button[aria-label='Send']";
+    pub fn send_button() -> &'static str {
+        &Self::config().chat.send_button_parent
+    }
 
     // ========================================
     // Attachments
     // ========================================
 
-    /// Attach button
-    pub const ATTACH_BUTTON: &'static str = "button[title='Attach']";
+    pub fn attach_button() -> &'static str {
+        &Self::config().attachment.button
+    }
 
-    /// Plus icon for attachments
-    pub const ATTACH_PLUS_ICON: &'static str = "[data-icon='plus']";
+    pub fn attach_plus_icon() -> &'static str {
+        &Self::config().attachment.plus_icon
+    }
 
-    /// Photo/video file input
-    pub const PHOTO_VIDEO_INPUT: &'static str =
-        "input[accept='image/*,video/mp4,video/3gpp,video/quicktime']";
+    pub fn photo_video_input() -> &'static str {
+        &Self::config().attachment.photo_video_input
+    }
 
-    /// Document file input
-    pub const DOCUMENT_INPUT: &'static str = "input[accept='*']";
+    pub fn document_input() -> &'static str {
+        &Self::config().attachment.document_input
+    }
 
-    /// Caption input for media
-    pub const CAPTION_INPUT: &'static str = "#app div[aria-placeholder='Add a caption']";
+    pub fn caption_input() -> &'static str {
+        &Self::config().attachment.caption_input
+    }
 
-    /// Send button for attachments
-    pub const ATTACHMENT_SEND: &'static str = "#app div[aria-label='Send']";
-
-    // ========================================
-    // Chat List & Messages
-    // ========================================
-
-    /// Chat list container
-    pub const CHAT_LIST: &'static str = "[data-testid='chat-list']";
-
-    /// Chat list item row
-    pub const CHAT_LIST_ITEM: &'static str = "[data-testid='cell-frame-container']";
-
-    /// Conversation panel
-    pub const CONVERSATION_PANEL: &'static str = "[data-testid='conversation-panel-messages']";
-
-    /// Message container with ID
-    pub const MESSAGE_ITEM: &'static str = "[data-id]";
+    pub fn attachment_send() -> &'static str {
+        &Self::config().attachment.send_button
+    }
 
     // ========================================
     // Dialogs
     // ========================================
 
-    /// Generic dialog
-    pub const DIALOG: &'static str = "[role='dialog']";
+    pub fn dialog() -> &'static str {
+        &Self::config().dialog.root
+    }
 
-    /// Modal popup
-    pub const MODAL_POPUP: &'static str = "div[data-animate-modal-popup='true']";
+    pub fn modal_popup() -> &'static str {
+        &Self::config().dialog.popup
+    }
 
-    /// Modal body
-    pub const MODAL_BODY: &'static str = "div[data-animate-modal-body='true']";
+    pub fn modal_body() -> &'static str {
+        &Self::config().dialog.body
+    }
 
-    /// Invalid phone dialog
-    pub const INVALID_PHONE_DIALOG: &'static str =
-        "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']";
+    pub fn invalid_phone_dialog() -> &'static str {
+        &Self::config().auth.invalid_phone_dialog
+    }
 
     // ========================================
     // Helper Methods
@@ -149,17 +346,7 @@ impl Locators {
 
     /// Get QR code as base64 PNG
     pub async fn get_qr_code_base64(page: &Page) -> Result<Option<String>> {
-        let script = r#"
-            (function() {
-                var canvas = document.querySelector("canvas[aria-label='Scan this QR code to link a device!']");
-                if (canvas) {
-                    return canvas.toDataURL('image/png').split(',')[1];
-                }
-                return null;
-            })();
-        "#;
-
-        match page.evaluate(script).await {
+        match page.evaluate(Self::config().scripts.qr_code_base64.as_str()).await {
             Ok(result) => Ok(result.into_value::<Option<String>>().unwrap_or(None)),
             Err(_) => Ok(None),
         }
@@ -167,7 +354,7 @@ impl Locators {
 
     /// Get phone authentication code
     pub async fn get_phone_code(page: &Page) -> Result<Option<String>> {
-        match page.find_element(Self::PHONE_CODE).await {
+        match page.find_element(Self::phone_code()).await {
             Ok(element) => match element.attribute("data-link-code").await {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(None),
@@ -221,5 +408,17 @@ impl Locators {
 
         let result = page.evaluate(script.as_str()).await?;
         Ok(result.into_value::<bool>().unwrap_or(false))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_defaults() {
+        let config = LocatorConfig::defaults();
+        assert_eq!(config.dialog.root, "[role='dialog']");
+        assert_eq!(config.auth.authorized_pane, "#pane-side");
     }
 }

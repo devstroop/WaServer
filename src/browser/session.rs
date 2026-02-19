@@ -2,21 +2,12 @@
 // This module handles session persistence, phone number extraction, and session IDs
 
 use crate::{Result, WhatsAppError};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
 
-/// Session data structure for persistence
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionData {
-    pub session_id: String,
-    pub phone_number: Option<String>,
-    pub authenticated_at: chrono::DateTime<chrono::Utc>,
-    pub browser_cookies: Option<String>, // JSON serialized cookies
-    pub local_storage: Option<String>,   // JSON serialized local storage
-    pub session_storage: Option<String>, // JSON serialized session storage
-}
+// Re-export SessionData from models
+pub use crate::models::session::SessionData;
 
 /// Session manager handles persistent authentication state
 #[derive(Debug)]

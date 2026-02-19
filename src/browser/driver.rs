@@ -8,13 +8,67 @@ use anyhow::Result;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::page::Page;
 use futures_util::stream::StreamExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 
+/// Browser service configuration
+#[derive(Debug, Clone)]
+pub struct BrowserServiceConfig {
+    /// User data directory for Chrome profile
+    pub user_data_dir: PathBuf,
+    /// Whether to run headless
+    pub headless: bool,
+    /// Browser timeout in milliseconds
+    pub timeout_ms: u64,
+    /// Additional browser arguments
+    pub args: Vec<String>,
+}
+
+impl BrowserServiceConfig {
+    /// Create config from AppConfig (legacy single-account mode)
+    pub fn from_app_config(config: &AppConfig) -> Self {
+        let base_dir = if cfg!(target_os = "windows") {
+            std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
+                std::env::var("APPDATA").unwrap_or_else(|_| "C:\\Users\\Public".to_string())
+            })
+        } else {
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
+        };
+
+        Self {
+            user_data_dir: PathBuf::from(format!("{}/was/chrome-profile", base_dir)),
+            headless: config.browser.headless,
+            timeout_ms: config.browser.timeout_ms,
+            args: config.browser.args.clone(),
+        }
+    }
+
+    /// Create config for a specific account
+    pub fn for_account(account_data_dir: &PathBuf, headless: bool, timeout_ms: u64) -> Self {
+        Self {
+            user_data_dir: account_data_dir.join("chrome-profile"),
+            headless,
+            timeout_ms,
+            args: vec![
+                "--disable-blink-features=AutomationControlled".to_string(),
+                "--no-sandbox".to_string(),
+                "--disable-setuid-sandbox".to_string(),
+                "--disable-dev-shm-usage".to_string(),
+                "--disable-extensions".to_string(),
+                "--disable-popup-blocking".to_string(),
+                "--disable-gpu".to_string(),
+                "--disable-software-rasterizer".to_string(),
+            ],
+        }
+    }
+}
+
 /// Browser service for managing Chrome browser instances
 pub struct BrowserService {
     config: Arc<AppConfig>,
+    browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,
     whatsapp_page: Arc<Mutex<Option<Page>>>,
     user_data_dir: Arc<Mutex<Option<String>>>,
@@ -22,12 +76,30 @@ pub struct BrowserService {
 
 impl BrowserService {
     pub fn new(config: Arc<AppConfig>) -> Self {
+        let browser_config = BrowserServiceConfig::from_app_config(&config);
         Self {
             config,
+            browser_config,
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),
             user_data_dir: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Create a new browser service with custom configuration (for multi-account)
+    pub fn with_config(config: Arc<AppConfig>, browser_config: BrowserServiceConfig) -> Self {
+        Self {
+            config,
+            browser_config,
+            browser: Arc::new(Mutex::new(None)),
+            whatsapp_page: Arc::new(Mutex::new(None)),
+            user_data_dir: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Get the user data directory path
+    pub fn get_user_data_dir(&self) -> &PathBuf {
+        &self.browser_config.user_data_dir
     }
 
     /// Initialize the browser service
@@ -41,26 +113,16 @@ impl BrowserService {
         let mut browser_config = BrowserConfig::builder();
 
         // Set headless mode
-        if !self.config.browser.headless {
+        if !self.browser_config.headless {
             browser_config = browser_config.with_head();
         }
 
-        // Add Chrome args
-        for arg in &self.config.browser.args {
+        // Add Chrome args from config
+        for arg in &self.browser_config.args {
             browser_config = browser_config.arg(arg);
         }
 
-        // Use a PERSISTENT user data directory for session preservation
-        // This allows WhatsApp Web to remember the login session across restarts
-        let base_dir = if cfg!(target_os = "windows") {
-            std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-                std::env::var("APPDATA").unwrap_or_else(|_| "C:\\Users\\Public".to_string())
-            })
-        } else {
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-        };
-
-        let user_data_dir = format!("{}/was/chrome-profile", base_dir);
+        let user_data_dir = self.browser_config.user_data_dir.to_string_lossy().to_string();
 
         // Ensure the directory exists
         std::fs::create_dir_all(&user_data_dir)

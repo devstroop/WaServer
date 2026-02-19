@@ -1,6 +1,6 @@
 [package]
 name = "was"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
 description = "WAS (WhatsAppServer) - A high-performance WhatsApp Web automation server built in Rust with REST API and MCP support"
@@ -17,7 +17,7 @@ path = "src/lib.rs"
 # Binary configuration
 [[bin]]
 name = "was"
-path = "src/bin/whatsapp-server.rs"
+path = "src/bin/was.rs"
 
 # ============================================================================
 # Features
@@ -96,7 +96,6 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 
 # OpenAPI documentation
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
-utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
 
 # ============================================================================
 # Optional Dependencies

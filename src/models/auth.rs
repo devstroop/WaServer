@@ -104,8 +104,6 @@ pub struct Claims {
 /// Local auth status response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LocalAuthStatusResponse {
-    /// Whether local auth is enabled
-    pub local_auth_enabled: bool,
     /// Whether user is logged in (has valid token)
     pub logged_in: bool,
     /// Username if logged in

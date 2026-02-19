@@ -23,6 +23,21 @@ enabled = true
 # Set your secure API token here - CHANGE THIS IN PRODUCTION!
 api_token = "your-secure-api-token-change-this"
 
+# =============================================================================
+# Local Auth - JWT-based username/password authentication
+# =============================================================================
+[local_auth]
+# JWT secret key for signing tokens (CHANGE IN PRODUCTION - min 32 chars)
+jwt_secret = "your-super-secret-jwt-key-change-this-in-production-32chars"
+# Access token expiry in hours
+token_expiry_hours = 24
+# Refresh token expiry in days
+refresh_token_expiry_days = 7
+# Default admin username
+default_username = "admin"
+# Default admin password (CHANGE IN PRODUCTION)
+default_password = "admin123"
+
 [logging]
 level = "info"
 # Available levels: trace, debug, info, warn, error
