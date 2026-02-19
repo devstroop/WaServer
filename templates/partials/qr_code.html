@@ -5,29 +5,30 @@
         <img 
             src="data:image/png;base64,{{ qr }}"
             alt="WhatsApp QR Code"
-            width="256"
-            height="256"
+            width="200"
+            height="200"
             class="rounded"
+            style="image-rendering: pixelated;"
         >
     </div>
     {% when None %}
     {% match error %}
         {% when Some with (err) %}
-        <div class="w-64 h-64 flex flex-col items-center justify-center bg-muted rounded-lg gap-2">
-            <p class="text-sm text-destructive">{{ err }}</p>
+        <div class="flex flex-col items-center justify-center rounded-lg gap-2" style="width:200px;height:200px;background-color:var(--color-background-muted)">
+            <p class="text-xs text-destructive text-center px-2">{{ err }}</p>
             <button 
                 class="btn btn-outline btn-sm"
                 hx-get="/partials/qr-code"
                 hx-target="#qr-code-container"
-                hx-swap="innerHTML"
+                hx-swap="innerHTML transition:false"
             >
-                <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                <i class="bi bi-arrow-clockwise mr-1"></i>
                 Retry
             </button>
         </div>
         {% when None %}
-        <div class="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
-            <p class="text-sm text-muted-foreground">No QR code available</p>
+        <div class="flex items-center justify-center rounded-lg" style="width:200px;height:200px;background-color:var(--color-background-muted)">
+            <p class="text-xs text-muted-foreground">No QR code available</p>
         </div>
     {% endmatch %}
 {% endmatch %}

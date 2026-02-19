@@ -219,26 +219,44 @@ impl AuthServiceTrait for AuthService {
 
         let check_js = r##"
             (() => {
+                // Check if we're still loading (progress bar visible)
+                const isLoading = document.querySelector('progress[max="100"]') !== null
+                    || document.body.innerText.includes('Loading your chats');
+                
+                if (isLoading) {
+                    return { authorized: false, reason: 'loading' };
+                }
+                
+                // Check for authenticated state (chat list pane visible)
                 const paneExists = document.querySelector('#pane-side') !== null 
                     || document.querySelector('[data-testid="chat-list"]') !== null
                     || document.querySelector('div[aria-label="Chat list"]') !== null;
                 
-                const loginScreen = document.body.innerText.includes('Log into WhatsApp Web')
-                    || document.body.innerText.includes('Use WhatsApp on your computer')
+                if (paneExists) {
+                    return { authorized: true, reason: 'pane_visible' };
+                }
+                
+                // Check for QR code login screen
+                const qrCodeVisible = document.querySelector("canvas[aria-label='Scan this QR code to link a device!']") !== null
                     || document.querySelector('canvas[aria-label="Scan me!"]') !== null;
                 
+                // Check for general login screen indicators
+                const loginScreen = qrCodeVisible
+                    || document.body.innerText.includes('Log into WhatsApp Web')
+                    || document.body.innerText.includes('Use WhatsApp on your computer')
+                    || document.body.innerText.includes('Link with phone number');
+                
+                // Check for phone number entry
                 const phoneEntry = document.body.innerText.includes('Enter phone number')
                     || document.querySelector('input[aria-label="Type your phone number."]') !== null;
                 
+                // Check for pairing code entry
                 const codeEntry = document.body.innerText.includes('Enter code on phone')
-                    || document.querySelector('[data-testid="link-device-phone-number-code-entry"]') !== null;
+                    || document.querySelector('[data-testid="link-device-phone-number-code-entry"]') !== null
+                    || document.querySelector('[aria-details="link-device-phone-number-code-screen-instructions"]') !== null;
                 
                 if (loginScreen || phoneEntry || codeEntry) {
-                    return { authorized: false, reason: loginScreen ? 'login' : phoneEntry ? 'phone' : 'code' };
-                }
-                
-                if (paneExists) {
-                    return { authorized: true, reason: 'pane_visible' };
+                    return { authorized: false, reason: qrCodeVisible ? 'login' : phoneEntry ? 'phone' : codeEntry ? 'code' : 'login' };
                 }
                 
                 return { authorized: false, reason: 'unclear' };

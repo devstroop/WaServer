@@ -4,13 +4,13 @@
 {% block page_title %}Authentication{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-center h-full p-6" style="background-color: var(--color-background-subtle)">
+<div class="flex items-center justify-center px-4" style="background-color: var(--color-background-subtle); min-height: 100%; height: 100%;">
     <div 
         id="auth-panel"
         hx-get="/partials/auth-panel"
         hx-trigger="load"
-        hx-swap="innerHTML"
-        class="w-full" style="max-width: 28rem;"
+        hx-swap="innerHTML transition:false"
+        class="w-full" style="max-width: 24rem;"
     >
         <!-- Loading state -->
         <div class="card">

@@ -52,69 +52,41 @@
 <!-- Auth required state -->
 <div class="card">
     <div class="card-content">
-        <h2 class="text-2xl font-semibold text-center flex items-center justify-center gap-2 mb-2">
+        <h2 class="text-lg font-semibold text-center flex items-center justify-center gap-2 mb-1">
             <span class="text-brand">●</span>
             WhatsApp Authentication
         </h2>
-        <p class="text-center text-muted-foreground mb-6">Scan QR code or enter phone number to link your account</p>
+        <p class="text-center text-muted-foreground text-sm mb-4">Enter phone number or scan QR code to link your account</p>
         
         <!-- Tabs -->
-        <div x-data="{ tab: 'qr' }">
-            <div class="flex gap-1 p-1 rounded-lg mb-6" style="background-color:var(--color-background-muted)">
-                <button 
-                    @click="tab = 'qr'"
-                    class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium"
-                    :style="tab === 'qr' ? 'background-color:var(--color-background);box-shadow:var(--shadow-sm)' : ''"
-                >
-                    <i class="bi bi-qr-code icon-md"></i>
-                    QR Code
-                </button>
+        <div x-data="{ tab: 'phone' }" x-cloak>
+            <!-- Tab Buttons -->
+            <div class="auth-tabs">
                 <button 
                     @click="tab = 'phone'"
-                    class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium"
-                    :style="tab === 'phone' ? 'background-color:var(--color-background);box-shadow:var(--shadow-sm)' : ''"
+                    class="auth-tab"
+                    :class="{ 'active': tab === 'phone' }"
                 >
-                    <i class="bi bi-phone icon-md"></i>
+                    <i class="bi bi-phone"></i>
                     Phone
                 </button>
-            </div>
-            
-            <!-- QR Code Tab -->
-            <div x-show="tab === 'qr'" class="flex flex-col items-center gap-4">
-                <div 
-                    id="qr-code-container"
-                    hx-get="/partials/qr-code"
-                    hx-trigger="load, every 30s"
-                    hx-swap="innerHTML"
-                >
-                    <div class="flex items-center justify-center rounded-lg" style="width:16rem;height:16rem;background-color:var(--color-background-muted)">
-                        <div class="spinner" style="width:2rem;height:2rem"></div>
-                    </div>
-                </div>
-                
-                <div class="text-center space-y-1 text-sm">
-                    <p class="text-muted-foreground">1. Open WhatsApp → Linked Devices</p>
-                    <p class="text-muted-foreground">2. Tap "Link a Device" → Scan QR</p>
-                </div>
-                
                 <button 
-                    class="btn btn-secondary"
-                    hx-get="/partials/qr-code"
-                    hx-target="#qr-code-container"
-                    hx-swap="innerHTML"
+                    @click="tab = 'qr'"
+                    class="auth-tab"
+                    :class="{ 'active': tab === 'qr' }"
                 >
-                    <i class="bi bi-arrow-clockwise icon-md mr-2"></i>
-                    Refresh
+                    <i class="bi bi-qr-code"></i>
+                    QR Code
                 </button>
             </div>
             
             <!-- Phone Tab -->
-            <div x-show="tab === 'phone'" class="space-y-4">
+            <div x-show="tab === 'phone'" class="space-y-3">
                 <form 
                     hx-post="/partials/phone-pair"
                     hx-target="#pairing-result"
                     hx-swap="innerHTML"
-                    class="space-y-4"
+                    class="space-y-3"
                 >
                     <div class="form-field">
                         <label class="form-label">Phone Number</label>
@@ -135,16 +107,82 @@
                 
                 <div id="pairing-result"></div>
                 
-                <div class="text-center space-y-1 text-sm pt-2">
+                <div class="text-center space-y-1 text-xs pt-2">
                     <p class="text-muted-foreground">1. Open WhatsApp → Linked Devices</p>
                     <p class="text-muted-foreground">2. Tap "Link with phone number"</p>
                     <p class="text-muted-foreground">3. Enter the pairing code above</p>
                 </div>
             </div>
+            
+            <!-- QR Code Tab -->
+            <div x-show="tab === 'qr'" class="flex flex-col items-center gap-3">
+                <div 
+                    id="qr-code-container"
+                    hx-get="/partials/qr-code"
+                    hx-trigger="intersect once"
+                    hx-swap="innerHTML transition:false"
+                    class="qr-container"
+                >
+                    <div class="flex items-center justify-center rounded-lg" style="width:200px;height:200px;background-color:var(--color-background-muted)">
+                        <div class="spinner" style="width:2rem;height:2rem"></div>
+                    </div>
+                </div>
+                
+                <div class="text-center space-y-1 text-xs">
+                    <p class="text-muted-foreground">1. Open WhatsApp → Linked Devices</p>
+                    <p class="text-muted-foreground">2. Tap "Link a Device" → Scan QR</p>
+                </div>
+                
+                <button 
+                    class="btn btn-secondary btn-sm"
+                    hx-get="/partials/qr-code"
+                    hx-target="#qr-code-container"
+                    hx-swap="innerHTML transition:false"
+                >
+                    <i class="bi bi-arrow-clockwise mr-1"></i>
+                    Refresh
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Auto-refresh to check if authenticated -->
-<div hx-get="/partials/auth-panel" hx-trigger="every 5s" hx-target="#auth-panel" hx-swap="innerHTML"></div>
+<!-- Auth Tab Styles -->
+<style>
+.auth-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--radius-lg);
+    background-color: var(--color-background-muted);
+    margin-bottom: 1rem;
+}
+.auth-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-foreground-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.auth-tab:hover {
+    color: var(--color-foreground);
+}
+.auth-tab.active {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    box-shadow: var(--shadow-sm);
+}
+</style>
+
+<!-- Auto-refresh to check if authenticated (longer interval to avoid QR flicker) -->
+<div hx-get="/partials/auth-panel" hx-trigger="every 10s" hx-target="#auth-panel" hx-swap="innerHTML transition:false"></div>
 {% endif %}
