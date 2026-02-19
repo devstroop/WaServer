@@ -118,10 +118,11 @@ fn is_public_path(path: &str) -> bool {
         || path.starts_with("/metrics")
         || path.starts_with("/swagger-ui")
         || path.starts_with("/api-docs")
+        || path.starts_with("/docs")
         || path.starts_with("/mcp")
-        || path == "/api/v1/auth/login"
-        || path == "/api/v1/auth/refresh"
-        || path == "/api/v1/auth/local-status"
+        || path == "/api/admin/auth/login"
+        || path == "/api/admin/auth/refresh"
+        || path == "/api/admin/auth/status"
 }
 
 #[cfg(test)]
@@ -134,10 +135,11 @@ mod tests {
         assert!(is_public_path("/health/live"));
         assert!(is_public_path("/swagger-ui"));
         assert!(is_public_path("/api-docs/openapi.json"));
+        assert!(is_public_path("/docs"));
         assert!(is_public_path("/mcp"));
-        assert!(is_public_path("/api/v1/auth/login"));
-        assert!(is_public_path("/api/v1/auth/refresh"));
-        assert!(is_public_path("/api/v1/auth/local-status"));
+        assert!(is_public_path("/api/admin/auth/login"));
+        assert!(is_public_path("/api/admin/auth/refresh"));
+        assert!(is_public_path("/api/admin/auth/status"));
 
         // Protected paths
         assert!(!is_public_path("/api/v1/accounts"));
