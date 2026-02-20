@@ -497,4 +497,24 @@ impl BrowserService {
         info!("Browser service closed successfully");
         Ok(())
     }
+
+    /// Take a screenshot of the current page
+    /// 
+    /// Returns PNG image data as bytes. Useful for live feed/monitoring.
+    pub async fn screenshot(&self) -> Result<Vec<u8>> {
+        let page = self.get_whatsapp_page().await?;
+        
+        use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
+        
+        let screenshot = page
+            .screenshot(
+                chromiumoxide::page::ScreenshotParams::builder()
+                    .format(CaptureScreenshotFormat::Png)
+                    .full_page(false)
+                    .build(),
+            )
+            .await?;
+        
+        Ok(screenshot)
+    }
 }
