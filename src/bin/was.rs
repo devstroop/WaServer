@@ -180,7 +180,7 @@ async fn run_server(
         info(
             title = "WhatsApp Server - API",
             version = "0.3.0",
-            description = "REST API for WhatsApp Web automation with multi-account support.\n\n## API Structure\n\n- **Admin API** (`/api/admin/*`): Server administration endpoints (no X-Account-Id required)\n- **WhatsApp API** (`/api/v1/*`): Account-specific operations (require X-Account-Id header)",
+            description = "REST API for WhatsApp Web automation with multi-account support.",
         )
     )]
     struct ApiDoc;
