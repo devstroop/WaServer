@@ -22,6 +22,34 @@ use utoipa;
 use uuid::Uuid;
 
 // ============================================================================
+// Error Handling Utilities
+// ============================================================================
+
+/// Categorize errors and return appropriate HTTP status and message
+fn categorize_error(error_msg: &str) -> (StatusCode, String) {
+    if error_msg.contains("Not authorized") || error_msg.contains("not authorized") {
+        (StatusCode::UNAUTHORIZED, error_msg.to_string())
+    } else if error_msg.contains("timed out") || error_msg.contains("unresponsive") {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Browser operation timed out. The browser may be unresponsive.".to_string(),
+        )
+    } else if error_msg.contains("is busy") {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Account is busy with another operation".to_string(),
+        )
+    } else if error_msg.contains("Browser not") || error_msg.contains("not initialized") {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Browser not available. Please restart the account.".to_string(),
+        )
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, error_msg.to_string())
+    }
+}
+
+// ============================================================================
 // Chat List Endpoint
 // ============================================================================
 
@@ -84,20 +112,8 @@ pub async fn list_chats(
         Err(e) => {
             let error_msg = e.to_string();
             error!("Account {} - Error listing chats: {}", account.id, error_msg);
-
-            if error_msg.contains("Not authorized") {
-                Err((
-                    StatusCode::UNAUTHORIZED,
-                    Json(ErrorResponse { error: error_msg }),
-                ))
-            } else {
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Error listing chats: {}", error_msg),
-                    }),
-                ))
-            }
+            let (status, msg) = categorize_error(&error_msg);
+            Err((status, Json(ErrorResponse { error: msg })))
         }
     }
 }
@@ -189,12 +205,7 @@ pub async fn get_chat_messages(
             let error_msg = e.to_string();
             error!("Account {} - Error getting messages: {}", account.id, error_msg);
 
-            if error_msg.contains("Not authorized") {
-                Err((
-                    StatusCode::UNAUTHORIZED,
-                    Json(ErrorResponse { error: error_msg }),
-                ))
-            } else if error_msg.contains("Invalid phone") {
+            if error_msg.contains("Invalid phone") {
                 Err((
                     StatusCode::NOT_FOUND,
                     Json(ErrorResponse {
@@ -202,12 +213,8 @@ pub async fn get_chat_messages(
                     }),
                 ))
             } else {
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Error getting messages: {}", error_msg),
-                    }),
-                ))
+                let (status, msg) = categorize_error(&error_msg);
+                Err((status, Json(ErrorResponse { error: msg })))
             }
         }
     }
@@ -270,19 +277,8 @@ pub async fn watch_messages(
         }
         Err(e) => {
             let error_msg = e.to_string();
-            if error_msg.contains("Not authorized") {
-                Err((
-                    StatusCode::UNAUTHORIZED,
-                    Json(ErrorResponse { error: error_msg }),
-                ))
-            } else {
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Error watching messages: {}", error_msg),
-                    }),
-                ))
-            }
+            let (status, msg) = categorize_error(&error_msg);
+            Err((status, Json(ErrorResponse { error: msg })))
         }
     }
 }
@@ -522,34 +518,9 @@ pub async fn send_message(
             let error_msg = e.to_string();
             account.track_error();
             error!("Account {} - Error sending message: {}", account.id, error_msg);
-
-            if error_msg.contains("Not authorized") {
-                Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: error_msg }),
-                ))
-            } else if error_msg.contains("busy") {
-                Err((
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(ErrorResponse {
-                        error: "Account is busy, please try again later".to_string(),
-                    }),
-                ))
-            } else if error_msg.contains("timeout") || error_msg.contains("Timed out") {
-                Err((
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(ErrorResponse {
-                        error: "Operation timed out".to_string(),
-                    }),
-                ))
-            } else {
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("Error sending WhatsApp message: {}", error_msg),
-                    }),
-                ))
-            }
+            
+            let (status, msg) = categorize_error(&error_msg);
+            Err((status, Json(ErrorResponse { error: msg })))
         }
     }
 }
