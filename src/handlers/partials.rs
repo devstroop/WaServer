@@ -2,14 +2,16 @@
 //!
 //! Handlers that return HTML fragments for HTMX dynamic updates.
 //! Uses AccountManager for multi-account support - shows first available account by default.
+//!
+//! - Debug: Uses minijinja for hot-reloading templates from disk
+//! - Release: Uses pre-compiled askama templates for performance
 
-use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     response::{Html, IntoResponse},
     Form,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -17,54 +19,71 @@ use crate::services::whatsapp::AccountManager;
 use crate::models::account::AccountStatus;
 
 // =============================================================================
-// Template Definitions for Partials
+// Release Mode: Compiled Askama Templates
 // =============================================================================
 
-#[derive(Template)]
-#[template(path = "partials/health_cards.html")]
-pub struct HealthCardsTemplate {
-    pub health: HealthData,
-    pub uptime_formatted: String,
-    pub browser_healthy: bool,
-    pub whatsapp_connected: bool,
+#[cfg(not(debug_assertions))]
+mod compiled {
+    use askama::Template;
+    use super::*;
+
+    #[derive(Template)]
+    #[template(path = "partials/health_cards.html")]
+    pub struct HealthCardsTemplate {
+        pub health: HealthData,
+        pub uptime_formatted: String,
+        pub browser_healthy: bool,
+        pub whatsapp_connected: bool,
+    }
+
+    #[derive(Template)]
+    #[template(path = "partials/auth_panel.html")]
+    pub struct AuthPanelTemplate {
+        pub status: String,
+        pub authenticated: bool,
+        pub phone_number: Option<String>,
+    }
+
+    #[derive(Template)]
+    #[template(path = "partials/qr_code.html")]
+    pub struct QrCodeTemplate {
+        pub qrcode: Option<String>,
+        pub error: Option<String>,
+    }
+
+    #[derive(Template)]
+    #[template(path = "partials/auth_indicator.html")]
+    pub struct AuthIndicatorTemplate {
+        pub authenticated: bool,
+        pub status: String,
+    }
+
+    #[derive(Template)]
+    #[template(path = "partials/chat_list.html")]
+    pub struct ChatListTemplate {
+        pub chats: Vec<ChatInfo>,
+    }
+
+    #[derive(Template)]
+    #[template(path = "partials/chat_view.html")]
+    pub struct ChatViewTemplate {
+        pub chat: ChatInfo,
+        pub messages: Vec<MessageInfo>,
+    }
 }
 
-#[derive(Clone)]
+// =============================================================================
+// Data Types (shared between debug and release)
+// =============================================================================
+
+#[derive(Clone, Serialize)]
 pub struct HealthData {
     pub status: String,
     pub version: String,
     pub uptime_seconds: u64,
 }
 
-#[derive(Template)]
-#[template(path = "partials/auth_panel.html")]
-pub struct AuthPanelTemplate {
-    pub status: String,
-    pub authenticated: bool,
-    pub phone_number: Option<String>,
-}
-
-#[derive(Template)]
-#[template(path = "partials/qr_code.html")]
-pub struct QrCodeTemplate {
-    pub qrcode: Option<String>,
-    pub error: Option<String>,
-}
-
-#[derive(Template)]
-#[template(path = "partials/auth_indicator.html")]
-pub struct AuthIndicatorTemplate {
-    pub authenticated: bool,
-    pub status: String,
-}
-
-#[derive(Template)]
-#[template(path = "partials/chat_list.html")]
-pub struct ChatListTemplate {
-    pub chats: Vec<ChatInfo>,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct ChatInfo {
     pub id: String,
     pub name: String,
@@ -74,14 +93,7 @@ pub struct ChatInfo {
     pub unread_count: u32,
 }
 
-#[derive(Template)]
-#[template(path = "partials/chat_view.html")]
-pub struct ChatViewTemplate {
-    pub chat: ChatInfo,
-    pub messages: Vec<MessageInfo>,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct MessageInfo {
     pub id: String,
     pub text: String,
@@ -89,6 +101,23 @@ pub struct MessageInfo {
     pub time: String,
     pub is_outgoing: bool,
     pub is_read: bool,
+}
+
+// =============================================================================
+// Debug Mode: Runtime Template Rendering
+// =============================================================================
+
+#[cfg(debug_assertions)]
+fn render_partial<T: Serialize>(template_path: &str, ctx: T) -> String {
+    use crate::utils::templates::render_template;
+
+    match render_template(template_path, ctx) {
+        Ok(html) => html,
+        Err(e) => format!(
+            r#"<div class="alert alert-danger"><strong>Template Error:</strong> {}</div>"#,
+            e
+        ),
+    }
 }
 
 // =============================================================================
@@ -147,104 +176,130 @@ pub async fn health_cards(
     };
 
     let uptime_formatted = format_uptime(uptime_seconds);
-
-    let template = HealthCardsTemplate {
-        health: HealthData {
-            status: if browser_healthy { "healthy".to_string() } else { "unhealthy".to_string() },
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            uptime_seconds,
-        },
-        uptime_formatted,
-        browser_healthy,
-        whatsapp_connected,
+    let health = HealthData {
+        status: if browser_healthy { "healthy".to_string() } else { "unhealthy".to_string() },
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_seconds,
     };
 
-    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    #[cfg(debug_assertions)]
+    {
+        use serde_json::json;
+        Html(render_partial("partials/health_cards.html", json!({
+            "health": health,
+            "uptime_formatted": uptime_formatted,
+            "browser_healthy": browser_healthy,
+            "whatsapp_connected": whatsapp_connected,
+        })))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        use askama::Template;
+        let template = compiled::HealthCardsTemplate {
+            health,
+            uptime_formatted,
+            browser_healthy,
+            whatsapp_connected,
+        };
+        Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    }
 }
 
 /// Auth panel partial
 pub async fn auth_panel(
     State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    if let Some(account) = get_first_account(&manager).await {
+    let (status, authenticated, phone_number) = if let Some(account) = get_first_account(&manager).await {
         match account.get_auth_status().await {
-            Ok(status) => {
-                let template = AuthPanelTemplate {
-                    status: status.status.clone(),
-                    authenticated: status.authenticated,
-                    phone_number: status.phone_number,
-                };
-                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
-            }
-            Err(_) => {}
+            Ok(s) => (s.status.clone(), s.authenticated, s.phone_number),
+            Err(_) => ("no_account".to_string(), false, None),
         }
-    }
-    
-    let template = AuthPanelTemplate {
-        status: "no_account".to_string(),
-        authenticated: false,
-        phone_number: None,
+    } else {
+        ("no_account".to_string(), false, None)
     };
-    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    
+    #[cfg(debug_assertions)]
+    {
+        use serde_json::json;
+        Html(render_partial("partials/auth_panel.html", json!({
+            "status": status,
+            "authenticated": authenticated,
+            "phone_number": phone_number,
+        })))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        use askama::Template;
+        let template = compiled::AuthPanelTemplate {
+            status,
+            authenticated,
+            phone_number,
+        };
+        Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    }
 }
 
 /// QR code partial
 pub async fn qr_code(
     State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    if let Some(account) = get_first_account(&manager).await {
+    let (qrcode, error) = if let Some(account) = get_first_account(&manager).await {
         match account
             .execute_with_busy_flag(async { 
                 account.auth_service().get_auth_qr_code().await 
             })
             .await
         {
-            Ok(qr) => {
-                let template = QrCodeTemplate {
-                    qrcode: Some(qr),
-                    error: None,
-                };
-                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
-            }
-            Err(e) => {
-                let template = QrCodeTemplate {
-                    qrcode: None,
-                    error: Some(e.to_string()),
-                };
-                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
-            }
+            Ok(qr) => (Some(qr), None),
+            Err(e) => (None, Some(e.to_string())),
         }
-    }
-    
-    let template = QrCodeTemplate {
-        qrcode: None,
-        error: Some("No account available. Create an account first.".to_string()),
+    } else {
+        (None, Some("No account available. Create an account first.".to_string()))
     };
-    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+
+    #[cfg(debug_assertions)]
+    {
+        use serde_json::json;
+        Html(render_partial("partials/qr_code.html", json!({
+            "qrcode": qrcode,
+            "error": error,
+        })))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        use askama::Template;
+        let template = compiled::QrCodeTemplate { qrcode, error };
+        Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    }
 }
 
 /// Auth indicator partial (header status)
 pub async fn auth_indicator(
     State(manager): State<Arc<AccountManager>>,
 ) -> impl IntoResponse {
-    if let Some(account) = get_first_account(&manager).await {
+    let (authenticated, status) = if let Some(account) = get_first_account(&manager).await {
         match account.get_auth_status().await {
-            Ok(status) => {
-                let template = AuthIndicatorTemplate {
-                    authenticated: status.authenticated,
-                    status: status.status,
-                };
-                return Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)));
-            }
-            Err(_) => {}
+            Ok(s) => (s.authenticated, s.status),
+            Err(_) => (false, "no_account".to_string()),
         }
-    }
-    
-    let template = AuthIndicatorTemplate {
-        authenticated: false,
-        status: "no_account".to_string(),
+    } else {
+        (false, "no_account".to_string())
     };
-    Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+
+    #[cfg(debug_assertions)]
+    {
+        use serde_json::json;
+        Html(render_partial("partials/auth_indicator.html", json!({
+            "authenticated": authenticated,
+            "status": status,
+        })))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        use askama::Template;
+        let template = compiled::AuthIndicatorTemplate { authenticated, status };
+        Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+    }
 }
 
 /// Phone pairing partial
@@ -329,8 +384,17 @@ pub async fn chat_list(
                 chats.retain(|c| c.name.to_lowercase().contains(&search_lower));
             }
 
-            let template = ChatListTemplate { chats };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+            #[cfg(debug_assertions)]
+            {
+                use serde_json::json;
+                Html(render_partial("partials/chat_list.html", json!({ "chats": chats })))
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                use askama::Template;
+                let template = compiled::ChatListTemplate { chats };
+                Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+            }
         }
         Err(e) => {
             Html(format!(
@@ -379,8 +443,20 @@ pub async fn chat_view(
                 unread_count: 0,
             };
 
-            let template = ChatViewTemplate { chat, messages };
-            Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+            #[cfg(debug_assertions)]
+            {
+                use serde_json::json;
+                Html(render_partial("partials/chat_view.html", json!({
+                    "chat": chat,
+                    "messages": messages,
+                })))
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                use askama::Template;
+                let template = compiled::ChatViewTemplate { chat, messages };
+                Html(template.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+            }
         }
         Err(e) => {
             Html(format!(
