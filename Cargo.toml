@@ -88,6 +88,7 @@ bcrypt = "0.15"
 # Templating for HTMX frontend
 askama = "0.12"
 askama_axum = "0.4"
+minijinja = { version = "2.0", features = ["loader"] }  # Runtime templates for dev hot-reload
 
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
