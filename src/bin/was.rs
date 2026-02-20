@@ -397,20 +397,22 @@ async fn run_server(
             auth_middleware,
         ));
 
+    // Access control routes (users, roles, permissions)
+    let access_routes = Router::new()
+        .nest("/users", users_routes)
+        .nest("/roles", roles_routes)
+        .nest("/permissions", permissions_routes);
+
     // Mount all v1 routes
     app = app.nest(
         "/api/v1",
         Router::new()
-            // Admin routes (server auth, account management)
+            // Admin routes (server auth, instance management, access control)
             .nest("/auth", auth_routes)
-            .nest("/accounts", accounts_routes)
-            .nest("/users", users_routes)
-            .nest("/roles", roles_routes)
-            .nest("/permissions", permissions_routes)
-            // WhatsApp routes (account uses path param, chat/message use header)
-            .nest("/account", account_routes)
-            .nest("/chats", chat_routes)
-            .nest("/messages", message_routes),
+            .nest("/instances", instances_routes)
+            .nest("/admin/access", access_routes)
+            // WhatsApp routes (all use path param :instance_id)
+            .nest("/whatsapp", whatsapp_routes),
     );
 
     // HTMX Page routes (no state required)
