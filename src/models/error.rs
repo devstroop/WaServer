@@ -209,4 +209,8 @@ pub enum AuthError {
     TokenGenerationFailed(String),
     #[error("Password hashing failed: {0}")]
     HashingFailed(String),
+    #[error("Initial setup already completed")]
+    SetupAlreadyComplete,
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
 }
