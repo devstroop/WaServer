@@ -1,0 +1,446 @@
+//! Instances Management API
+//!
+//! REST API endpoints for managing WhatsApp instances (create, list, get, delete).
+//! Instance IDs are UUIDs. Lookup by phone number is also supported.
+//! These endpoints do NOT require X-Account-Id header.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, Query, State},
+    http::{header, StatusCode},
+    response::IntoResponse,
+    Json,
+};
+use serde_json::json;
+
+use crate::{
+    models::account::{
+        CreateAccountRequest, ListAccountsQuery, DeleteAccountResponse,
+        DeleteAccountQuery, AccountActionResponse, UpdateInstanceConfigRequest,
+    },
+    services::AccountManager,
+};
+
+// === API Handlers ===
+
+/// List all instances
+///
+/// Returns a list of all registered WhatsApp instances.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances",
+    tag = "Instances",
+    responses(
+        (status = 200, description = "List of instances", body = AccountListResponse),
+    )
+)]
+pub async fn list_instances(
+    State(manager): State<Arc<AccountManager>>,
+    Query(_query): Query<ListAccountsQuery>,
+) -> impl IntoResponse {
+    let response = manager.list_accounts().await;
+    Json(response)
+}
+
+/// Create a new instance
+///
+/// Creates a new WhatsApp instance container with isolated data directory.
+#[utoipa::path(
+    post,
+    path = "/api/v1/instances",
+    tag = "Instances",
+    request_body = CreateAccountRequest,
+    responses(
+        (status = 201, description = "Instance created", body = CreateAccountResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 409, description = "Instance already exists"),
+    )
+)]
+pub async fn create_instance(
+    State(manager): State<Arc<AccountManager>>,
+    Json(request): Json<CreateAccountRequest>,
+) -> impl IntoResponse {
+    match manager.create_account(request).await {
+        Ok(response) => (StatusCode::CREATED, Json(json!(response))).into_response(),
+        Err(e) => {
+            let error_msg = e.to_string();
+            let status = if error_msg.contains("already exists") {
+                StatusCode::CONFLICT
+            } else if error_msg.contains("Invalid") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            (
+                status,
+                Json(json!({
+                    "error": "create_failed",
+                    "message": error_msg
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get instance info
+///
+/// Returns detailed information about a specific instance.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "Instance info", body = AccountInfo),
+        (status = 404, description = "Instance not found"),
+    )
+)]
+pub async fn get_instance(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    match manager.get_account(&instance_id).await {
+        Some(account) => {
+            let info = account.info().await;
+            Json(json!(info)).into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Delete an instance
+///
+/// Deletes an instance and optionally all its data.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/instances/{instance_id}",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)"),
+        ("delete_data" = bool, Query, description = "Delete all instance data")
+    ),
+    responses(
+        (status = 200, description = "Instance deleted", body = DeleteAccountResponse),
+        (status = 404, description = "Instance not found"),
+    )
+)]
+pub async fn delete_instance(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+    Query(query): Query<DeleteAccountQuery>,
+) -> impl IntoResponse {
+    match manager.delete_account(&instance_id, query.delete_data).await {
+        Ok(account_id) => Json(json!(DeleteAccountResponse {
+            message: if query.delete_data {
+                "Instance and all data deleted".to_string()
+            } else {
+                "Instance deleted, data preserved".to_string()
+            },
+            account_id,
+            data_deleted: query.delete_data,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "delete_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Start an instance's browser
+///
+/// Launches the browser for a specific instance and navigates to WhatsApp Web.
+#[utoipa::path(
+    post,
+    path = "/api/v1/instances/{instance_id}/start",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "Instance started", body = AccountActionResponse),
+        (status = 404, description = "Instance not found"),
+        (status = 409, description = "Instance already running"),
+    )
+)]
+pub async fn start_instance(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    // First get the account to retrieve its UUID
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        ).into_response(),
+    };
+    
+    let account_id = account.id;
+    
+    match account.start().await {
+        Ok(()) => Json(json!(AccountActionResponse {
+            message: "Instance started successfully".to_string(),
+            account_id,
+        }))
+        .into_response(),
+        Err(e) => {
+            let error_msg = e.to_string();
+            let status = if error_msg.contains("already running") || error_msg.contains("already starting")
+            {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            (
+                status,
+                Json(json!({
+                    "error": "start_failed",
+                    "message": error_msg
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Stop an instance's browser
+///
+/// Stops the browser for a specific instance.
+#[utoipa::path(
+    post,
+    path = "/api/v1/instances/{instance_id}/stop",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "Instance stopped", body = AccountActionResponse),
+        (status = 404, description = "Instance not found"),
+    )
+)]
+pub async fn stop_instance(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    // First get the account to retrieve its UUID
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        ).into_response(),
+    };
+    
+    let account_id = account.id;
+    
+    match account.stop().await {
+        Ok(()) => Json(json!(AccountActionResponse {
+            message: "Instance stopped successfully".to_string(),
+            account_id,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "stop_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Discover existing instances
+///
+/// Scans the filesystem for existing instance directories and loads them.
+#[utoipa::path(
+    post,
+    path = "/api/v1/instances/discover",
+    tag = "Instances",
+    responses(
+        (status = 200, description = "Instances discovered"),
+    )
+)]
+pub async fn discover_instances(
+    State(manager): State<Arc<AccountManager>>,
+) -> impl IntoResponse {
+    match manager.discover_accounts().await {
+        Ok(discovered) => Json(json!({
+            "message": format!("Discovered {} instances", discovered.len()),
+            "discovered": discovered,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "discover_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Get live screenshot of instance's browser
+///
+/// Returns a PNG screenshot of the current browser state.
+/// Useful for monitoring and diagnosing WhatsApp Web connection issues.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/live",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "PNG screenshot", content_type = "image/png"),
+        (status = 404, description = "Instance not found"),
+        (status = 503, description = "Browser not running"),
+    )
+)]
+pub async fn live_screenshot(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        ).into_response(),
+    };
+    
+    if !account.browser_service().is_running().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "browser_not_running",
+                "message": "Browser is not running. Start the instance first via POST /api/v1/instances/{instance_id}/start"
+            })),
+        ).into_response();
+    }
+    
+    match account.browser_service().screenshot().await {
+        Ok(png_data) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "image/png")],
+            png_data,
+        ).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "screenshot_failed",
+                "message": e.to_string()
+            })),
+        ).into_response(),
+    }
+}
+
+/// Get instance configuration
+///
+/// Returns the current runtime configuration for an instance.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/config",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "Instance configuration", body = InstanceConfig),
+        (status = 404, description = "Instance not found"),
+    )
+)]
+pub async fn get_instance_config(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        ).into_response(),
+    };
+    
+    let config = account.get_config().await;
+    Json(config).into_response()
+}
+
+/// Update instance configuration
+///
+/// Updates the runtime configuration for an instance. Only provided fields are updated.
+/// Some changes (like browser settings) may require restarting the instance to take effect.
+#[utoipa::path(
+    put,
+    path = "/api/v1/instances/{instance_id}/config",
+    tag = "Instances",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
+    ),
+    request_body = UpdateInstanceConfigRequest,
+    responses(
+        (status = 200, description = "Configuration updated", body = InstanceConfig),
+        (status = 404, description = "Instance not found"),
+        (status = 400, description = "Invalid configuration"),
+    )
+)]
+pub async fn update_instance_config(
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
+    Json(request): Json<UpdateInstanceConfigRequest>,
+) -> impl IntoResponse {
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Instance '{}' not found", instance_id)
+            })),
+        ).into_response(),
+    };
+    
+    match account.update_config(request).await {
+        Ok(config) => Json(json!({
+            "message": "Configuration updated successfully",
+            "config": config,
+            "restart_required": true
+        })).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "config_update_failed",
+                "message": e.to_string()
+            })),
+        ).into_response(),
+    }
+}
