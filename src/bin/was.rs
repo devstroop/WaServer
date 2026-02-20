@@ -302,15 +302,18 @@ async fn run_server(
         .route("/metrics", get(health::get_metrics))
         .with_state(account_manager.clone());
 
-    // Account management routes (API auth required)
-    let accounts_routes = Router::new()
-        .route("/", get(accounts::list_accounts))
-        .route("/", post(accounts::create_account))
-        .route("/discover", post(accounts::discover_accounts))
-        .route("/:account_id", get(accounts::get_account))
-        .route("/:account_id", delete(accounts::delete_account))
-        .route("/:account_id/start", post(accounts::start_account))
-        .route("/:account_id/stop", post(accounts::stop_account))
+    // Instance management routes (API auth required)
+    let instances_routes = Router::new()
+        .route("/", get(instances::list_instances))
+        .route("/", post(instances::create_instance))
+        .route("/discover", post(instances::discover_instances))
+        .route("/:instance_id", get(instances::get_instance))
+        .route("/:instance_id", delete(instances::delete_instance))
+        .route("/:instance_id/start", post(instances::start_instance))
+        .route("/:instance_id/stop", post(instances::stop_instance))
+        .route("/:instance_id/live", get(instances::live_screenshot))
+        .route("/:instance_id/config", get(instances::get_instance_config))
+        .route("/:instance_id/config", put(instances::update_instance_config))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
