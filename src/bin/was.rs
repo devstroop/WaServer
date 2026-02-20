@@ -91,10 +91,10 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, accounts, admin, auth, chat, health},
+        api::{account, instances, admin, auth, chat, health},
         handlers::{partials, templates},
         middleware::{
-            account_middleware, auth_middleware, correlation_id_middleware,
+            auth_middleware, correlation_id_middleware,
             request_metrics_middleware, security_headers_middleware, AuthState,
         },
         models::{admin::*, auth::*, chat::*, account::*},
