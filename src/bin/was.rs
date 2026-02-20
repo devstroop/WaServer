@@ -197,17 +197,36 @@ async fn run_server(
         }
     }
 
-    // Initialize auth token service for local auth (JWT - always enabled)
+    // Initialize auth token service for JWT authentication (always enabled)
     let auth_token_service = match AuthTokenService::new(
-        config.local_auth.jwt_secret.clone(),
-        config.local_auth.token_expiry_hours,
-        config.local_auth.refresh_token_expiry_days,
-        Some(config.local_auth.default_username.clone()),
-        Some(config.local_auth.default_password.clone()),
+        config.auth.jwt_secret.clone(),
+        config.auth.token_expiry_hours,
+        config.auth.refresh_token_expiry_days,
     ) {
         Ok(service) => {
-            info!("🔐 JWT authentication service initialized");
-            Some(Arc::new(service))
+            let service = Arc::new(service);
+            
+            // Check if initial setup is needed
+            if let Some(setup_token) = service.get_setup_token() {
+                info!("🔐 JWT authentication service initialized");
+                info!("");
+                info!("╔══════════════════════════════════════════════════════════════════╗");
+                info!("║                    INITIAL SETUP REQUIRED                        ║");
+                info!("╠══════════════════════════════════════════════════════════════════╣");
+                info!("║  No admin user found. Use this one-time setup token to create    ║");
+                info!("║  your first admin account:                                       ║");
+                info!("║                                                                  ║");
+                info!("║  Setup Token: {}              ║", setup_token);
+                info!("║                                                                  ║");
+                info!("║  Visit: http://{}:{}/setup                             ║", config.server.host, config.server.port);
+                info!("║  Or POST to: /api/admin/auth/setup                               ║");
+                info!("╚══════════════════════════════════════════════════════════════════╝");
+                info!("");
+            } else {
+                info!("🔐 JWT authentication service initialized");
+            }
+            
+            Some(service)
         }
         Err(e) => {
             tracing::error!("Failed to initialize auth token service: {}", e);
