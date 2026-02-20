@@ -23,8 +23,8 @@ use crate::models::admin::{
 /// List all users
 #[utoipa::path(
     get,
-    path = "/api/v1/users",
-    tag = "Users",
+    path = "/api/v1/access/users",
+    tag = "Access",
     responses(
         (status = 200, description = "List of users", body = Vec<User>),
         (status = 501, description = "Not implemented"),
@@ -44,8 +44,8 @@ pub async fn list_users() -> impl IntoResponse {
 /// Create a new user
 #[utoipa::path(
     post,
-    path = "/api/v1/users",
-    tag = "Users",
+    path = "/api/v1/access/users",
+    tag = "Access",
     request_body = CreateUserRequest,
     responses(
         (status = 201, description = "User created", body = User),
@@ -70,8 +70,8 @@ pub async fn create_user(
 /// Get user by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/users/{user_id}",
-    tag = "Users",
+    path = "/api/v1/access/users/{user_id}",
+    tag = "Access",
     params(
         ("user_id" = String, Path, description = "User ID")
     ),
@@ -97,8 +97,8 @@ pub async fn get_user(
 /// Update a user
 #[utoipa::path(
     put,
-    path = "/api/v1/users/{user_id}",
-    tag = "Users",
+    path = "/api/v1/access/users/{user_id}",
+    tag = "Access",
     params(
         ("user_id" = String, Path, description = "User ID")
     ),
@@ -127,8 +127,8 @@ pub async fn update_user(
 /// Delete a user
 #[utoipa::path(
     delete,
-    path = "/api/v1/users/{user_id}",
-    tag = "Users",
+    path = "/api/v1/access/users/{user_id}",
+    tag = "Access",
     params(
         ("user_id" = String, Path, description = "User ID")
     ),
@@ -158,8 +158,8 @@ pub async fn delete_user(
 /// List all roles
 #[utoipa::path(
     get,
-    path = "/api/v1/roles",
-    tag = "Roles",
+    path = "/api/v1/access/roles",
+    tag = "Access",
     responses(
         (status = 200, description = "List of roles", body = Vec<Role>),
         (status = 501, description = "Not implemented"),
@@ -179,8 +179,8 @@ pub async fn list_roles() -> impl IntoResponse {
 /// Create a new role
 #[utoipa::path(
     post,
-    path = "/api/v1/roles",
-    tag = "Roles",
+    path = "/api/v1/access/roles",
+    tag = "Access",
     request_body = CreateRoleRequest,
     responses(
         (status = 201, description = "Role created", body = Role),
@@ -205,8 +205,8 @@ pub async fn create_role(
 /// Get role by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/roles/{role_id}",
-    tag = "Roles",
+    path = "/api/v1/access/roles/{role_id}",
+    tag = "Access",
     params(
         ("role_id" = String, Path, description = "Role ID")
     ),
@@ -232,8 +232,8 @@ pub async fn get_role(
 /// Update a role
 #[utoipa::path(
     put,
-    path = "/api/v1/roles/{role_id}",
-    tag = "Roles",
+    path = "/api/v1/access/roles/{role_id}",
+    tag = "Access",
     params(
         ("role_id" = String, Path, description = "Role ID")
     ),
@@ -262,8 +262,8 @@ pub async fn update_role(
 /// Delete a role
 #[utoipa::path(
     delete,
-    path = "/api/v1/roles/{role_id}",
-    tag = "Roles",
+    path = "/api/v1/access/roles/{role_id}",
+    tag = "Access",
     params(
         ("role_id" = String, Path, description = "Role ID")
     ),
@@ -293,8 +293,8 @@ pub async fn delete_role(
 /// List all permissions
 #[utoipa::path(
     get,
-    path = "/api/v1/permissions",
-    tag = "Permissions",
+    path = "/api/v1/access/permissions",
+    tag = "Access",
     responses(
         (status = 200, description = "List of permissions", body = Vec<Permission>),
         (status = 501, description = "Not implemented"),
@@ -314,8 +314,8 @@ pub async fn list_permissions() -> impl IntoResponse {
 /// Get permission by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/permissions/{permission_id}",
-    tag = "Permissions",
+    path = "/api/v1/access/permissions/{permission_id}",
+    tag = "Access",
     params(
         ("permission_id" = String, Path, description = "Permission ID")
     ),
