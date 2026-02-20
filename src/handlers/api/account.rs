@@ -2,7 +2,7 @@
 //!
 //! REST API endpoints for WhatsApp account operations (status, QR, logout, profile, privacy).
 //! Account ID is a UUID, phone number is the E.164 identifier.
-//! These endpoints use path parameter {account_id}.
+//! These endpoints use path parameter {instance_id}.
 
 use std::sync::Arc;
 
@@ -30,10 +30,10 @@ use crate::{
 /// Returns the authentication status and bound phone number for the account.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/{account_id}/status",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/status",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
@@ -45,16 +45,16 @@ use crate::{
 )]
 pub async fn get_account_status(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -85,10 +85,10 @@ pub async fn get_account_status(
 /// Returns a QR code image (base64) for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/{account_id}/link/qr",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/link/qr",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "QR code"),
@@ -101,16 +101,16 @@ pub async fn get_account_status(
 )]
 pub async fn get_qr_code(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -123,7 +123,7 @@ pub async fn get_qr_code(
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running. Start it first via POST /api/v1/accounts/{account_id}/start"
+                "message": "Account browser is not running. Start it first via POST /api/v1/instances/{instance_id}/start"
             })),
         )
             .into_response();
@@ -150,10 +150,10 @@ pub async fn get_qr_code(
 /// Initiates phone number linking flow.
 #[utoipa::path(
     post,
-    path = "/api/v1/account/{account_id}/link/phone",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/link/phone",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = PhoneLinkRequest,
     responses(
@@ -168,17 +168,17 @@ pub async fn get_qr_code(
 )]
 pub async fn link_phone(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
     Json(request): Json<PhoneLinkRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -262,10 +262,10 @@ pub async fn link_phone(
 /// Disconnects the WhatsApp Web session for this account.
 #[utoipa::path(
     delete,
-    path = "/api/v1/account/{account_id}/unlink",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/unlink",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Unlinked"),
@@ -277,16 +277,16 @@ pub async fn link_phone(
 )]
 pub async fn unlink(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -320,10 +320,10 @@ pub async fn unlink(
 /// Returns the WhatsApp profile information (name, about, picture).
 #[utoipa::path(
     get,
-    path = "/api/v1/account/{account_id}/profile",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/profile",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
@@ -336,16 +336,16 @@ pub async fn unlink(
 )]
 pub async fn get_profile(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -378,10 +378,10 @@ pub async fn get_profile(
 /// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/{account_id}/profile",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/profile",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = UpdateProfileRequest,
     responses(
@@ -396,17 +396,17 @@ pub async fn get_profile(
 )]
 pub async fn update_profile(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
     Json(request): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -450,10 +450,10 @@ pub async fn update_profile(
 /// Get privacy settings
 #[utoipa::path(
     get,
-    path = "/api/v1/account/{account_id}/profile/privacy",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/profile/privacy",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
@@ -465,16 +465,16 @@ pub async fn update_profile(
 )]
 pub async fn get_privacy(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let _account = match manager.get_account(&account_id).await {
+    let _account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -490,10 +490,10 @@ pub async fn get_privacy(
 /// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/{account_id}/profile/privacy",
-    tag = "Account",
+    path = "/api/v1/modules/whatsapp/{instance_id}/profile/privacy",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account UUID")
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = UpdatePrivacyRequest,
     responses(
@@ -507,17 +507,17 @@ pub async fn get_privacy(
 )]
 pub async fn update_privacy(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path(instance_id): Path<String>,
     Json(request): Json<UpdatePrivacyRequest>,
 ) -> impl IntoResponse {
-    let _account = match manager.get_account(&account_id).await {
+    let _account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
