@@ -9,8 +9,6 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub browser: BrowserConfig,
     pub auth: AuthConfig,
-    #[serde(default)]
-    pub local_auth: LocalAuthConfig,
     pub logging: LoggingConfig,
     pub cache: CacheConfig,
     pub cors: CorsConfig,
@@ -183,23 +181,11 @@ pub struct BrowserConfig {
 }
 
 /// Authentication configuration
+/// Combines static secret token and JWT-based user authentication
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
-    /// Enable Bearer token authentication
-    #[serde(default = "default_auth_enabled")]
-    pub enabled: bool,
-    /// API token for Bearer authentication
-    pub api_token: String,
-}
-
-fn default_auth_enabled() -> bool {
-    true
-}
-
-/// Local authentication configuration (JWT-based)
-/// JWT authentication is always enabled - use this for username/password login.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LocalAuthConfig {
+    /// Static secret token for Bearer authentication (for scripts/CI/CD)
+    pub secret: String,
     /// JWT secret key for signing tokens (min 32 characters)
     #[serde(default = "default_jwt_secret")]
     pub jwt_secret: String,
@@ -209,12 +195,6 @@ pub struct LocalAuthConfig {
     /// Refresh token expiry in days
     #[serde(default = "default_refresh_token_expiry_days")]
     pub refresh_token_expiry_days: i64,
-    /// Default admin username
-    #[serde(default = "default_username")]
-    pub default_username: String,
-    /// Default admin password
-    #[serde(default = "default_password")]
-    pub default_password: String,
 }
 
 fn default_jwt_secret() -> String {
@@ -227,26 +207,6 @@ fn default_token_expiry_hours() -> i64 {
 
 fn default_refresh_token_expiry_days() -> i64 {
     7
-}
-
-fn default_username() -> String {
-    "admin".to_string()
-}
-
-fn default_password() -> String {
-    "admin123".to_string()
-}
-
-impl Default for LocalAuthConfig {
-    fn default() -> Self {
-        Self {
-            jwt_secret: default_jwt_secret(),
-            token_expiry_hours: default_token_expiry_hours(),
-            refresh_token_expiry_days: default_refresh_token_expiry_days(),
-            default_username: default_username(),
-            default_password: default_password(),
-        }
-    }
 }
 
 /// Logging configuration
@@ -299,10 +259,11 @@ impl Default for AppConfig {
                 ],
             },
             auth: AuthConfig {
-                enabled: true,
-                api_token: "your-secure-api-token-change-this".to_string(),
+                secret: "your-secure-secret-change-this".to_string(),
+                jwt_secret: default_jwt_secret(),
+                token_expiry_hours: default_token_expiry_hours(),
+                refresh_token_expiry_days: default_refresh_token_expiry_days(),
             },
-            local_auth: LocalAuthConfig::default(),
             logging: LoggingConfig {
                 level: "info".to_string(),
             },
@@ -365,23 +326,21 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static API token (for programmatic access)
-        if self.auth.enabled {
-            if self.auth.api_token == "your-secure-api-token-change-this" {
-                return Err("Please change the default API token in configuration".to_string());
-            }
-
-            if self.auth.api_token.len() < 16 {
-                return Err("API token must be at least 16 characters long".to_string());
-            }
+        // Validate static secret token (for programmatic access)
+        if self.auth.secret == "your-secure-secret-change-this" {
+            return Err("Please change the default secret token in configuration".to_string());
         }
 
-        // Validate local auth config (JWT is always enabled)
-        if self.local_auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
+        if self.auth.secret.len() < 16 {
+            return Err("Secret token must be at least 16 characters long".to_string());
+        }
+
+        // Validate JWT config
+        if self.auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
             tracing::warn!("Using default JWT secret - please change in production!");
         }
 
-        if self.local_auth.jwt_secret.len() < 32 {
+        if self.auth.jwt_secret.len() < 32 {
             return Err("JWT secret must be at least 32 characters long".to_string());
         }
 
