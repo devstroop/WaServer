@@ -118,15 +118,18 @@ async fn run_server(
         paths(
             // Health
             health::health_check,
-            // Accounts management
-            accounts::list_accounts,
-            accounts::create_account,
-            accounts::get_account,
-            accounts::delete_account,
-            accounts::start_account,
-            accounts::stop_account,
-            accounts::discover_accounts,
-            // Account operations (uses path param)
+            // Instances management
+            instances::list_instances,
+            instances::create_instance,
+            instances::get_instance,
+            instances::delete_instance,
+            instances::start_instance,
+            instances::stop_instance,
+            instances::discover_instances,
+            instances::live_screenshot,
+            instances::get_instance_config,
+            instances::update_instance_config,
+            // WhatsApp operations (uses path param)
             account::get_account_status,
             account::get_qr_code,
             account::link_phone,
