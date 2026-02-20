@@ -181,11 +181,11 @@ pub struct BrowserConfig {
 }
 
 /// Authentication configuration
-/// Combines static secret token and JWT-based user authentication
+/// Combines static secret key and JWT-based user authentication
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
-    /// Static secret token for Bearer authentication (for scripts/CI/CD)
-    pub secret: String,
+    /// Static secret key for Bearer authentication (for scripts/CI/CD)
+    pub secret_key: String,
     /// JWT secret key for signing tokens (min 32 characters)
     #[serde(default = "default_jwt_secret")]
     pub jwt_secret: String,
@@ -259,7 +259,7 @@ impl Default for AppConfig {
                 ],
             },
             auth: AuthConfig {
-                secret: "your-secure-secret-change-this".to_string(),
+                secret_key: "change-this-secret-key-in-production".to_string(),
                 jwt_secret: default_jwt_secret(),
                 token_expiry_hours: default_token_expiry_hours(),
                 refresh_token_expiry_days: default_refresh_token_expiry_days(),
@@ -326,13 +326,13 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static secret token (for programmatic access)
-        if self.auth.secret == "your-secure-secret-change-this" {
-            return Err("Please change the default secret token in configuration".to_string());
+        // Validate static secret key (for programmatic access)
+        if self.auth.secret_key == "change-this-secret-key-in-production" {
+            return Err("Please change the default secret_key in configuration".to_string());
         }
 
-        if self.auth.secret.len() < 16 {
-            return Err("Secret token must be at least 16 characters long".to_string());
+        if self.auth.secret_key.len() < 16 {
+            return Err("secret_key must be at least 16 characters long".to_string());
         }
 
         // Validate JWT config

@@ -5,9 +5,9 @@
 //!
 //! ## Authentication Methods
 //! 
-//! 1. **Static Secret** (`[auth].secret` config): Simple machine-to-machine access
+//! 1. **Static Secret Key** (`[auth].secret_key` config): Simple machine-to-machine access
 //!    - Use for: External scripts, CI/CD pipelines, simple integrations
-//!    - Token is configured in `app.toml` under `auth.secret`
+//!    - Token is configured in `app.toml` under `auth.secret_key`
 //!
 //! 2. **Local User JWT** (`[auth]` JWT settings): User-based access  
 //!    - Use for: Web UI dashboard, MCP clients, user-specific access control
@@ -34,8 +34,8 @@ use crate::{
 /// This is separate from route-specific state so auth can be applied to any router.
 #[derive(Clone)]
 pub struct AuthState {
-    /// Static secret token for authentication (for scripts/CI/CD)
-    pub secret: String,
+    /// Static secret key for authentication (for scripts/CI/CD)
+    pub secret_key: String,
     /// JWT token service (for local user authentication)
     pub auth_token_service: Option<Arc<AuthTokenService>>,
 }
@@ -43,11 +43,11 @@ pub struct AuthState {
 impl AuthState {
     /// Create new auth state
     pub fn new(
-        secret: String,
+        secret_key: String,
         auth_token_service: Option<Arc<AuthTokenService>>,
     ) -> Self {
         Self {
-            secret,
+            secret_key,
             auth_token_service,
         }
     }
@@ -104,8 +104,8 @@ pub async fn auth_middleware(
                 }
             }
 
-            // Fall back to static secret token validation
-            if token == auth_state.secret {
+            // Fall back to static secret key validation
+            if token == auth_state.secret_key {
                 let authenticated_user = AuthenticatedUser::Secret;
                 tracing::debug!(
                     correlation_id = %correlation_id.0,

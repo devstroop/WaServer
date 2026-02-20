@@ -18,8 +18,8 @@ args = [
 ]
 
 [auth]
-# Static secret token for scripts/CI/CD pipelines
-secret = "your-secure-secret-change-this"
+# Static secret key for scripts/CI/CD pipelines (CHANGE IN PRODUCTION)
+secret_key = "change-this-secret-key-in-production"
 # JWT secret key for signing tokens (CHANGE IN PRODUCTION - min 32 chars)
 jwt_secret = "your-super-secret-jwt-key-change-this-in-production-32chars"
 # Access token expiry in hours

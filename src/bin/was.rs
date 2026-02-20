@@ -236,7 +236,7 @@ async fn run_server(
 
     // Create auth state for middleware
     let auth_state = AuthState::new(
-        config.auth.secret.clone(),
+        config.auth.secret_key.clone(),
         auth_token_service.clone(),
     );
 

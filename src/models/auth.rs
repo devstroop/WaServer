@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 /// - **LocalUser**: JWT-based user authentication (web UI, MCP, requires username/password)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthenticatedUser {
-    /// Authenticated via static secret token from config `[auth].secret`
+    /// Authenticated via static secret key from config `[auth].secret_key`
     /// Used for: External scripts, CI/CD pipelines, simple integrations
     Secret,
     

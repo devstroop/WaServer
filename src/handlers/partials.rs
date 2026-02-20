@@ -550,7 +550,7 @@ pub async fn token_list() -> impl IntoResponse {
                 <div class="alert alert-info alert-compact mb-0" style="max-width: 32rem;">
                     <i class="bi bi-info-circle alert-icon"></i>
                     <p class="alert-description">
-                        Use <code>[auth]</code> JWT settings for login (MCP/web) or <code>[auth].secret</code> for scripts/CI/CD. 
+                        Use <code>[auth]</code> JWT settings for login (MCP/web) or <code>[auth].secret_key</code> for scripts/CI/CD. 
                         Use <code>Authorization: Bearer &lt;token&gt;</code> header for API requests.
                     </p>
                 </div>
