@@ -1,6 +1,64 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+// =============================================================================
+// Authenticated User Context
+// =============================================================================
+
+/// Represents how a request was authenticated
+/// 
+/// This allows handlers to differentiate between:
+/// - **Secret**: Static config-based secret token (external scripts, CI/CD pipelines)
+/// - **LocalUser**: JWT-based user authentication (web UI, MCP, requires username/password)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthenticatedUser {
+    /// Authenticated via static secret token from config `[auth].secret`
+    /// Used for: External scripts, CI/CD pipelines, simple integrations
+    Secret,
+    
+    /// Authenticated via JWT token from user login
+    /// Contains the username of the authenticated user
+    /// Used for: Web UI, MCP clients, user-specific access control
+    LocalUser {
+        /// The username extracted from the JWT token
+        username: String,
+    },
+}
+
+impl AuthenticatedUser {
+    /// Check if authenticated via static secret token
+    pub fn is_secret(&self) -> bool {
+        matches!(self, AuthenticatedUser::Secret)
+    }
+    
+    /// Check if authenticated via local user JWT
+    pub fn is_local_user(&self) -> bool {
+        matches!(self, AuthenticatedUser::LocalUser { .. })
+    }
+    
+    /// Get username if authenticated via local user
+    pub fn username(&self) -> Option<&str> {
+        match self {
+            AuthenticatedUser::LocalUser { username } => Some(username),
+            AuthenticatedUser::Secret => None,
+        }
+    }
+    
+    /// Get a display name for logging
+    pub fn display_name(&self) -> String {
+        match self {
+            AuthenticatedUser::Secret => "secret".to_string(),
+            AuthenticatedUser::LocalUser { username } => format!("user:{}", username),
+        }
+    }
+}
+
+impl std::fmt::Display for AuthenticatedUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.display_name())
+    }
+}
+
 /// Response for authentication status
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AuthStatusResponse {

@@ -11,6 +11,9 @@ pub mod session;
 // Re-export domain models for easier access
 pub use domain::*;
 
+// Re-export auth types
+pub use auth::AuthenticatedUser;
+
 // Re-export account types
 pub use account::{
     AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
