@@ -169,13 +169,12 @@ async fn run_server(
         tags(
             // Admin API tags
             (name = "Health", description = "Server health and metrics endpoints"),
-            (name = "Auth", description = "Server authentication with JWT tokens"),
-            (name = "Accounts", description = "Account management (create, list, delete, start, stop)"),
+            (name = "Authentication", description = "Server authentication with JWT tokens"),
+            (name = "Accounts", description = "Administrative account management (create, list, delete, start, stop)"),
             // WhatsApp API tags (require X-Account-Id)
-            (name = "WhatsApp - Account", description = "WhatsApp account operations (profile, privacy)"),
             (name = "WhatsApp - Auth", description = "WhatsApp Web authentication (QR, phone login)"),
-            (name = "WhatsApp - Chat", description = "Chat listing and message retrieval"),
-            (name = "WhatsApp - Messages", description = "Send and manage messages")
+            (name = "WhatsApp - Account", description = "WhatsApp account operations (profile, privacy)"),
+            (name = "WhatsApp - Chat", description = "Send, receive and manage messages")
         ),
         info(
             title = "WhatsApp Server - API",
@@ -219,7 +218,7 @@ async fn run_server(
                 info!("║  Setup Token: {}              ║", setup_token);
                 info!("║                                                                  ║");
                 info!("║  Visit: http://{}:{}/setup                             ║", config.server.host, config.server.port);
-                info!("║  Or POST to: /api/admin/auth/setup                               ║");
+                info!("║  Or POST to: /api/v1/admin/auth/setup                           ║");
                 info!("╚══════════════════════════════════════════════════════════════════╝");
                 info!("");
             } else {
@@ -269,9 +268,9 @@ async fn run_server(
     info!("🤖 MCP not compiled (build with --features mcp to enable)");
 
     // ==========================================================================
-    // Admin API Routes (/api/admin) - Server administration, no X-Account-Id
+    // Admin API Routes (/api/v1/admin) - Server administration, no X-Account-Id
     // ==========================================================================
-    info!("📖 Admin API at /api/admin");
+    info!("📖 Admin API at /api/v1/admin");
 
     // Health check routes (no auth required)
     let health_routes = Router::new()
@@ -297,7 +296,7 @@ async fn run_server(
         .with_state(account_manager.clone());
 
     // Local auth routes (JWT-based server authentication)
-    let admin_auth_routes = Router::new()
+    let auth_routes = Router::new()
         .route("/status", get(auth::get_local_auth_status))
         .route("/login", post(auth::local_login))
         .route("/refresh", post(auth::refresh_token))
@@ -310,26 +309,28 @@ async fn run_server(
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
 
-    // Mount admin routes
-    app = app.nest(
-        "/api/admin",
-        Router::new()
-            .nest("/accounts", accounts_routes)
-            .nest("/auth", admin_auth_routes),
-    );
-
     // ==========================================================================
-    // WhatsApp API Routes (/api/v1) - Account operations, require X-Account-Id
+    // API v1 Routes (/api/v1)
     // ==========================================================================
-    info!("📖 WhatsApp API at /api/v1 (requires X-Account-Id header)");
+    info!("📖 API at /api/v1");
 
-    // Account operations routes (auth, profile, privacy)
-    let account_routes = Router::new()
-        // Auth/status
+    // WhatsApp auth routes (status, login, logout)
+    let whatsapp_auth_routes = Router::new()
         .route("/status", get(account::get_account_status))
-        .route("/qr", get(account::get_qr_code))
-        .route("/phone", post(account::link_phone))
         .route("/logout", post(account::logout))
+        .route("/login/qr", get(account::get_qr_code))
+        .route("/login/phone", post(account::link_phone))
+        .layer(middleware::from_fn_with_state(
+            account_manager.clone(),
+            account_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
+    // Account operations routes (profile, privacy)
+    let account_routes = Router::new()
         // Profile management (GET + PUT with all fields optional)
         .route("/profile", get(account::get_profile).put(account::update_profile))
         // Privacy settings (GET + PUT with all fields optional)
@@ -370,10 +371,15 @@ async fn run_server(
             auth_middleware,
         ));
 
-    // Mount WhatsApp routes
+    // Mount all v1 routes
     app = app.nest(
         "/api/v1",
         Router::new()
+            // Admin routes (server auth, account management)
+            .nest("/admin/auth", auth_routes)
+            .nest("/admin/accounts", accounts_routes)
+            // WhatsApp routes (require X-Account-Id header)
+            .nest("/auth", whatsapp_auth_routes)
             .nest("/account", account_routes)
             .nest("/chats", chat_routes)
             .nest("/messages", message_routes),

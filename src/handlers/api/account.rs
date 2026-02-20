@@ -36,13 +36,13 @@ fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
 
 // === API Handlers ===
 
-/// Get WhatsApp account status
+/// Get WhatsApp authentication status
 ///
 /// Returns the authentication status and bound phone number for the account.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/status",
-    tag = "WhatsApp - Account",
+    path = "/api/v1/auth/status",
+    tag = "WhatsApp - Auth",
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -79,8 +79,8 @@ pub async fn get_account_status(
 /// Returns a QR code image (base64) for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/qr",
-    tag = "WhatsApp - Account",
+    path = "/api/v1/auth/login/qr",
+    tag = "WhatsApp - Auth",
     responses(
         (status = 200, description = "QR code"),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -102,7 +102,7 @@ pub async fn get_qr_code(
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running. Start it first via POST /api/v1/accounts/{id}/start"
+                "message": "Account browser is not running. Start it first via POST /api/v1/admin/accounts/{id}/start"
             })),
         )
             .into_response();
@@ -129,8 +129,8 @@ pub async fn get_qr_code(
 /// Initiates phone number linking flow.
 #[utoipa::path(
     post,
-    path = "/api/v1/account/phone",
-    tag = "WhatsApp - Account",
+    path = "/api/v1/auth/login/phone",
+    tag = "WhatsApp - Auth",
     request_body = PhoneLinkRequest,
     responses(
         (status = 200, description = "Phone linking initiated"),
@@ -224,8 +224,8 @@ pub async fn link_phone(
 /// Logs out from WhatsApp Web session.
 #[utoipa::path(
     post,
-    path = "/api/v1/account/logout",
-    tag = "WhatsApp - Account",
+    path = "/api/v1/auth/logout",
+    tag = "WhatsApp - Auth",
     responses(
         (status = 200, description = "Logged out"),
         (status = 400, description = "Missing X-Account-Id header"),

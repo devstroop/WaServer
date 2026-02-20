@@ -29,8 +29,8 @@ use crate::{
 /// Returns a list of all registered WhatsApp accounts.
 #[utoipa::path(
     get,
-    path = "/api/admin/accounts",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts",
+    tag = "Accounts",
     responses(
         (status = 200, description = "List of accounts", body = AccountListResponse),
     )
@@ -48,8 +48,8 @@ pub async fn list_accounts(
 /// Creates a new WhatsApp account container with isolated data directory.
 #[utoipa::path(
     post,
-    path = "/api/admin/accounts",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts",
+    tag = "Accounts",
     request_body = CreateAccountRequest,
     responses(
         (status = 201, description = "Account created", body = CreateAccountResponse),
@@ -89,8 +89,8 @@ pub async fn create_account(
 /// Returns detailed information about a specific account.
 #[utoipa::path(
     get,
-    path = "/api/admin/accounts/{id}",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts/{id}",
+    tag = "Accounts",
     params(
         ("id" = String, Path, description = "Account ID")
     ),
@@ -124,8 +124,8 @@ pub async fn get_account(
 /// Deletes an account and optionally all its data.
 #[utoipa::path(
     delete,
-    path = "/api/admin/accounts/{id}",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts/{id}",
+    tag = "Accounts",
     params(
         ("id" = String, Path, description = "Account ID"),
         ("delete_data" = bool, Query, description = "Delete all account data")
@@ -167,8 +167,8 @@ pub async fn delete_account(
 /// Launches the browser for a specific account and navigates to WhatsApp Web.
 #[utoipa::path(
     post,
-    path = "/api/admin/accounts/{id}/start",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts/{id}/start",
+    tag = "Accounts",
     params(
         ("id" = String, Path, description = "Account ID")
     ),
@@ -215,8 +215,8 @@ pub async fn start_account(
 /// Stops the browser for a specific account.
 #[utoipa::path(
     post,
-    path = "/api/admin/accounts/{id}/stop",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts/{id}/stop",
+    tag = "Accounts",
     params(
         ("id" = String, Path, description = "Account ID")
     ),
@@ -258,8 +258,8 @@ pub async fn stop_account(
 /// Scans the filesystem for existing account directories and loads them.
 #[utoipa::path(
     post,
-    path = "/api/admin/accounts/discover",
-    tag = "Admin - Accounts",
+    path = "/api/v1/admin/accounts/discover",
+    tag = "Accounts",
     responses(
         (status = 200, description = "Accounts discovered"),
     )

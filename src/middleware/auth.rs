@@ -11,7 +11,7 @@
 //!
 //! 2. **Local User JWT** (`[auth]` JWT settings): User-based access  
 //!    - Use for: Web UI dashboard, MCP clients, user-specific access control
-//!    - Requires login via `/api/admin/auth/login`
+//!    - Requires login via `/api/v1/admin/auth/login`
 //!    - JWT tokens contain username for auditing
 
 use std::sync::Arc;
@@ -176,12 +176,12 @@ fn is_public_path(path: &str) -> bool {
         || path.starts_with("/live")
         || path.starts_with("/metrics")
         || path.starts_with("/api-docs")
-        || path.starts_with("/api-docs")
         || path.starts_with("/docs")
-        || path == "/api/admin/auth/login"
-        || path == "/api/admin/auth/refresh"
-        || path == "/api/admin/auth/status"
-        || path == "/api/admin/auth/setup"  // Initial setup (no auth needed)
+        || path.starts_with("/api/health")
+        || path.starts_with("/api/ready")
+        || path.starts_with("/api/live")
+        || path.starts_with("/api/metrics")
+        || path.starts_with("/api/v1/admin/auth")  // All auth routes are public (login, setup, etc.)
 }
 
 #[cfg(test)]
@@ -195,14 +195,18 @@ mod tests {
         assert!(is_public_path("/api-docs"));
         assert!(is_public_path("/api-docs/openapi.json"));
         assert!(is_public_path("/docs"));
-        assert!(is_public_path("/api/admin/auth/login"));
-        assert!(is_public_path("/api/admin/auth/refresh"));
-        assert!(is_public_path("/api/admin/auth/status"));
-        assert!(is_public_path("/api/admin/auth/setup"));
+        assert!(is_public_path("/api/v1/admin/auth/login"));
+        assert!(is_public_path("/api/v1/admin/auth/refresh"));
+        assert!(is_public_path("/api/v1/admin/auth/status"));
+        assert!(is_public_path("/api/v1/admin/auth/setup"));
+        assert!(is_public_path("/api/health"));
+        assert!(is_public_path("/api/ready"));
+        assert!(is_public_path("/api/live"));
+        assert!(is_public_path("/api/metrics"));
 
         // Protected paths (require auth)
         assert!(!is_public_path("/mcp"));
-        assert!(!is_public_path("/api/v1/accounts"));
+        assert!(!is_public_path("/api/v1/admin/accounts"));
         assert!(!is_public_path("/api/v1/account/status"));
         assert!(!is_public_path("/api/v1/chats"));
         assert!(!is_public_path("/api/v1/messages"));
