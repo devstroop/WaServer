@@ -73,7 +73,7 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messaging"
+    tag = "Chat"
 )]
 pub async fn list_chats(
     Extension(current): Extension<CurrentAccount>,
@@ -151,7 +151,7 @@ pub async fn list_chats(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messaging"
+    tag = "Chat"
 )]
 pub async fn get_chat_messages(
     Extension(current): Extension<CurrentAccount>,
@@ -241,7 +241,7 @@ pub async fn get_chat_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messaging"
+    tag = "Chat"
 )]
 pub async fn watch_messages(
     Extension(current): Extension<CurrentAccount>,
@@ -307,7 +307,7 @@ pub async fn watch_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messaging"
+    tag = "Chat"
 )]
 pub async fn send_message(
     Extension(current): Extension<CurrentAccount>,
@@ -547,7 +547,7 @@ pub async fn send_message(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Messaging"
+    tag = "Chat"
 )]
 pub async fn get_message(
     Extension(current): Extension<CurrentAccount>,

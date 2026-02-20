@@ -77,7 +77,7 @@ async fn run_server(
         extract::DefaultBodyLimit,
         http::Method,
         middleware,
-        routing::{delete, get, post},
+        routing::{delete, get, post, put},
         Router,
     };
     use tower::ServiceBuilder;
@@ -91,13 +91,13 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, accounts, auth, chat, health},
+        api::{account, accounts, admin, auth, chat, health},
         handlers::{partials, templates},
         middleware::{
             account_middleware, auth_middleware, correlation_id_middleware,
             request_metrics_middleware, security_headers_middleware, AuthState,
         },
-        models::{auth::*, chat::*, account::*},
+        models::{admin::*, auth::*, chat::*, account::*},
     };
 
     // CORS
@@ -146,6 +146,21 @@ async fn run_server(
             chat::watch_messages,
             chat::send_message,
             chat::get_message,
+            // Users
+            admin::list_users,
+            admin::create_user,
+            admin::get_user,
+            admin::update_user,
+            admin::delete_user,
+            // Roles
+            admin::list_roles,
+            admin::create_role,
+            admin::get_role,
+            admin::update_role,
+            admin::delete_role,
+            // Permissions
+            admin::list_permissions,
+            admin::get_permission,
         ),
         components(
             schemas(
@@ -162,18 +177,23 @@ async fn run_server(
                 // Account operations
                 WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo, PrivacySettings,
                 UpdateProfileRequest, UpdatePrivacyRequest,
-                PrivacyVisibility, OnlineVisibility, GroupAddPermission
+                PrivacyVisibility, OnlineVisibility, GroupAddPermission,
+                // Users, Roles, Permissions
+                User, CreateUserRequest, UpdateUserRequest,
+                Role, CreateRoleRequest, UpdateRoleRequest,
+                Permission
             )
         ),
         modifiers(&SecurityAddon),
         tags(
-            // Admin API tags
             (name = "Health", description = "Server health and metrics endpoints"),
             (name = "Authentication", description = "Server authentication with JWT tokens"),
+            (name = "Users", description = "User management (create, list, update, delete users)"),
+            (name = "Roles", description = "Role management (create, list, update, delete roles)"),
+            (name = "Permissions", description = "Permission definitions (read-only)"),
             (name = "Accounts", description = "Administrative account management (create, list, delete, start, stop)"),
-            // WhatsApp API tags
             (name = "Account", description = "WhatsApp authentication, account operations (profile, privacy)"),
-            (name = "Messaging", description = "Send, receive and manage messages")
+            (name = "Chat", description = "Send, receive and manage messages")
         ),
         info(
             title = "WhatsApp Server - API",
@@ -358,6 +378,39 @@ async fn run_server(
             auth_middleware,
         ));
 
+    // User management routes (stub)
+    let users_routes = Router::new()
+        .route("/", get(admin::list_users))
+        .route("/", post(admin::create_user))
+        .route("/:user_id", get(admin::get_user))
+        .route("/:user_id", put(admin::update_user))
+        .route("/:user_id", delete(admin::delete_user))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
+    // Role management routes (stub)
+    let roles_routes = Router::new()
+        .route("/", get(admin::list_roles))
+        .route("/", post(admin::create_role))
+        .route("/:role_id", get(admin::get_role))
+        .route("/:role_id", put(admin::update_role))
+        .route("/:role_id", delete(admin::delete_role))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
+    // Permission routes (stub, read-only)
+    let permissions_routes = Router::new()
+        .route("/", get(admin::list_permissions))
+        .route("/:permission_id", get(admin::get_permission))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
     // Mount all v1 routes
     app = app.nest(
         "/api/v1",
@@ -365,6 +418,9 @@ async fn run_server(
             // Admin routes (server auth, account management)
             .nest("/auth", auth_routes)
             .nest("/accounts", accounts_routes)
+            .nest("/users", users_routes)
+            .nest("/roles", roles_routes)
+            .nest("/permissions", permissions_routes)
             // WhatsApp routes (account uses path param, chat/message use header)
             .nest("/account", account_routes)
             .nest("/chats", chat_routes)
