@@ -7,7 +7,11 @@
 use crate::{
     browser::{BrowserService, BrowserServiceConfig},
     config::AppConfig,
-    models::account::{AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus},
+    models::account::{
+        AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
+        InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, InstanceRateLimits,
+        UpdateInstanceConfigRequest,
+    },
     models::auth::AuthStatusResponse,
     services::{
         auth::{AuthService, AuthServiceTrait, AuthTokenService},
@@ -37,6 +41,9 @@ const AUTH_CACHE_TTL: Duration = Duration::from_secs(5);
 /// Account metadata filename
 const METADATA_FILE: &str = "account.json";
 
+/// Instance runtime config filename
+const INSTANCE_CONFIG_FILE: &str = "instance_config.json";
+
 /// Self-contained WhatsApp account with isolated resources
 /// Each account is identified by UUID and bound to exactly one phone number
 pub struct WhatsAppAccount {
@@ -52,6 +59,8 @@ pub struct WhatsAppAccount {
     data_dir: PathBuf,
     /// Account metadata (includes bound phone)
     metadata: Arc<RwLock<AccountMetadata>>,
+    /// Instance runtime configuration (API-managed)
+    instance_config: Arc<RwLock<InstanceConfig>>,
     /// Isolated browser service
     browser_service: Arc<BrowserService>,
     /// Auth service
@@ -91,6 +100,9 @@ impl WhatsAppAccount {
 
         // Load or create account metadata
         let metadata = Self::load_or_create_metadata(&data_dir, &config).await?;
+
+        // Load or create instance runtime config
+        let instance_config = Self::load_or_create_instance_config(&data_dir, &config).await?;
 
         // Create browser service with account-specific profile
         let headless = config.browser.headless.unwrap_or(app_config.browser.headless);
@@ -138,6 +150,7 @@ impl WhatsAppAccount {
             app_config,
             data_dir,
             metadata: Arc::new(RwLock::new(metadata)),
+            instance_config: Arc::new(RwLock::new(instance_config)),
             browser_service,
             auth_service: auth_service as Arc<dyn AuthServiceTrait>,
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
@@ -184,6 +197,120 @@ impl WhatsAppAccount {
         let content = serde_json::to_string_pretty(metadata)?;
         tokio::fs::write(path, content).await?;
         Ok(())
+    }
+
+    /// Load or create instance runtime config
+    async fn load_or_create_instance_config(
+        data_dir: &PathBuf,
+        config: &AccountConfig,
+    ) -> Result<InstanceConfig> {
+        let config_path = data_dir.join(INSTANCE_CONFIG_FILE);
+
+        if config_path.exists() {
+            let content = tokio::fs::read_to_string(&config_path).await?;
+            let instance_config: InstanceConfig = serde_json::from_str(&content)
+                .map_err(|e| anyhow!("Failed to parse instance config: {}", e))?;
+            debug!("Loaded instance config for account '{}'", config.id);
+            Ok(instance_config)
+        } else {
+            // Create default config from AccountConfig
+            let instance_config = InstanceConfig {
+                instance_id: Some(config.id),
+                display_name: config.display_name.clone(),
+                auto_start: config.auto_start,
+                browser: InstanceBrowserConfig {
+                    headless: config.browser.headless.unwrap_or(true),
+                    timeout_ms: 30000,
+                    extra_args: config.browser.extra_args.clone(),
+                },
+                webhooks: InstanceWebhookConfig::default(),
+                rate_limits: InstanceRateLimits::default(),
+            };
+            Self::save_instance_config_to_path(&config_path, &instance_config).await?;
+            info!("Created new instance config for account '{}'", config.id);
+            Ok(instance_config)
+        }
+    }
+
+    /// Save instance config to disk
+    async fn save_instance_config(&self) -> Result<()> {
+        let config = self.instance_config.read().await;
+        let config_path = self.data_dir.join(INSTANCE_CONFIG_FILE);
+        Self::save_instance_config_to_path(&config_path, &config).await
+    }
+
+    async fn save_instance_config_to_path(path: &PathBuf, config: &InstanceConfig) -> Result<()> {
+        let content = serde_json::to_string_pretty(config)?;
+        tokio::fs::write(path, content).await?;
+        Ok(())
+    }
+
+    /// Get the current instance configuration
+    pub async fn get_config(&self) -> InstanceConfig {
+        let config = self.instance_config.read().await;
+        let mut result = config.clone();
+        // Always include instance_id in response
+        result.instance_id = Some(self.id);
+        result
+    }
+
+    /// Update instance configuration with partial updates
+    pub async fn update_config(&self, update: UpdateInstanceConfigRequest) -> Result<InstanceConfig> {
+        let mut config = self.instance_config.write().await;
+
+        // Apply partial updates
+        if let Some(display_name) = update.display_name {
+            config.display_name = Some(display_name);
+        }
+        if let Some(auto_start) = update.auto_start {
+            config.auto_start = auto_start;
+        }
+        if let Some(browser) = update.browser {
+            if let Some(headless) = browser.headless {
+                config.browser.headless = headless;
+            }
+            if let Some(timeout_ms) = browser.timeout_ms {
+                config.browser.timeout_ms = timeout_ms;
+            }
+            if let Some(extra_args) = browser.extra_args {
+                config.browser.extra_args = extra_args;
+            }
+        }
+        if let Some(webhooks) = update.webhooks {
+            if let Some(enabled) = webhooks.enabled {
+                config.webhooks.enabled = enabled;
+            }
+            if let Some(endpoints) = webhooks.endpoints {
+                config.webhooks.endpoints = endpoints;
+            }
+            if let Some(timeout_ms) = webhooks.timeout_ms {
+                config.webhooks.timeout_ms = timeout_ms;
+            }
+            if let Some(retry_count) = webhooks.retry_count {
+                config.webhooks.retry_count = retry_count;
+            }
+        }
+        if let Some(rate_limits) = update.rate_limits {
+            if let Some(messages_per_minute) = rate_limits.messages_per_minute {
+                config.rate_limits.messages_per_minute = messages_per_minute;
+            }
+            if let Some(requests_per_minute) = rate_limits.requests_per_minute {
+                config.rate_limits.requests_per_minute = requests_per_minute;
+            }
+            if let Some(message_cooldown_ms) = rate_limits.message_cooldown_ms {
+                config.rate_limits.message_cooldown_ms = message_cooldown_ms;
+            }
+        }
+
+        // Ensure instance_id is set
+        config.instance_id = Some(self.id);
+
+        // Save to disk
+        let config_path = self.data_dir.join(INSTANCE_CONFIG_FILE);
+        Self::save_instance_config_to_path(&config_path, &config).await?;
+
+        info!("Updated instance config for account '{}'", self.id);
+        Ok(config.clone())
     }
 
     /// Start the account (launch browser, navigate to WhatsApp)
