@@ -109,11 +109,9 @@ impl WhatsAppAccount {
 
         // Create auth token service (JWT - always enabled)
         let auth_token_service = match AuthTokenService::new(
-            app_config.local_auth.jwt_secret.clone(),
-            app_config.local_auth.token_expiry_hours,
-            app_config.local_auth.refresh_token_expiry_days,
-            Some(app_config.local_auth.default_username.clone()),
-            Some(app_config.local_auth.default_password.clone()),
+            app_config.auth.jwt_secret.clone(),
+            app_config.auth.token_expiry_hours,
+            app_config.auth.refresh_token_expiry_days,
         ) {
             Ok(service) => Some(Arc::new(service)),
             Err(e) => {
