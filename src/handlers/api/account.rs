@@ -268,7 +268,7 @@ pub async fn logout(
 #[utoipa::path(
     get,
     path = "/api/v1/account/profile",
-    tag = "WhatsApp - Account",
+    tag = "WhatsApp - Profile",
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -310,7 +310,7 @@ pub async fn get_profile(
 #[utoipa::path(
     put,
     path = "/api/v1/account/profile",
-    tag = "WhatsApp - Account",
+    tag = "WhatsApp - Profile",
     request_body = UpdateProfileRequest,
     responses(
         (status = 200, description = "Profile updated"),
@@ -365,7 +365,7 @@ pub async fn update_profile(
 #[utoipa::path(
     get,
     path = "/api/v1/account/privacy",
-    tag = "WhatsApp - Account",
+    tag = "WhatsApp - Profile",
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -389,7 +389,7 @@ pub async fn get_privacy(
 #[utoipa::path(
     put,
     path = "/api/v1/account/privacy",
-    tag = "WhatsApp - Account",
+    tag = "WhatsApp - Profile",
     request_body = UpdatePrivacyRequest,
     responses(
         (status = 200, description = "Privacy settings updated"),

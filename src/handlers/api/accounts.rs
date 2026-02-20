@@ -1,7 +1,7 @@
 //! Accounts Management API
 //!
 //! REST API endpoints for managing WhatsApp accounts (create, list, get, delete).
-//! Account IDs are phone numbers in E.164 format.
+//! Account IDs are UUIDs. Lookup by phone number is also supported.
 //! These endpoints do NOT require X-Account-Id header.
 
 use std::sync::Arc;
@@ -92,7 +92,7 @@ pub async fn create_account(
     path = "/api/v1/admin/accounts/{id}",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID")
+        ("id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account info", body = AccountInfo),
@@ -127,7 +127,7 @@ pub async fn get_account(
     path = "/api/v1/admin/accounts/{id}",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID"),
+        ("id" = String, Path, description = "Account ID (UUID or phone number)"),
         ("delete_data" = bool, Query, description = "Delete all account data")
     ),
     responses(
@@ -170,7 +170,7 @@ pub async fn delete_account(
     path = "/api/v1/admin/accounts/{id}/start",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID")
+        ("id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account started", body = AccountActionResponse),
@@ -230,7 +230,7 @@ pub async fn start_account(
     path = "/api/v1/admin/accounts/{id}/stop",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID")
+        ("id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account stopped", body = AccountActionResponse),
