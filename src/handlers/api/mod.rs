@@ -6,7 +6,7 @@
 /// Account management API (create, list, delete accounts - no X-Account-Id required)
 pub mod accounts;
 
-/// WhatsApp account operations API (status, QR, profile, privacy - requires X-Account-Id)
+/// WhatsApp account operations API (status, QR, profile, privacy - uses path param {account_id})
 pub mod account;
 
 /// Authentication API handlers (login, logout, QR code, auth status)

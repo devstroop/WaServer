@@ -126,7 +126,7 @@ async fn run_server(
             accounts::start_account,
             accounts::stop_account,
             accounts::discover_accounts,
-            // Account operations (requires X-Account-Id)
+            // Account operations (uses path param)
             account::get_account_status,
             account::get_qr_code,
             account::link_phone,
@@ -171,7 +171,7 @@ async fn run_server(
             (name = "Health", description = "Server health and metrics endpoints"),
             (name = "Authentication", description = "Server authentication with JWT tokens"),
             (name = "Accounts", description = "Administrative account management (create, list, delete, start, stop)"),
-            // WhatsApp API tags (require X-Account-Id)
+            // WhatsApp API tags
             (name = "Account", description = "WhatsApp authentication, account operations (profile, privacy)"),
             (name = "Messaging", description = "Send, receive and manage messages")
         ),
@@ -314,24 +314,22 @@ async fn run_server(
     info!("📖 API at /api/v1");
 
     // Account operations routes (profile, privacy, link/unlink)
+    // Uses path parameter :account_id instead of X-Account-Id header
     let account_routes = Router::new()
         // WhatsApp linking status and operations
-        .route("/status", get(account::get_account_status))
-        .route("/unlink", delete(account::unlink))
-        .route("/link/qr", get(account::get_qr_code))
-        .route("/link/phone", post(account::link_phone))
+        .route("/:account_id/status", get(account::get_account_status))
+        .route("/:account_id/unlink", delete(account::unlink))
+        .route("/:account_id/link/qr", get(account::get_qr_code))
+        .route("/:account_id/link/phone", post(account::link_phone))
         // Profile management (GET + PUT with all fields optional)
-        .route("/profile", get(account::get_profile).put(account::update_profile))
+        .route("/:account_id/profile", get(account::get_profile).put(account::update_profile))
         // Privacy settings (GET + PUT with all fields optional)
-        .route("/profile/privacy", get(account::get_privacy).put(account::update_privacy))
-        .layer(middleware::from_fn_with_state(
-            account_manager.clone(),
-            account_middleware,
-        ))
+        .route("/:account_id/profile/privacy", get(account::get_privacy).put(account::update_privacy))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
-        ));
+        ))
+        .with_state(account_manager.clone());
 
     // Chat routes
     let chat_routes = Router::new()
@@ -367,7 +365,7 @@ async fn run_server(
             // Admin routes (server auth, account management)
             .nest("/auth", auth_routes)
             .nest("/accounts", accounts_routes)
-            // WhatsApp routes (require X-Account-Id header)
+            // WhatsApp routes (account uses path param, chat/message use header)
             .nest("/account", account_routes)
             .nest("/chats", chat_routes)
             .nest("/messages", message_routes),

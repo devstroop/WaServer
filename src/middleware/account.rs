@@ -1,6 +1,7 @@
 //! Account Middleware
 //!
 //! Extracts X-Account-Id header and adds the account to request extensions.
+//! Only needed for chat and message routes (account routes use path params).
 
 use std::sync::Arc;
 
@@ -20,10 +21,11 @@ use crate::services::{AccountManager, WhatsAppAccount};
 pub struct CurrentAccount(pub Arc<WhatsAppAccount>);
 
 /// Extract account from X-Account-Id header
-/// Only applies to routes that require account context:
-/// - /api/v1/account/* (WhatsApp account operations)
+/// Only applies to routes that require account context via header:
 /// - /api/v1/chats/*
 /// - /api/v1/messages/*
+///
+/// Note: /api/v1/account/* routes now use path params instead
 pub async fn account_middleware(
     State(manager): State<Arc<AccountManager>>,
     headers: HeaderMap,
@@ -32,9 +34,10 @@ pub async fn account_middleware(
 ) -> Result<Response, Response> {
     let path = request.uri().path();
 
-    // Routes that don't need account context
+    // Routes that don't need account context via header
     // - /api/v1/auth/* (local JWT auth)
     // - /api/v1/accounts/* (account management - uses path param)
+    // - /api/v1/account/* (now uses path params)
     // - /health, /api-docs, etc.
     if !requires_account_header(path) {
         return Ok(next.run(request).await);
@@ -79,12 +82,7 @@ pub async fn account_middleware(
 
 /// Check if a path requires the X-Account-Id header
 fn requires_account_header(path: &str) -> bool {
-    // Account operations (WhatsApp auth, profile, privacy)
-    if path.starts_with("/api/v1/account/") || path == "/api/v1/account" {
-        return true;
-    }
-
-    // Chat and message operations
+    // Chat and message operations still use header
     if path.starts_with("/api/v1/chats") || path.starts_with("/api/v1/messages") {
         return true;
     }
@@ -106,16 +104,15 @@ mod tests {
 
     #[test]
     fn test_requires_account_header() {
-        // Should require header
-        assert!(requires_account_header("/api/v1/account/status"));
-        assert!(requires_account_header("/api/v1/account/qr"));
-        assert!(requires_account_header("/api/v1/account/profile"));
+        // Should require header (chat/message routes)
         assert!(requires_account_header("/api/v1/chats"));
         assert!(requires_account_header("/api/v1/chats/123"));
         assert!(requires_account_header("/api/v1/messages"));
         assert!(requires_account_header("/api/v1/messages/123"));
 
-        // Should NOT require header
+        // Should NOT require header (uses path params or no account needed)
+        assert!(!requires_account_header("/api/v1/account/123/status"));
+        assert!(!requires_account_header("/api/v1/account/123/profile"));
         assert!(!requires_account_header("/api/v1/auth/login"));
         assert!(!requires_account_header("/api/v1/auth/current-user"));
         assert!(!requires_account_header("/api/v1/accounts"));

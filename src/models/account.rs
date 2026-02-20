@@ -233,7 +233,7 @@ pub struct AccountListResponse {
     pub total: usize,
 }
 
-/// WhatsApp account status response (for /api/v1/account/status)
+/// WhatsApp account status response (for /api/v1/account/{account_id}/status)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WhatsAppStatusResponse {
     /// Unique account identifier (UUID)

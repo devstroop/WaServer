@@ -2,37 +2,26 @@
 //!
 //! REST API endpoints for WhatsApp account operations (status, QR, logout, profile, privacy).
 //! Account ID is a UUID, phone number is the E.164 identifier.
-//! These endpoints REQUIRE X-Account-Id header.
+//! These endpoints use path parameter {account_id}.
 
 use std::sync::Arc;
 
 use axum::{
-    extract::Request,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension, Json,
+    Json,
 };
 use serde_json::json;
 
 use crate::{
-    middleware::CurrentAccount,
     models::account::{
         PrivacySettings, PhoneLinkRequest,
         ProfileInfo, WhatsAppStatusResponse,
         UpdateProfileRequest, UpdatePrivacyRequest,
     },
-    services::WhatsAppAccount,
+    services::AccountManager,
 };
-
-// === Helper to extract account ===
-
-#[allow(dead_code)]
-fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
-    request
-        .extensions()
-        .get::<CurrentAccount>()
-        .map(|ca| ca.0.clone())
-}
 
 // === API Handlers ===
 
@@ -41,11 +30,13 @@ fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
 /// Returns the authentication status and bound phone number for the account.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/status",
+    path = "/api/v1/account/{account_id}/status",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
-        (status = 400, description = "Missing X-Account-Id header"),
         (status = 404, description = "Account not found"),
     ),
     security(
@@ -53,9 +44,22 @@ fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
     )
 )]
 pub async fn get_account_status(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
     let info = account.info().await;
 
     // Convert AccountStatus enum to string
@@ -73,6 +77,7 @@ pub async fn get_account_status(
         authorized: info.authorized,
         last_activity: info.last_activity.map(|dt| dt.to_rfc3339()),
     }))
+    .into_response()
 }
 
 /// Get QR code for WhatsApp Web linking
@@ -80,11 +85,13 @@ pub async fn get_account_status(
 /// Returns a QR code image (base64) for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/account/link/qr",
+    path = "/api/v1/account/{account_id}/link/qr",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     responses(
         (status = 200, description = "QR code"),
-        (status = 400, description = "Missing X-Account-Id header"),
         (status = 404, description = "Account not found"),
         (status = 503, description = "Browser not running"),
     ),
@@ -93,9 +100,22 @@ pub async fn get_account_status(
     )
 )]
 pub async fn get_qr_code(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // Check if browser is running
     if !account.browser_service().is_running().await {
@@ -103,7 +123,7 @@ pub async fn get_qr_code(
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running. Start it first via POST /api/v1/admin/accounts/{id}/start"
+                "message": "Account browser is not running. Start it first via POST /api/v1/accounts/{account_id}/start"
             })),
         )
             .into_response();
@@ -130,23 +150,40 @@ pub async fn get_qr_code(
 /// Initiates phone number linking flow.
 #[utoipa::path(
     post,
-    path = "/api/v1/account/link/phone",
+    path = "/api/v1/account/{account_id}/link/phone",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     request_body = PhoneLinkRequest,
     responses(
         (status = 200, description = "Phone linking initiated"),
         (status = 400, description = "Invalid request"),
         (status = 403, description = "Account bound to different phone"),
+        (status = 404, description = "Account not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn link_phone(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
     Json(request): Json<PhoneLinkRequest>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // Check if browser is running
     if !account.browser_service().is_running().await {
@@ -225,20 +262,36 @@ pub async fn link_phone(
 /// Disconnects the WhatsApp Web session for this account.
 #[utoipa::path(
     delete,
-    path = "/api/v1/account/unlink",
+    path = "/api/v1/account/{account_id}/unlink",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     responses(
         (status = 200, description = "Unlinked"),
-        (status = 400, description = "Missing X-Account-Id header"),
+        (status = 404, description = "Account not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn unlink(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     match account.auth_service().logout().await {
         Ok(_) => {
@@ -267,11 +320,14 @@ pub async fn unlink(
 /// Returns the WhatsApp profile information (name, about, picture).
 #[utoipa::path(
     get,
-    path = "/api/v1/account/profile",
+    path = "/api/v1/account/{account_id}/profile",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
-        (status = 400, description = "Missing X-Account-Id header"),
+        (status = 404, description = "Account not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -279,9 +335,22 @@ pub async fn unlink(
     )
 )]
 pub async fn get_profile(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     if !account.browser_service().is_running().await {
         return (
@@ -309,12 +378,16 @@ pub async fn get_profile(
 /// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/profile",
+    path = "/api/v1/account/{account_id}/profile",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     request_body = UpdateProfileRequest,
     responses(
         (status = 200, description = "Profile updated"),
         (status = 400, description = "Invalid request"),
+        (status = 404, description = "Account not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -322,10 +395,23 @@ pub async fn get_profile(
     )
 )]
 pub async fn update_profile(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
     Json(request): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
-    let account = current.0;
+    let account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     if !account.browser_service().is_running().await {
         return (
@@ -364,20 +450,36 @@ pub async fn update_profile(
 /// Get privacy settings
 #[utoipa::path(
     get,
-    path = "/api/v1/account/profile/privacy",
+    path = "/api/v1/account/{account_id}/profile/privacy",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
-        (status = 400, description = "Missing X-Account-Id header"),
+        (status = 404, description = "Account not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn get_privacy(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    let _account = current.0;
+    let _account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // TODO: Implement actual privacy settings fetching from WhatsApp Web
     Json(json!(PrivacySettings::default())).into_response()
@@ -388,22 +490,39 @@ pub async fn get_privacy(
 /// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/profile/privacy",
+    path = "/api/v1/account/{account_id}/profile/privacy",
     tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account UUID")
+    ),
     request_body = UpdatePrivacyRequest,
     responses(
         (status = 200, description = "Privacy settings updated"),
         (status = 400, description = "Invalid request"),
+        (status = 404, description = "Account not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn update_privacy(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
     Json(request): Json<UpdatePrivacyRequest>,
 ) -> impl IntoResponse {
-    let _account = current.0;
+    let _account = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "account_not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // TODO: Implement actual privacy update via WhatsApp Web automation
     let mut updated = Vec::new();
