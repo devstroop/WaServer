@@ -402,6 +402,10 @@ async fn run_server(
             "/partials/session-controls",
             get(partials::session_controls),
         )
+        .route(
+            "/partials/unlink-account",
+            delete(partials::unlink_account),
+        )
         .with_state(account_manager.clone());
 
     // Stateless partials

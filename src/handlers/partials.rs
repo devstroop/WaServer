@@ -607,6 +607,50 @@ fn format_uptime(seconds: u64) -> String {
 }
 
 // =============================================================================
+// Unlink Partial (for web UI)
+// =============================================================================
+
+/// Unlink WhatsApp account - called from settings page
+/// Uses first available account (for web UI that doesn't have account selection yet)
+pub async fn unlink_account(
+    State(manager): State<Arc<AccountManager>>,
+) -> impl IntoResponse {
+    let Some(account) = get_first_account(&manager).await else {
+        return Html(r#"
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle alert-icon"></i>
+            <span class="alert-title">No Account</span>
+            <span class="alert-description">No account found to unlink.</span>
+        </div>
+        "#.to_string());
+    };
+
+    match account.auth_service().logout().await {
+        Ok(_) => {
+            account.invalidate_auth_cache().await;
+            Html(r#"
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2 text-warning">
+                    <i class="bi bi-exclamation-circle-fill icon-md"></i>
+                    <span class="text-sm">Not Connected</span>
+                </div>
+                <a href="/auth" class="btn btn-was btn-sm">Connect Device</a>
+            </div>
+            "#.to_string())
+        }
+        Err(e) => {
+            Html(format!(r#"
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle alert-icon"></i>
+                <span class="alert-title">Unlink Failed</span>
+                <span class="alert-description">{}</span>
+            </div>
+            "#, e))
+        }
+    }
+}
+
+// =============================================================================
 // Token List Partial
 // =============================================================================
 
