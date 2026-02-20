@@ -284,10 +284,10 @@ async fn run_server(
         .route("/", get(accounts::list_accounts))
         .route("/", post(accounts::create_account))
         .route("/discover", post(accounts::discover_accounts))
-        .route("/:id", get(accounts::get_account))
-        .route("/:id", delete(accounts::delete_account))
-        .route("/:id/start", post(accounts::start_account))
-        .route("/:id/stop", post(accounts::stop_account))
+        .route("/:account_id", get(accounts::get_account))
+        .route("/:account_id", delete(accounts::delete_account))
+        .route("/:account_id/start", post(accounts::start_account))
+        .route("/:account_id/stop", post(accounts::stop_account))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,

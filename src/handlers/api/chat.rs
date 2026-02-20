@@ -85,7 +85,7 @@ pub async fn list_chats(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/admin/accounts/{id}/start".to_string(),
+                error: "Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string(),
             }),
         ));
     }
@@ -320,7 +320,7 @@ pub async fn send_message(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/admin/accounts/{id}/start".to_string(),
+                error: "Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string(),
             }),
         ));
     }

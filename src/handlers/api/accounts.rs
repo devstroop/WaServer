@@ -89,10 +89,10 @@ pub async fn create_account(
 /// Returns detailed information about a specific account.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{id}",
+    path = "/api/v1/accounts/{account_id}",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID (UUID or phone number)")
+        ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account info", body = AccountInfo),
@@ -101,9 +101,9 @@ pub async fn create_account(
 )]
 pub async fn get_account(
     State(manager): State<Arc<AccountManager>>,
-    Path(id): Path<String>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
-    match manager.get_account(&id).await {
+    match manager.get_account(&account_id).await {
         Some(account) => {
             let info = account.info().await;
             Json(json!(info)).into_response()
@@ -112,7 +112,7 @@ pub async fn get_account(
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": "not_found",
-                "message": format!("Account '{}' not found", id)
+                "message": format!("Account '{}' not found", account_id)
             })),
         )
             .into_response(),
@@ -124,10 +124,10 @@ pub async fn get_account(
 /// Deletes an account and optionally all its data.
 #[utoipa::path(
     delete,
-    path = "/api/v1/accounts/{id}",
+    path = "/api/v1/accounts/{account_id}",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID (UUID or phone number)"),
+        ("account_id" = String, Path, description = "Account ID (UUID or phone number)"),
         ("delete_data" = bool, Query, description = "Delete all account data")
     ),
     responses(
@@ -137,10 +137,10 @@ pub async fn get_account(
 )]
 pub async fn delete_account(
     State(manager): State<Arc<AccountManager>>,
-    Path(id): Path<String>,
+    Path(account_id): Path<String>,
     Query(query): Query<DeleteAccountQuery>,
 ) -> impl IntoResponse {
-    match manager.delete_account(&id, query.delete_data).await {
+    match manager.delete_account(&account_id, query.delete_data).await {
         Ok(account_id) => Json(json!(DeleteAccountResponse {
             message: if query.delete_data {
                 "Account and all data deleted".to_string()
@@ -167,10 +167,10 @@ pub async fn delete_account(
 /// Launches the browser for a specific account and navigates to WhatsApp Web.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{id}/start",
+    path = "/api/v1/accounts/{account_id}/start",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID (UUID or phone number)")
+        ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account started", body = AccountActionResponse),
@@ -180,16 +180,16 @@ pub async fn delete_account(
 )]
 pub async fn start_account(
     State(manager): State<Arc<AccountManager>>,
-    Path(id): Path<String>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
     // First get the account to retrieve its UUID
-    let account = match manager.get_account(&id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => return (
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": "not_found",
-                "message": format!("Account '{}' not found", id)
+                "message": format!("Account '{}' not found", account_id)
             })),
         ).into_response(),
     };
@@ -227,10 +227,10 @@ pub async fn start_account(
 /// Stops the browser for a specific account.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{id}/stop",
+    path = "/api/v1/accounts/{account_id}/stop",
     tag = "Accounts",
     params(
-        ("id" = String, Path, description = "Account ID (UUID or phone number)")
+        ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
         (status = 200, description = "Account stopped", body = AccountActionResponse),
@@ -239,16 +239,16 @@ pub async fn start_account(
 )]
 pub async fn stop_account(
     State(manager): State<Arc<AccountManager>>,
-    Path(id): Path<String>,
+    Path(account_id): Path<String>,
 ) -> impl IntoResponse {
     // First get the account to retrieve its UUID
-    let account = match manager.get_account(&id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => return (
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": "not_found",
-                "message": format!("Account '{}' not found", id)
+                "message": format!("Account '{}' not found", account_id)
             })),
         ).into_response(),
     };
