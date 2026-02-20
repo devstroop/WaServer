@@ -99,18 +99,18 @@
         <div class="card-content">
             <div class="flex items-center justify-between">
                 <div>
-                    <label class="label">Logout from WhatsApp</label>
+                    <label class="label">Unlink WhatsApp</label>
                     <p class="text-sm text-muted-foreground">Disconnect your WhatsApp account</p>
                 </div>
                 <button 
                     class="btn btn-destructive"
-                    hx-post="/api/v1/auth/logout"
-                    hx-confirm="Are you sure you want to logout? You will need to scan the QR code again."
+                    hx-delete="/api/v1/account/unlink"
+                    hx-confirm="Are you sure you want to unlink? You will need to scan the QR code again."
                     hx-target="#session-controls"
                     hx-swap="innerHTML"
                 >
                     <i class="bi bi-box-arrow-right icon-md mr-2"></i>
-                    Logout
+                    Unlink
                 </button>
             </div>
         </div>

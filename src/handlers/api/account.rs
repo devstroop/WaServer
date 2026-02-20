@@ -41,8 +41,8 @@ fn get_account(request: &Request) -> Option<Arc<WhatsAppAccount>> {
 /// Returns the authentication status and bound phone number for the account.
 #[utoipa::path(
     get,
-    path = "/api/v1/auth/status",
-    tag = "WhatsApp - Auth",
+    path = "/api/v1/account/status",
+    tag = "Account",
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -80,8 +80,8 @@ pub async fn get_account_status(
 /// Returns a QR code image (base64) for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/auth/login/qr",
-    tag = "WhatsApp - Auth",
+    path = "/api/v1/account/link/qr",
+    tag = "Account",
     responses(
         (status = 200, description = "QR code"),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -130,8 +130,8 @@ pub async fn get_qr_code(
 /// Initiates phone number linking flow.
 #[utoipa::path(
     post,
-    path = "/api/v1/auth/login/phone",
-    tag = "WhatsApp - Auth",
+    path = "/api/v1/account/link/phone",
+    tag = "Account",
     request_body = PhoneLinkRequest,
     responses(
         (status = 200, description = "Phone linking initiated"),
@@ -220,22 +220,22 @@ pub async fn link_phone(
     }
 }
 
-/// Logout from WhatsApp Web
+/// Unlink WhatsApp Web
 ///
-/// Logs out from WhatsApp Web session.
+/// Disconnects the WhatsApp Web session for this account.
 #[utoipa::path(
-    post,
-    path = "/api/v1/auth/logout",
-    tag = "WhatsApp - Auth",
+    delete,
+    path = "/api/v1/account/unlink",
+    tag = "Account",
     responses(
-        (status = 200, description = "Logged out"),
+        (status = 200, description = "Unlinked"),
         (status = 400, description = "Missing X-Account-Id header"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
-pub async fn logout(
+pub async fn unlink(
     Extension(current): Extension<CurrentAccount>,
 ) -> impl IntoResponse {
     let account = current.0;
@@ -245,14 +245,14 @@ pub async fn logout(
             account.invalidate_auth_cache().await;
             Json(json!({
                 "success": true,
-                "message": "Logged out from WhatsApp Web"
+                "message": "WhatsApp Web session unlinked"
             }))
             .into_response()
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
-                "error": "logout_failed",
+                "error": "unlink_failed",
                 "message": e.to_string()
             })),
         )
@@ -268,7 +268,7 @@ pub async fn logout(
 #[utoipa::path(
     get,
     path = "/api/v1/account/profile",
-    tag = "WhatsApp - Profile",
+    tag = "Account",
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -310,7 +310,7 @@ pub async fn get_profile(
 #[utoipa::path(
     put,
     path = "/api/v1/account/profile",
-    tag = "WhatsApp - Profile",
+    tag = "Account",
     request_body = UpdateProfileRequest,
     responses(
         (status = 200, description = "Profile updated"),
@@ -364,8 +364,8 @@ pub async fn update_profile(
 /// Get privacy settings
 #[utoipa::path(
     get,
-    path = "/api/v1/account/privacy",
-    tag = "WhatsApp - Profile",
+    path = "/api/v1/account/profile/privacy",
+    tag = "Account",
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
         (status = 400, description = "Missing X-Account-Id header"),
@@ -388,8 +388,8 @@ pub async fn get_privacy(
 /// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/account/privacy",
-    tag = "WhatsApp - Profile",
+    path = "/api/v1/account/profile/privacy",
+    tag = "Account",
     request_body = UpdatePrivacyRequest,
     responses(
         (status = 200, description = "Privacy settings updated"),

@@ -130,7 +130,7 @@ async fn run_server(
             account::get_account_status,
             account::get_qr_code,
             account::link_phone,
-            account::logout,
+            account::unlink,
             account::get_profile,
             account::update_profile,
             account::get_privacy,
@@ -314,27 +314,17 @@ async fn run_server(
     // ==========================================================================
     info!("📖 API at /api/v1");
 
-    // WhatsApp auth routes (status, login, logout)
-    let whatsapp_auth_routes = Router::new()
-        .route("/status", get(account::get_account_status))
-        .route("/logout", post(account::logout))
-        .route("/login/qr", get(account::get_qr_code))
-        .route("/login/phone", post(account::link_phone))
-        .layer(middleware::from_fn_with_state(
-            account_manager.clone(),
-            account_middleware,
-        ))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Account operations routes (profile, privacy)
+    // Account operations routes (profile, privacy, link/unlink)
     let account_routes = Router::new()
+        // WhatsApp linking status and operations
+        .route("/status", get(account::get_account_status))
+        .route("/unlink", delete(account::unlink))
+        .route("/link/qr", get(account::get_qr_code))
+        .route("/link/phone", post(account::link_phone))
         // Profile management (GET + PUT with all fields optional)
         .route("/profile", get(account::get_profile).put(account::update_profile))
         // Privacy settings (GET + PUT with all fields optional)
-        .route("/privacy", get(account::get_privacy).put(account::update_privacy))
+        .route("/profile/privacy", get(account::get_privacy).put(account::update_privacy))
         .layer(middleware::from_fn_with_state(
             account_manager.clone(),
             account_middleware,
