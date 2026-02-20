@@ -339,50 +339,30 @@ async fn run_server(
     // ==========================================================================
     info!("📖 API at /api/v1");
 
-    // Account operations routes (profile, privacy, link/unlink)
-    // Uses path parameter :account_id instead of X-Account-Id header
-    let account_routes = Router::new()
+    // WhatsApp operations routes (profile, privacy, link/unlink, chats, messages)
+    // Uses path parameter :instance_id for all operations
+    let whatsapp_routes = Router::new()
         // WhatsApp linking status and operations
-        .route("/:account_id/status", get(account::get_account_status))
-        .route("/:account_id/unlink", delete(account::unlink))
-        .route("/:account_id/link/qr", get(account::get_qr_code))
-        .route("/:account_id/link/phone", post(account::link_phone))
+        .route("/:instance_id/status", get(account::get_account_status))
+        .route("/:instance_id/unlink", delete(account::unlink))
+        .route("/:instance_id/link/qr", get(account::get_qr_code))
+        .route("/:instance_id/link/phone", post(account::link_phone))
         // Profile management (GET + PUT with all fields optional)
-        .route("/:account_id/profile", get(account::get_profile).put(account::update_profile))
+        .route("/:instance_id/profile", get(account::get_profile).put(account::update_profile))
         // Privacy settings (GET + PUT with all fields optional)
-        .route("/:account_id/profile/privacy", get(account::get_privacy).put(account::update_privacy))
+        .route("/:instance_id/profile/privacy", get(account::get_privacy).put(account::update_privacy))
+        // Chat routes
+        .route("/:instance_id/chats", get(chat::list_chats))
+        .route("/:instance_id/chats/events", get(chat::watch_messages))
+        .route("/:instance_id/chats/:chat_id", get(chat::get_chat_messages))
+        // Message routes
+        .route("/:instance_id/messages", post(chat::send_message))
+        .route("/:instance_id/messages/:message_id", get(chat::get_message))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
         ))
         .with_state(account_manager.clone());
-
-    // Chat routes
-    let chat_routes = Router::new()
-        .route("/", get(chat::list_chats))
-        .route("/events", get(chat::watch_messages))
-        .route("/:chat_id", get(chat::get_chat_messages))
-        .layer(middleware::from_fn_with_state(
-            account_manager.clone(),
-            account_middleware,
-        ))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Message routes
-    let message_routes = Router::new()
-        .route("/", post(chat::send_message))
-        .route("/:message_id", get(chat::get_message))
-        .layer(middleware::from_fn_with_state(
-            account_manager.clone(),
-            account_middleware,
-        ))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
 
     // User management routes (stub)
     let users_routes = Router::new()
