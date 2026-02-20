@@ -187,7 +187,7 @@ timeout_ms = 30000
 
 [auth]
 enabled = true
-api_token = "your-secure-api-token"
+secret = "your-secure-secret"
 
 [mcp]
 enabled = true
@@ -211,7 +211,7 @@ secret = "hmac-secret"
 |----------|-------------|---------|
 | `WHATSAPP_HOST` | Server host | `0.0.0.0` |
 | `WHATSAPP_PORT` | Server port | `3000` |
-| `WHATSAPP_API_TOKEN` | API bearer token | - |
+| `WHATSAPP_SECRET` | Static secret token | - |
 | `RUST_LOG` | Log level | `info` |
 
 ## Webhooks

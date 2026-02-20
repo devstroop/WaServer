@@ -543,14 +543,14 @@ pub async fn token_list() -> impl IntoResponse {
         <div class="p-6">
             <div class="d-flex flex-column align-items-center justify-content-center text-center py-4" style="color: var(--color-foreground-muted);">
                 <i class="bi bi-key icon-3xl mb-3 opacity-50"></i>
-                <h4 class="h5 mb-2">API Token Configured</h4>
+                <h4 class="h5 mb-2">Authentication Configured</h4>
                 <p class="small mb-3">
-                    API authentication is managed via <code class="code">config/app.toml</code>
+                    Authentication is managed via <code class="code">config/app.toml</code>
                 </p>
                 <div class="alert alert-info alert-compact mb-0" style="max-width: 32rem;">
                     <i class="bi bi-info-circle alert-icon"></i>
                     <p class="alert-description">
-                        Set <code>[auth].api_token</code> in your config file. 
+                        Use <code>[auth]</code> JWT settings for login (MCP/web) or <code>[auth].secret</code> for scripts/CI/CD. 
                         Use <code>Authorization: Bearer &lt;token&gt;</code> header for API requests.
                     </p>
                 </div>

@@ -7,7 +7,7 @@ services:
     environment:
       - WHATSAPP_HOST=0.0.0.0
       - WHATSAPP_PORT=3000
-      - WHATSAPP_API_TOKEN=${WHATSAPP_API_TOKEN:-your-secure-api-token}
+      - WHATSAPP_SECRET=${WHATSAPP_SECRET:-your-secure-secret}
       - RUST_LOG=info
     volumes:
       # Persist browser session data

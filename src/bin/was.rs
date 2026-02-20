@@ -10,7 +10,7 @@
 //! was
 //!
 //! # With environment variables
-//! WHATSAPP_PORT=8080 WHATSAPP_API_TOKEN=secret was
+//! WHATSAPP_PORT=8080 WHATSAPP_SECRET=mysecret was
 //! ```
 
 use std::sync::Arc;

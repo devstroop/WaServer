@@ -18,25 +18,15 @@ args = [
 ]
 
 [auth]
-# Enable Bearer token authentication (set to false to disable auth completely)
-enabled = true
-# Set your secure API token here - CHANGE THIS IN PRODUCTION!
-api_token = "your-secure-api-token-change-this"
-
-# =============================================================================
-# Local Auth - JWT-based username/password authentication
-# =============================================================================
-[local_auth]
+# Static secret token for scripts/CI/CD pipelines
+secret = "your-secure-secret-change-this"
 # JWT secret key for signing tokens (CHANGE IN PRODUCTION - min 32 chars)
 jwt_secret = "your-super-secret-jwt-key-change-this-in-production-32chars"
 # Access token expiry in hours
 token_expiry_hours = 24
 # Refresh token expiry in days
 refresh_token_expiry_days = 7
-# Default admin username
-default_username = "admin"
-# Default admin password (CHANGE IN PRODUCTION)
-default_password = "admin123"
+# NOTE: Admin user is created on first run via setup token (no default credentials)
 
 [logging]
 level = "info"
@@ -62,9 +52,8 @@ max_upload_size = 10485760
 [environment]
 # Environment: "development", "staging", or "production"
 environment = "development"
+# Log level: "trace", "debug", "info", "warn", "error" (or RUST_LOG format like "was=debug,hyper=info")
 log_level = "info"
-rust_log = "was=info"
-debug_mode = true
 health_check_interval = 30
 
 # =============================================================================
