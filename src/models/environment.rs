@@ -45,8 +45,8 @@ impl EnvironmentConfig {
             };
         }
 
-        // Log level (also accepts RUST_LOG for compatibility)
-        if let Ok(log_level) = env::var("LOG_LEVEL").or_else(|_| env::var("RUST_LOG")) {
+        // Log level (standard RUST_LOG)
+        if let Ok(log_level) = env::var("RUST_LOG") {
             config.log_level = log_level;
         }
 
