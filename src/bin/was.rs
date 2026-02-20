@@ -421,88 +421,17 @@ async fn run_server(
     // Static files (JS, CSS, images)
     app = app.nest_service("/static", ServeDir::new("static"));
 
-    // Scalar API documentation (configurable)
+    // Swagger UI documentation (configurable)
     if config.swagger.enabled {
-        info!("📚 API Docs (Scalar) at {}", config.swagger.path);
+        use utoipa_swagger_ui::SwaggerUi;
         
-        // Custom OpenAPI JSON with x-tagGroups for tag grouping
-        async fn openapi_json() -> axum::response::Json<serde_json::Value> {
-            let mut doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
-            doc["x-tagGroups"] = serde_json::json!([
-                {
-                    "name": "Admin API",
-                    "tags": ["Admin - Health", "Admin - Accounts", "Admin - Auth"]
-                },
-                {
-                    "name": "WhatsApp API", 
-                    "tags": ["WhatsApp - Account", "WhatsApp - Auth", "WhatsApp - Chat", "WhatsApp - Messages"]
-                }
-            ]);
-            axum::response::Json(doc)
-        }
-        
-        // Scalar API Reference
-        async fn scalar_html() -> axum::response::Html<&'static str> {
-            axum::response::Html(r#"<!DOCTYPE html>
-<html>
-<head>
-  <title>WAS API Documentation</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    /* Hide Scalar branding and Open API Client */
-    a[href*="scalar.com"] { display: none !important; }
-    /* Hide AI agent input container */
-    .agent-button-container { display: none !important; }
-    .ask-agent-scalar-input { display: none !important; }
-    /* Hide Developer Tools toolbar */
-    .api-reference-toolbar { display: none !important; }
-    /* Custom branding label */
-    .was-branding {
-      font-size: 12px;
-      color: var(--scalar-color-2);
-      opacity: 0.7;
-    }
-  </style>
-</head>
-<body>
-  <script
-    id="api-reference"
-    data-url="/api-docs/openapi.json"
-    data-configuration='{
-      "hiddenClients": true
-    }'>
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  <script>
-    // Add custom branding label and hide Ask AI button
-    new MutationObserver(function(mutations, observer) {
-      // Hide Ask AI button (but keep search)
-      document.querySelectorAll('button').forEach(function(btn) {
-        if (btn.textContent && btn.textContent.trim() === 'Ask AI') {
-          btn.style.display = 'none';
-        }
-      });
-      // Add custom branding
-      var footer = document.querySelector('.flex.items-center .flex-1.min-w-0');
-      if (footer && !document.querySelector('.was-branding')) {
-        var label = document.createElement('span');
-        label.className = 'was-branding';
-        label.textContent = 'WAS API v0.3.0';
-        footer.prepend(label);
-      }
-    }).observe(document.body, { childList: true, subtree: true });
-  </script>
-</body>
-</html>"#)
-        }
-        
-        let docs_path = config.swagger.path.clone();
-        app = app
-            .route("/api-docs/openapi.json", get(openapi_json))
-            .route(&docs_path, get(scalar_html));
+        info!("📚 Swagger UI at {}", config.swagger.path);
+        let swagger_path = config.swagger.path.clone();
+        app = app.merge(
+            SwaggerUi::new(swagger_path).url("/api-docs/openapi.json", ApiDoc::openapi()),
+        );
     } else {
-        info!("📚 API Docs disabled (set swagger.enabled = true to enable)");
+        info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
 
     // Middleware
