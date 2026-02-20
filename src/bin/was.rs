@@ -177,6 +177,9 @@ async fn run_server(
                 // Account management
                 CreateAccountRequest, CreateAccountResponse, AccountListResponse, AccountInfo, AccountStatus,
                 DeleteAccountResponse, DeleteAccountQuery, AccountActionResponse, ListAccountsQuery,
+                // Instance configuration
+                InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, WebhookEndpoint, InstanceRateLimits,
+                UpdateInstanceConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,
                 // Account operations
                 WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo, PrivacySettings,
                 UpdateProfileRequest, UpdatePrivacyRequest,
