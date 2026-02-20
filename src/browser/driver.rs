@@ -352,17 +352,37 @@ impl BrowserService {
         self.create_new_page(url).await
     }
 
+    /// Page health check timeout (2 seconds)
+    const PAGE_HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
     /// Get the persistent WhatsApp Web page
+    /// 
+    /// Includes timeout protection to avoid hanging when browser is unresponsive.
     pub async fn get_whatsapp_page(&self) -> Result<Page> {
+        // First, try to reuse existing page with timeout-protected check
         {
             let page_guard = self.whatsapp_page.lock().await;
             if let Some(ref page) = *page_guard {
-                if page.url().await.is_ok() {
-                    debug!("Reusing existing WhatsApp Web page");
-                    return Ok(page.clone());
+                // Use timeout to check if page is still responsive
+                let page_check = async { page.url().await };
+                
+                match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, page_check).await {
+                    Ok(Ok(_)) => {
+                        debug!("Reusing existing WhatsApp Web page");
+                        return Ok(page.clone());
+                    }
+                    Ok(Err(e)) => {
+                        debug!("Existing page is invalid: {}", e);
+                    }
+                    Err(_) => {
+                        tracing::warn!("Page health check timed out - page may be unresponsive");
+                    }
                 }
             }
         }
+
+        // Clear stale page reference
+        *self.whatsapp_page.lock().await = None;
 
         debug!("Creating new WhatsApp Web page");
         let page = self.create_new_page("https://web.whatsapp.com").await?;
@@ -405,9 +425,53 @@ impl BrowserService {
         Ok(page)
     }
 
-    /// Check if browser is running
+    /// Check if browser is running (basic check - only verifies handle exists)
     pub async fn is_running(&self) -> bool {
         self.browser.lock().await.is_some()
+    }
+
+    /// Check if browser is actually responsive (with timeout)
+    /// 
+    /// This does a real check that the browser can respond to commands.
+    /// Use this for health checks rather than `is_running()`.
+    pub async fn is_responsive(&self) -> bool {
+        if !self.is_running().await {
+            return false;
+        }
+
+        // Try to get the page with timeout
+        match tokio::time::timeout(
+            Self::PAGE_HEALTH_TIMEOUT,
+            self.get_whatsapp_page()
+        ).await {
+            Ok(Ok(page)) => {
+                // Try a simple evaluation to verify responsiveness
+                match tokio::time::timeout(
+                    Self::PAGE_HEALTH_TIMEOUT,
+                    page.evaluate("true")
+                ).await {
+                    Ok(Ok(_)) => true,
+                    _ => {
+                        tracing::warn!("Browser page not responding to commands");
+                        false
+                    }
+                }
+            }
+            _ => {
+                tracing::warn!("Failed to get browser page for health check");
+                false
+            }
+        }
+    }
+
+    /// Force reset the browser state when it's unresponsive
+    /// 
+    /// This clears the browser handle so the next operation will attempt
+    /// to reinitialize. Useful when the browser process has died.
+    pub async fn force_reset(&self) {
+        tracing::warn!("Force resetting browser state");
+        *self.whatsapp_page.lock().await = None;
+        *self.browser.lock().await = None;
     }
 
     /// Close the browser and clean up resources
