@@ -146,6 +146,30 @@ pub struct RefreshTokenResponse {
     pub expires_in: i64,
 }
 
+// =============================================================================
+// Initial Setup Models
+// =============================================================================
+
+/// Request for initial admin setup
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetupRequest {
+    /// One-time setup token (displayed in server console on first run)
+    pub setup_token: String,
+    /// Username for the admin account (min 3 characters)
+    pub username: String,
+    /// Password for the admin account (min 8 characters)
+    pub password: String,
+}
+
+/// Response for setup status check
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SetupStatusResponse {
+    /// Whether initial setup is required (no admin user exists)
+    pub needs_setup: bool,
+    /// Message for the user
+    pub message: String,
+}
+
 /// JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
