@@ -302,6 +302,9 @@ async fn run_server(
         .route("/login", post(auth::local_login))
         .route("/refresh", post(auth::refresh_token))
         .route("/logout", post(auth::local_logout))
+        // Setup routes (no auth required)
+        .route("/setup", get(auth::get_setup_status))
+        .route("/setup", post(auth::complete_setup))
         .with_state(local_auth_state);
 
     // Mount admin routes
