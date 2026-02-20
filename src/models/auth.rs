@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::user::UserId;
+
 // =============================================================================
 // Authenticated User Context
 // =============================================================================
@@ -8,20 +10,25 @@ use utoipa::ToSchema;
 /// Represents how a request was authenticated
 /// 
 /// This allows handlers to differentiate between:
-/// - **Secret**: Static config-based secret token (external scripts, CI/CD pipelines)
+/// - **Secret**: Static config-based secret token (external scripts, CI/CD pipelines)  
 /// - **LocalUser**: JWT-based user authentication (web UI, MCP, requires username/password)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthenticatedUser {
     /// Authenticated via static secret key from config `[auth].secret_key`
     /// Used for: External scripts, CI/CD pipelines, simple integrations
+    /// Has full admin access to all instances.
     Secret,
     
     /// Authenticated via JWT token from user login
-    /// Contains the username of the authenticated user
+    /// Contains the user's ID and username for access control
     /// Used for: Web UI, MCP clients, user-specific access control
     LocalUser {
+        /// The user's unique ID (UUID) for ownership/access checks
+        user_id: UserId,
         /// The username extracted from the JWT token
         username: String,
+        /// Whether this user is a system administrator
+        is_admin: bool,
     },
 }
 
@@ -36,11 +43,27 @@ impl AuthenticatedUser {
         matches!(self, AuthenticatedUser::LocalUser { .. })
     }
     
+    /// Get user ID if authenticated via local user
+    pub fn user_id(&self) -> Option<UserId> {
+        match self {
+            AuthenticatedUser::LocalUser { user_id, .. } => Some(*user_id),
+            AuthenticatedUser::Secret => None,
+        }
+    }
+    
     /// Get username if authenticated via local user
     pub fn username(&self) -> Option<&str> {
         match self {
-            AuthenticatedUser::LocalUser { username } => Some(username),
+            AuthenticatedUser::LocalUser { username, .. } => Some(username),
             AuthenticatedUser::Secret => None,
+        }
+    }
+    
+    /// Check if user is an admin (secret tokens are always admin)
+    pub fn is_admin(&self) -> bool {
+        match self {
+            AuthenticatedUser::Secret => true,
+            AuthenticatedUser::LocalUser { is_admin, .. } => *is_admin,
         }
     }
     
@@ -48,7 +71,7 @@ impl AuthenticatedUser {
     pub fn display_name(&self) -> String {
         match self {
             AuthenticatedUser::Secret => "secret".to_string(),
-            AuthenticatedUser::LocalUser { username } => format!("user:{}", username),
+            AuthenticatedUser::LocalUser { username, .. } => format!("user:{}", username),
         }
     }
 }
@@ -191,6 +214,55 @@ pub struct LocalAuthStatusResponse {
     /// Username if logged in
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+}
+
+// =============================================================================
+// Password Reset Models
+// =============================================================================
+
+/// Request to initiate password reset
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ForgotPasswordRequest {
+    /// Username of the account to reset password for
+    pub username: String,
+}
+
+/// Response for forgot password request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ForgotPasswordResponse {
+    /// Success message
+    pub message: String,
+    /// Password reset token (in production, this would be sent via email)
+    /// For local/development use, it's returned directly
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reset_token: Option<String>,
+    /// Token expiry in seconds
+    pub expires_in: i64,
+}
+
+/// Request to reset password using token
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResetPasswordRequest {
+    /// Password reset token from forgot password response
+    pub reset_token: String,
+    /// New password (min 8 characters)
+    pub new_password: String,
+}
+
+/// Response for password reset
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ResetPasswordResponse {
+    /// Success message
+    pub message: String,
+}
+
+/// Request to change password (when already logged in)
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ChangePasswordRequest {
+    /// Current password
+    pub current_password: String,
+    /// New password (min 8 characters)
+    pub new_password: String,
 }
 
 // Note: ErrorResponse is defined in chat.rs to avoid duplication

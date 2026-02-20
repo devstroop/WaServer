@@ -14,7 +14,7 @@ use crate::{
     },
     models::auth::AuthStatusResponse,
     services::{
-        auth::{AuthService, AuthServiceTrait, AuthTokenService},
+        auth::{AuthService, AuthServiceTrait},
         database::DatabaseService,
         webhook::{WebhookEvent, WebhookMessageData, WebhookService},
     },
@@ -71,8 +71,6 @@ pub struct WhatsAppAccount {
     database: Arc<DatabaseService>,
     /// Webhook service
     webhook_service: Arc<WebhookService>,
-    /// Auth token service (optional, for JWT auth)
-    auth_token_service: Option<Arc<AuthTokenService>>,
     /// Current account status
     status: Arc<RwLock<AccountStatus>>,
     /// Operation semaphore for mutual exclusion
@@ -122,19 +120,6 @@ impl WhatsAppAccount {
         // Create webhook service
         let webhook_service = WebhookService::new(app_config.webhooks.clone()).start_worker();
 
-        // Create auth token service (JWT - always enabled)
-        let auth_token_service = match AuthTokenService::new(
-            app_config.auth.jwt_secret.clone(),
-            app_config.auth.token_expiry_hours,
-            app_config.auth.refresh_token_expiry_days,
-        ) {
-            Ok(service) => Some(Arc::new(service)),
-            Err(e) => {
-                error!("Failed to initialize auth token service: {}", e);
-                None
-            }
-        };
-
         // Create auth and chat services
         let auth_service = Arc::new(AuthService::new(app_config.clone(), browser_service.clone()));
         let chat_service = Arc::new(ChatService::with_database(
@@ -156,7 +141,6 @@ impl WhatsAppAccount {
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             database,
             webhook_service,
-            auth_token_service,
             status: Arc::new(RwLock::new(AccountStatus::Stopped)),
             operation_semaphore: Arc::new(Semaphore::new(1)),
             metrics: ServiceMetrics::new(),
@@ -455,11 +439,6 @@ impl WhatsAppAccount {
     /// Get reference to webhook service
     pub fn webhook_service(&self) -> &Arc<WebhookService> {
         &self.webhook_service
-    }
-
-    /// Get reference to auth token service
-    pub fn auth_token_service(&self) -> Option<&Arc<AuthTokenService>> {
-        self.auth_token_service.as_ref()
     }
 
     /// Get reference to browser service

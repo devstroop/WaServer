@@ -201,6 +201,8 @@ impl From<tokio::sync::AcquireError> for WhatsAppError {
 pub enum AuthError {
     #[error("Invalid credentials")]
     InvalidCredentials,
+    #[error("Account is disabled")]
+    AccountDisabled,
     #[error("Token expired")]
     TokenExpired,
     #[error("Invalid token")]
@@ -213,4 +215,6 @@ pub enum AuthError {
     SetupAlreadyComplete,
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
+    #[error("Database error: {0}")]
+    DatabaseError(String),
 }

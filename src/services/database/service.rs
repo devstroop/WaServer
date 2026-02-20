@@ -1,6 +1,12 @@
 //! Database Service Core
 //!
 //! Creates and manages the SQLite connection, schema initialization, and migrations.
+//!
+//! Schema documentation: See `sql/` directory for complete schema files:
+//! - `sql/schema.sql` - Table definitions
+//! - `sql/indexes.sql` - Performance indexes
+//! - `sql/migrations.sql` - Migration scripts
+//! - `sql/ERD.sql` - Entity relationship diagram
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -41,6 +47,8 @@ impl DatabaseService {
         service.migrate_schema()?;
         // Then create indexes (after columns exist)
         service.init_schema()?;
+        // Initialize user/RBAC schema
+        service.init_user_schema()?;
         info!("Database initialized at: {}", service.db_path);
 
         Ok(service)
@@ -55,6 +63,7 @@ impl DatabaseService {
         };
 
         service.init_schema()?;
+        service.init_user_schema()?;
         info!("In-memory database initialized");
 
         Ok(service)

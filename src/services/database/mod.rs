@@ -1,6 +1,6 @@
 //! Database Service Module
 //!
-//! SQLite-based persistence for messages, contacts, conversations, and settings.
+//! SQLite-based persistence for messages, contacts, conversations, settings, and users.
 
 mod contacts;
 mod conversations;
@@ -9,6 +9,7 @@ mod queue;
 mod service;
 mod session;
 mod settings;
+mod users;
 
 // Re-export DatabaseService and constants
 pub use service::{DatabaseService, CONTACT_BATCH_SIZE};

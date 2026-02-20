@@ -91,7 +91,7 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, instances, admin, auth, chat, health},
+        api::{account, instances, instances::InstancesState, admin, auth, chat, health},
         handlers::{partials, templates},
         middleware::{
             auth_middleware, correlation_id_middleware,
@@ -143,6 +143,11 @@ async fn run_server(
             auth::local_login,
             auth::refresh_token,
             auth::local_logout,
+            auth::forgot_password,
+            auth::reset_password,
+            auth::change_password,
+            auth::get_setup_status,
+            auth::complete_setup,
             // Chat (requires X-Account-Id)
             chat::list_chats,
             chat::get_chat_messages,
@@ -172,6 +177,8 @@ async fn run_server(
                 // Auth
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
                 LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LocalAuthStatusResponse,
+                SetupRequest, SetupStatusResponse,
+                ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordRequest, ResetPasswordResponse, ChangePasswordRequest,
                 // Chat
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
                 // Account management
@@ -218,11 +225,32 @@ async fn run_server(
         }
     }
 
+    // Create central database for users and RBAC
+    // Uses same base directory pattern as AccountManager (~/.was/)
+    let central_data_dir = {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| "/tmp".to_string());
+        std::path::PathBuf::from(home).join(".was").join("data")
+    };
+    
+    // Ensure directory exists
+    if let Err(e) = std::fs::create_dir_all(&central_data_dir) {
+        tracing::error!("Failed to create data directory: {}", e);
+    }
+    
+    let central_db = Arc::new(
+        was::services::database::DatabaseService::new(central_data_dir.to_str().unwrap())
+            .expect("Failed to initialize central database")
+    );
+    info!("💾 Central database initialized at {:?}", central_data_dir);
+
     // Initialize auth token service for JWT authentication (always enabled)
     let auth_token_service = match AuthTokenService::new(
         config.auth.jwt_secret.clone(),
         config.auth.token_expiry_hours,
         config.auth.refresh_token_expiry_days,
+        central_db.clone(),
     ) {
         Ok(service) => {
             let service = Arc::new(service);
@@ -302,6 +330,9 @@ async fn run_server(
         .route("/metrics", get(health::get_metrics))
         .with_state(account_manager.clone());
 
+    // Create instances state with both account manager and database
+    let instances_state = InstancesState::new(account_manager.clone(), central_db.clone());
+
     // Instance management routes (API auth required)
     let instances_routes = Router::new()
         .route("/", get(instances::list_instances))
@@ -318,7 +349,7 @@ async fn run_server(
             auth_state.clone(),
             auth_middleware,
         ))
-        .with_state(account_manager.clone());
+        .with_state(instances_state);
 
     // Local auth routes (JWT-based server authentication)
     let auth_routes = Router::new()
@@ -326,6 +357,10 @@ async fn run_server(
         .route("/login", post(auth::local_login))
         .route("/refresh", post(auth::refresh_token))
         .route("/logout", delete(auth::local_logout))
+        // Password reset routes (no auth required)
+        .route("/forgot-password", post(auth::forgot_password))
+        .route("/reset-password", post(auth::reset_password))
+        .route("/change-password", post(auth::change_password))
         // Setup routes (no auth required)
         .route("/setup", get(auth::get_setup_status))
         .route("/setup", post(auth::complete_setup))

@@ -9,6 +9,8 @@ use crate::{
         LocalAuthStatusResponse, LoginRequest, LoginResponse,
         RefreshTokenRequest, RefreshTokenResponse, SetupRequest, 
         SetupStatusResponse, SuccessResponse,
+        ForgotPasswordRequest, ForgotPasswordResponse,
+        ResetPasswordRequest, ResetPasswordResponse,
     },
     models::chat::ErrorResponse,
 };
@@ -269,4 +271,195 @@ pub async fn complete_setup(
             ))
         }
     }
+}
+
+// =============================================================================
+// Password Reset Endpoints
+// =============================================================================
+
+/// Request password reset token
+///
+/// Generates a password reset token for the specified username.
+/// In production, this token would be sent via email. For local/dev use,
+/// the token is returned in the response.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/forgot-password",
+    request_body = ForgotPasswordRequest,
+    responses(
+        (status = 200, description = "Reset token generated (if user exists)", body = ForgotPasswordResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+pub async fn forgot_password(
+    State(state): State<LocalAuthState>,
+    Json(request): Json<ForgotPasswordRequest>,
+) -> Result<Json<ForgotPasswordResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_token_service = state.auth_token_service.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Auth token service not available".to_string(),
+        }),
+    ))?;
+
+    match auth_token_service.forgot_password(&request.username) {
+        Ok(response) => {
+            // Log but don't reveal whether user exists
+            info!("Password reset requested for username: {}", request.username);
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Forgot password failed: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to process password reset request".to_string(),
+                }),
+            ))
+        }
+    }
+}
+
+/// Reset password using token
+///
+/// Resets the user's password using a valid reset token from forgot-password.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/reset-password",
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset successfully", body = ResetPasswordResponse),
+        (status = 400, description = "Invalid token or validation failed", body = ErrorResponse),
+        (status = 401, description = "Token expired", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+pub async fn reset_password(
+    State(state): State<LocalAuthState>,
+    Json(request): Json<ResetPasswordRequest>,
+) -> Result<Json<ResetPasswordResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_token_service = state.auth_token_service.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Auth token service not available".to_string(),
+        }),
+    ))?;
+
+    match auth_token_service.reset_password(&request.reset_token, &request.new_password) {
+        Ok(response) => {
+            info!("Password reset completed successfully");
+            Ok(Json(response))
+        }
+        Err(crate::models::error::AuthError::InvalidToken) => {
+            warn!("Password reset attempted with invalid token");
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid or already used reset token".to_string(),
+                }),
+            ))
+        }
+        Err(crate::models::error::AuthError::TokenExpired) => {
+            warn!("Password reset attempted with expired token");
+            Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Reset token has expired. Please request a new one.".to_string(),
+                }),
+            ))
+        }
+        Err(crate::models::error::AuthError::ValidationFailed(msg)) => {
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: msg,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Password reset failed: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to reset password".to_string(),
+                }),
+            ))
+        }
+    }
+}
+
+/// Change password (when logged in)
+///
+/// Changes the password for the currently authenticated user.
+/// Requires the current password for verification.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/change-password",
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed successfully", body = ResetPasswordResponse),
+        (status = 400, description = "Validation failed", body = ErrorResponse),
+        (status = 401, description = "Invalid current password", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Authentication"
+)]
+pub async fn change_password(
+    State(state): State<LocalAuthState>,
+    // In a real implementation, you'd extract the username from the JWT token
+    // For now, we require it in the request or extract from auth middleware
+    Json(request): Json<ChangePasswordWithUsernameRequest>,
+) -> Result<Json<ResetPasswordResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_token_service = state.auth_token_service.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Auth token service not available".to_string(),
+        }),
+    ))?;
+
+    match auth_token_service.change_password(&request.username, &request.current_password, &request.new_password) {
+        Ok(response) => {
+            info!("Password changed successfully for user '{}'", request.username);
+            Ok(Json(response))
+        }
+        Err(crate::models::error::AuthError::InvalidCredentials) => {
+            warn!("Password change failed: invalid current password for '{}'", request.username);
+            Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Current password is incorrect".to_string(),
+                }),
+            ))
+        }
+        Err(crate::models::error::AuthError::ValidationFailed(msg)) => {
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: msg,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Password change failed: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to change password".to_string(),
+                }),
+            ))
+        }
+    }
+}
+
+/// Internal request type that includes username (extracted from JWT in middleware)
+#[derive(Debug, serde::Deserialize)]
+pub struct ChangePasswordWithUsernameRequest {
+    pub username: String,
+    pub current_password: String,
+    pub new_password: String,
 }

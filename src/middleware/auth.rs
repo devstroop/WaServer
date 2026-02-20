@@ -90,17 +90,46 @@ pub async fn auth_middleware(
             // First, try JWT validation (local user authentication)
             if let Some(ref auth_token_service) = auth_state.auth_token_service {
                 if let Ok(username) = auth_token_service.validate_access_token(token) {
-                    let authenticated_user = AuthenticatedUser::LocalUser { username: username.clone() };
-                    tracing::debug!(
-                        correlation_id = %correlation_id.0,
-                        path = %path,
-                        auth_method = "jwt",
-                        user = %username,
-                        "JWT authentication successful"
-                    );
-                    // Store authenticated user in request extensions
-                    request.extensions_mut().insert(authenticated_user);
-                    return Ok(next.run(request).await);
+                    // Look up the full user to get user_id and is_admin
+                    match auth_token_service.get_user(&username) {
+                        Ok(Some(user)) => {
+                            let authenticated_user = AuthenticatedUser::LocalUser { 
+                                user_id: user.id,
+                                username: username.clone(),
+                                is_admin: user.is_admin,
+                            };
+                            tracing::debug!(
+                                correlation_id = %correlation_id.0,
+                                path = %path,
+                                auth_method = "jwt",
+                                user = %username,
+                                user_id = %user.id,
+                                is_admin = user.is_admin,
+                                "JWT authentication successful"
+                            );
+                            // Store authenticated user in request extensions
+                            request.extensions_mut().insert(authenticated_user);
+                            return Ok(next.run(request).await);
+                        }
+                        Ok(None) => {
+                            tracing::warn!(
+                                correlation_id = %correlation_id.0,
+                                path = %path,
+                                user = %username,
+                                "JWT valid but user not found in database"
+                            );
+                            return Err(StatusCode::UNAUTHORIZED);
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                correlation_id = %correlation_id.0,
+                                path = %path,
+                                error = %e,
+                                "Database error during auth"
+                            );
+                            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                        }
+                    }
                 }
             }
 
