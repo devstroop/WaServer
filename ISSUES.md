@@ -5,78 +5,88 @@
 
 ---
 
+## ✅ Resolved
+
+### Issue #1: Instance ID should be UUID, not phone number ✅ RESOLVED
+
+**Status:** Implemented in v0.4.0
+
+**Solution Implemented:**
+- New `InstanceManager` and `WhatsAppInstance` services with UUID-based IDs
+- `InstanceConfig` and `InstanceMetadata` with optional `phone_number`
+- Phone number captured on first successful WhatsApp authentication
+- Phone binding validation on re-auth (reject different phone)
+
+**New API Routes:**
+```
+POST   /api/v1/instances           # Create instance → {id: uuid}
+GET    /api/v1/instances           # List instances
+GET    /api/v1/instances/:id       # Get instance info
+DELETE /api/v1/instances/:id       # Delete instance
+POST   /api/v1/instances/:id/start # Start browser
+POST   /api/v1/instances/:id/stop  # Stop browser
+```
+
+**Files Added:**
+- `src/models/instance.rs` - UUID-based instance models
+- `src/services/whatsapp/instance.rs` - WhatsAppInstance service
+- `src/services/whatsapp/instance_manager.rs` - InstanceManager
+- `src/handlers/api/instances.rs` - Instance management API
+- `src/handlers/api/instance.rs` - Instance WhatsApp operations API
+
+---
+
+### Issue #2: Rename "accounts" → "instances" ✅ RESOLVED
+
+**Status:** Implemented in v0.4.0
+
+**Solution Implemented:**
+- New `/api/v1/instances/:id/...` routes for all WhatsApp operations
+- Instance operations use path parameters (no X-Account-Id header)
+- Legacy `/api/v1/admin/accounts` routes kept for backwards compatibility
+
+**New Route Structure:**
+```
+/api/v1/instances/
+├── GET    /                    # List instances
+├── POST   /                    # Create instance
+├── POST   /discover            # Discover existing
+│
+└── /:id/
+    ├── GET    /                # Instance info
+    ├── DELETE /                # Delete instance
+    ├── POST   /start           # Start browser
+    ├── POST   /stop            # Stop browser
+    │
+    ├── GET    /session         # WA auth status
+    ├── DELETE /session         # WA logout
+    ├── GET    /link/qr         # QR code
+    ├── POST   /link/phone      # Phone pairing
+    │
+    ├── GET    /profile
+    ├── PUT    /profile
+    ├── GET    /privacy
+    └── PUT    /privacy
+```
+
+---
+
 ## 🔴 Critical - API Restructure
 
-### Issue #1: Instance ID should be UUID, not phone number
+### Issue #3: Remove X-Account-Id header pattern ⚠️ PARTIALLY RESOLVED
 
 **Current State:**
-- Account ID = phone number (E.164 format)
-- Phone required at creation time
-- Can't create instance before knowing the phone
+- New instance routes use path parameters: `/api/v1/instances/:id/...`
+- Legacy routes still use X-Account-Id header (kept for backwards compatibility)
 
-**Problem:**
-- QR auth flow: User doesn't know phone until AFTER scanning QR
-- Phone pairing: Same issue
-- No way to create "blank" instance first
-
-**Proposed Solution:**
-```
-Instance {
-    id: Uuid,                        // Primary key, generated at creation
-    phone_number: Option<String>,    // Set after first successful auth
-    display_name: Option<String>,
-    status: InstanceStatus,
-    created_at: DateTime<Utc>,
-    last_activity: Option<DateTime<Utc>>,
-    data_dir: PathBuf,
-}
-```
-
-**Phone Binding Rules:**
-| State | phone_number | Action | Result |
-|-------|--------------|--------|--------|
-| New | `None` | Auth with any phone | Phone captured & stored |
-| Bound | `Some("+1...")` | Re-auth same phone | OK |
-| Bound | `Some("+1...")` | Auth different phone | **Error** |
+**Remaining Work:**
+- Migrate chat/message routes to use instance path parameter
+- Update MCP tools to use new instance routes
+- Eventually deprecate legacy routes
 
 ---
 
-### Issue #2: Rename "accounts" → "instances"
-
-**Current State:**
-- `/api/v1/admin/accounts` - WhatsApp instance management
-- `/api/v1/account` - Profile/privacy operations
-- "account" also means local user account (JWT auth)
-
-**Problem:**
-- Confusing terminology
-- "admin" prefix suggests administration, but it's core functionality
-
-**Proposed Solution:**
-- Rename to `/api/v1/instances/:id/...` for all WhatsApp operations
-- Keep `/api/v1/auth/...` for server authentication
-
----
-
-### Issue #3: Remove X-Account-Id header pattern
-
-**Current State:**
-- Instance management: ID in path (`/accounts/:id`)
-- WhatsApp operations: ID in header (`X-Account-Id`)
-
-**Problem:**
-- Inconsistent API design
-- Non-RESTful
-- Complex middleware
-
-**Proposed Solution:**
-- All operations use path parameter: `/api/v1/whatsapp/:id/chats`
-- Remove `account_middleware` that extracts header
-- Simpler, more intuitive API
-
----
-
-### Issue #4: Unified route structure
+### Issue #4: Unified route structure ⚠️ IN PROGRESS
 
 **Current State:**
 ```
