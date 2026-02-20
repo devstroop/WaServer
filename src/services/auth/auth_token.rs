@@ -6,6 +6,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::RwLock;
+use uuid::Uuid;
 
 use crate::models::auth::{Claims, LoginResponse, RefreshTokenResponse};
 
@@ -27,6 +28,8 @@ pub struct AuthTokenService {
     users: RwLock<Vec<LocalUser>>,
     /// Store invalidated refresh tokens (for logout)
     revoked_tokens: RwLock<Vec<String>>,
+    /// One-time setup token for initial admin creation
+    setup_token: RwLock<Option<String>>,
 }
 
 impl AuthTokenService {
@@ -35,24 +38,68 @@ impl AuthTokenService {
         jwt_secret: String,
         access_token_expiry_hours: i64,
         refresh_token_expiry_days: i64,
-        default_username: Option<String>,
-        default_password: Option<String>,
     ) -> Result<Self, AuthError> {
+        // Generate a setup token for initial admin creation
+        let setup_token = Uuid::new_v4().to_string();
+        
         let service = Self {
             jwt_secret,
             access_token_expiry_hours,
             refresh_token_expiry_days,
             users: RwLock::new(Vec::new()),
             revoked_tokens: RwLock::new(Vec::new()),
+            setup_token: RwLock::new(Some(setup_token)),
         };
 
-        // Create default user if credentials provided
-        if let (Some(username), Some(password)) = (default_username, default_password) {
-            service.create_user(&username, &password)?;
-            tracing::info!("Default user '{}' created", username);
-        }
-
         Ok(service)
+    }
+    
+    /// Get the setup token (if setup is still needed)
+    pub fn get_setup_token(&self) -> Option<String> {
+        self.setup_token.read().unwrap().clone()
+    }
+    
+    /// Check if initial setup is needed (no users exist)
+    pub fn needs_setup(&self) -> bool {
+        let users = self.users.read().unwrap();
+        users.is_empty()
+    }
+    
+    /// Complete initial setup by creating the first admin user
+    pub fn complete_setup(&self, setup_token: &str, username: &str, password: &str) -> Result<(), AuthError> {
+        // Verify setup token
+        {
+            let token = self.setup_token.read().unwrap();
+            match &*token {
+                Some(t) if t == setup_token => {}
+                _ => return Err(AuthError::InvalidToken),
+            }
+        }
+        
+        // Check if setup already completed
+        if !self.needs_setup() {
+            return Err(AuthError::SetupAlreadyComplete);
+        }
+        
+        // Validate username and password
+        if username.trim().is_empty() {
+            return Err(AuthError::ValidationFailed("Username cannot be empty".to_string()));
+        }
+        if password.len() < 8 {
+            return Err(AuthError::ValidationFailed("Password must be at least 8 characters".to_string()));
+        }
+        
+        // Create the admin user
+        self.create_user(username, password)?;
+        
+        // Invalidate the setup token
+        {
+            let mut token = self.setup_token.write().unwrap();
+            *token = None;
+        }
+        
+        tracing::info!("Initial admin user '{}' created via setup", username);
+        Ok(())
     }
 
     /// Create a new user with hashed password
