@@ -1,19 +1,20 @@
-//! Chat Handlers - Now uses AccountManager with X-Account-Id
+//! Chat Handlers - Uses path parameter {instance_id}
 //!
-//! All chat routes require X-Account-Id header to identify which WhatsApp account to use.
+//! All chat and message routes use path parameter /api/v1/modules/whatsapp/{instance_id}/... to identify which WhatsApp account to use.
+
+use std::sync::Arc;
 
 use crate::{
-    middleware::CurrentAccount,
     models::chat::{
         ChatListResponse, ErrorResponse, Message, MessageListResponse, MessageQueryParams,
         SendMessageResponse,
     },
+    services::AccountManager,
 };
 use axum::{
-    extract::{Multipart, Path, Query},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::Json,
-    Extension,
 };
 use chrono::Utc;
 use tokio::fs;
@@ -62,10 +63,13 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
 /// - Unread count
 #[utoipa::path(
     get,
-    path = "/api/v1/chats",
+    path = "/api/v1/modules/whatsapp/{instance_id}/chats",
+    params(
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
+    ),
     responses(
         (status = 200, description = "List of chats", body = ChatListResponse),
-        (status = 400, description = "Missing X-Account-Id header", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
         (status = 401, description = "Not authorized - scan QR first", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -73,19 +77,30 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp"
 )]
 pub async fn list_chats(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
 ) -> Result<Json<ChatListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let account = current.0;
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("Instance '{}' not found", instance_id),
+                }),
+            ));
+        }
+    };
 
     // Check if browser is running
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string(),
+                error: "Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string(),
             }),
         ));
     }
@@ -134,31 +149,41 @@ pub async fn list_chats(
 /// - `load_more`: Scroll up to load older messages (default: false)
 #[utoipa::path(
     get,
-    path = "/api/v1/chats/{chat_id}",
+    path = "/api/v1/modules/whatsapp/{instance_id}/chats/{chat_id}",
     params(
+        ("account_id" = String, Path, description = "Instance ID (UUID)"),
         ("chat_id" = String, Path, description = "Phone number, contact name, or chat ID"),
         ("limit" = Option<u32>, Query, description = "Maximum messages to retrieve"),
         ("load_more" = Option<bool>, Query, description = "Load older messages")
     ),
     responses(
         (status = 200, description = "List of messages", body = MessageListResponse),
-        (status = 400, description = "Missing X-Account-Id header", body = ErrorResponse),
+        (status = 404, description = "Account or chat not found", body = ErrorResponse),
         (status = 401, description = "Not authorized - scan QR first", body = ErrorResponse),
-        (status = 404, description = "Chat not found", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp"
 )]
 pub async fn get_chat_messages(
-    Extension(current): Extension<CurrentAccount>,
-    Path(chat_id): Path<String>,
+    State(manager): State<Arc<AccountManager>>,
+    Path((instance_id, chat_id)): Path<(String, String)>,
     Query(params): Query<MessageQueryParams>,
 ) -> Result<Json<MessageListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let account = current.0;
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("Instance '{}' not found", instance_id),
+                }),
+            ));
+        }
+    };
 
     // Check if browser is running
     if !account.browser_service().is_running().await {
@@ -230,10 +255,13 @@ pub async fn get_chat_messages(
 /// Useful for polling new messages without navigating to each chat.
 #[utoipa::path(
     get,
-    path = "/api/v1/chats/events",
+    path = "/api/v1/modules/whatsapp/{instance_id}/chats/events",
+    params(
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
+    ),
     responses(
         (status = 200, description = "New incoming messages", body = Vec<crate::models::chat::MessageInfo>),
-        (status = 400, description = "Missing X-Account-Id header", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
         (status = 401, description = "Not authorized", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -241,12 +269,23 @@ pub async fn get_chat_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp"
 )]
 pub async fn watch_messages(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
 ) -> Result<Json<Vec<crate::models::chat::MessageInfo>>, (StatusCode, Json<ErrorResponse>)> {
-    let account = current.0;
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("Instance '{}' not found", instance_id),
+                }),
+            ));
+        }
+    };
 
     if !account.browser_service().is_running().await {
         return Err((
@@ -297,30 +336,45 @@ pub async fn watch_messages(
 /// **Note:** At least one of `text` or `file` must be provided.
 #[utoipa::path(
     post,
-    path = "/api/v1/messages",
+    path = "/api/v1/modules/whatsapp/{instance_id}/messages",
+    params(
+        ("account_id" = String, Path, description = "Instance ID (UUID)")
+    ),
     responses(
         (status = 200, description = "Message sent successfully", body = SendMessageResponse),
         (status = 400, description = "Bad request - Phone is required and either text or file must be provided", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
         (status = 503, description = "Service unavailable - browser not running or account busy", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp"
 )]
 pub async fn send_message(
-    Extension(current): Extension<CurrentAccount>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(instance_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<SendMessageResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let account = current.0;
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("Instance '{}' not found", instance_id),
+                }),
+            ));
+        }
+    };
 
     // Check if browser is running
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string(),
+                error: "Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string(),
             }),
         ));
     }
@@ -534,26 +588,36 @@ pub async fn send_message(
 /// Returns full message details including status
 #[utoipa::path(
     get,
-    path = "/api/v1/messages/{message_id}",
+    path = "/api/v1/modules/whatsapp/{instance_id}/messages/{message_id}",
     params(
+        ("account_id" = String, Path, description = "Instance ID (UUID)"),
         ("message_id" = String, Path, description = "Message ID to retrieve")
     ),
     responses(
         (status = 200, description = "Message details", body = Message),
-        (status = 400, description = "Missing X-Account-Id header", body = ErrorResponse),
-        (status = 404, description = "Message not found", body = ErrorResponse),
+        (status = 404, description = "Account or message not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
         ("bearer_auth" = [])
     ),
-    tag = "Chat"
+    tag = "WhatsApp"
 )]
 pub async fn get_message(
-    Extension(current): Extension<CurrentAccount>,
-    Path(message_id): Path<String>,
+    State(manager): State<Arc<AccountManager>>,
+    Path((instance_id, message_id)): Path<(String, String)>,
 ) -> Result<Json<Message>, (StatusCode, Json<ErrorResponse>)> {
-    let account = current.0;
+    let account = match manager.get_account(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("Instance '{}' not found", instance_id),
+                }),
+            ));
+        }
+    };
     let db = account.database();
 
     match db.get_message(&message_id) {
