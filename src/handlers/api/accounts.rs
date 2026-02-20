@@ -141,13 +141,13 @@ pub async fn delete_account(
     Query(query): Query<DeleteAccountQuery>,
 ) -> impl IntoResponse {
     match manager.delete_account(&id, query.delete_data).await {
-        Ok(()) => Json(json!(DeleteAccountResponse {
+        Ok(account_id) => Json(json!(DeleteAccountResponse {
             message: if query.delete_data {
                 "Account and all data deleted".to_string()
             } else {
                 "Account deleted, data preserved".to_string()
             },
-            account_id: id,
+            account_id,
             data_deleted: query.delete_data,
         }))
         .into_response(),
@@ -182,17 +182,29 @@ pub async fn start_account(
     State(manager): State<Arc<AccountManager>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match manager.start_account(&id).await {
+    // First get the account to retrieve its UUID
+    let account = match manager.get_account(&id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Account '{}' not found", id)
+            })),
+        ).into_response(),
+    };
+    
+    let account_id = account.id;
+    
+    match account.start().await {
         Ok(()) => Json(json!(AccountActionResponse {
             message: "Account started successfully".to_string(),
-            account_id: id,
+            account_id,
         }))
         .into_response(),
         Err(e) => {
             let error_msg = e.to_string();
-            let status = if error_msg.contains("not found") {
-                StatusCode::NOT_FOUND
-            } else if error_msg.contains("already running") || error_msg.contains("already starting")
+            let status = if error_msg.contains("already running") || error_msg.contains("already starting")
             {
                 StatusCode::CONFLICT
             } else {
@@ -229,27 +241,34 @@ pub async fn stop_account(
     State(manager): State<Arc<AccountManager>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match manager.stop_account(&id).await {
+    // First get the account to retrieve its UUID
+    let account = match manager.get_account(&id).await {
+        Some(acc) => acc,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": format!("Account '{}' not found", id)
+            })),
+        ).into_response(),
+    };
+    
+    let account_id = account.id;
+    
+    match account.stop().await {
         Ok(()) => Json(json!(AccountActionResponse {
             message: "Account stopped successfully".to_string(),
-            account_id: id,
+            account_id,
         }))
         .into_response(),
-        Err(e) => {
-            let status = if e.to_string().contains("not found") {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            (
-                status,
-                Json(json!({
-                    "error": "stop_failed",
-                    "message": e.to_string()
-                })),
-            )
-                .into_response()
-        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "stop_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
     }
 }
 

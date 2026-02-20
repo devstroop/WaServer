@@ -1,21 +1,24 @@
 //! Account Models
 //!
 //! Types for multi-account WhatsApp management.
-//! Account ID is the phone number in E.164 format (e.g., "+1234567890").
+//! Account ID is a UUID, phone_number is a unique field in E.164 format.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
-/// Unique identifier for a WhatsApp account (phone number in E.164 format)
-pub type AccountId = String;
+/// Unique identifier for a WhatsApp account (UUID)
+pub type AccountId = Uuid;
 
 /// Account configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountConfig {
-    /// Phone number in E.164 format (e.g., "+1234567890")
+    /// Unique account identifier (UUID)
     pub id: AccountId,
+    /// Phone number in E.164 format (e.g., "1234567890")
+    pub phone_number: String,
     /// Optional display name for the account
     pub display_name: Option<String>,
     /// Data directory for this account (browser profile, database, etc.)
@@ -41,7 +44,8 @@ pub struct AccountBrowserConfig {
 impl Default for AccountConfig {
     fn default() -> Self {
         Self {
-            id: String::new(),
+            id: Uuid::nil(),
+            phone_number: String::new(),
             display_name: None,
             data_dir: PathBuf::new(),
             browser: AccountBrowserConfig::default(),
@@ -53,8 +57,10 @@ impl Default for AccountConfig {
 /// Account status information (returned by API)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AccountInfo {
-    /// Phone number (account identifier)
+    /// Unique account identifier (UUID)
     pub id: AccountId,
+    /// Phone number in E.164 format
+    pub phone_number: String,
     /// Display name
     pub display_name: Option<String>,
     /// Current account status (stopped, starting, running, error)
@@ -90,8 +96,10 @@ impl Default for AccountStatus {
 /// Persistent account metadata (stored in account.json)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountMetadata {
-    /// Phone number (account identifier in E.164 format)
+    /// Unique account identifier (UUID)
     pub id: AccountId,
+    /// Phone number in E.164 format
+    pub phone_number: String,
     /// Display name
     pub display_name: Option<String>,
     /// Timestamp when account was created
@@ -102,9 +110,10 @@ pub struct AccountMetadata {
 
 impl AccountMetadata {
     /// Create new metadata for a fresh account
-    pub fn new(id: &str, display_name: Option<String>) -> Self {
+    pub fn new(id: AccountId, phone_number: &str, display_name: Option<String>) -> Self {
         Self {
-            id: id.to_string(),
+            id,
+            phone_number: phone_number.to_string(),
             display_name,
             created_at: Utc::now(),
             first_linked_at: None,
@@ -202,8 +211,10 @@ pub struct CreateAccountRequest {
 /// Response after creating an account
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateAccountResponse {
-    /// Phone number (account ID)
-    pub id: String,
+    /// Unique account identifier (UUID)
+    pub id: AccountId,
+    /// Phone number in E.164 format
+    pub phone_number: String,
     pub status: String,
     pub data_directory: String,
     pub created_at: String,
@@ -225,8 +236,10 @@ pub struct AccountListResponse {
 /// WhatsApp account status response (for /api/v1/account/status)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WhatsAppStatusResponse {
-    /// Phone number (account ID)
-    pub account_id: String,
+    /// Unique account identifier (UUID)
+    pub account_id: AccountId,
+    /// Phone number in E.164 format
+    pub phone_number: String,
     /// Account status (stopped, starting, running, error)
     pub status: String,
     /// Whether WhatsApp Web is authorized
@@ -335,7 +348,7 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DeleteAccountResponse {
     pub message: String,
-    pub account_id: String,
+    pub account_id: AccountId,
     pub data_deleted: bool,
 }
 
@@ -351,7 +364,7 @@ pub struct DeleteAccountQuery {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AccountActionResponse {
     pub message: String,
-    pub account_id: String,
+    pub account_id: AccountId,
 }
 
 /// Request to link via phone number

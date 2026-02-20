@@ -2,6 +2,7 @@
 //!
 //! Self-contained WhatsApp account with isolated resources.
 //! Each account has its own browser profile, database, and session data.
+//! Account ID is a UUID, phone_number is the E.164 identifier.
 
 use crate::{
     browser::{BrowserService, BrowserServiceConfig},
@@ -37,10 +38,12 @@ const AUTH_CACHE_TTL: Duration = Duration::from_secs(5);
 const METADATA_FILE: &str = "account.json";
 
 /// Self-contained WhatsApp account with isolated resources
-/// Each account is bound to exactly one phone number (enforced on first auth)
+/// Each account is identified by UUID and bound to exactly one phone number
 pub struct WhatsAppAccount {
-    /// Account identifier
+    /// Account identifier (UUID)
     pub id: AccountId,
+    /// Phone number in E.164 format
+    pub phone_number: String,
     /// Account configuration
     config: AccountConfig,
     /// Global app config
@@ -78,7 +81,7 @@ impl WhatsAppAccount {
     pub async fn new(config: AccountConfig, app_config: Arc<AppConfig>) -> Result<Self> {
         let data_dir = config.data_dir.clone();
 
-        info!("Creating account '{}' at {:?}", config.id, data_dir);
+        info!("Creating account '{}' (phone: {}) at {:?}", config.id, config.phone_number, data_dir);
 
         // Ensure account directories exist
         tokio::fs::create_dir_all(&data_dir).await?;
@@ -129,7 +132,8 @@ impl WhatsAppAccount {
         ));
 
         Ok(Self {
-            id: config.id.clone(),
+            id: config.id,
+            phone_number: config.phone_number.clone(),
             config,
             app_config,
             data_dir,
@@ -162,7 +166,7 @@ impl WhatsAppAccount {
             debug!("Loaded metadata for account '{}'", config.id);
             Ok(metadata)
         } else {
-            let metadata = AccountMetadata::new(&config.id, config.display_name.clone());
+            let metadata = AccountMetadata::new(config.id, &config.phone_number, config.display_name.clone());
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
             info!("Created new metadata for account '{}'", config.id);
             Ok(metadata)
@@ -242,9 +246,9 @@ impl WhatsAppAccount {
         self.status.read().await.clone()
     }
 
-    /// Get phone number (account ID)
+    /// Get phone number
     pub fn phone_number(&self) -> &str {
-        &self.id
+        &self.phone_number
     }
 
     /// Get account info
@@ -261,7 +265,8 @@ impl WhatsAppAccount {
         };
 
         AccountInfo {
-            id: self.id.clone(),
+            id: self.id,
+            phone_number: self.phone_number.clone(),
             display_name: metadata.display_name.clone(),
             status,
             authorized,
@@ -271,10 +276,10 @@ impl WhatsAppAccount {
     }
 
     /// Called when WhatsApp Web authentication completes
-    /// Verifies the phone matches the account ID
+    /// Verifies the phone matches the account's phone_number
     pub async fn on_whatsapp_authenticated(&self, phone: &str) -> Result<()> {
         // Normalize both phone numbers for comparison
-        let account_phone = crate::models::account::validate_phone_number(&self.id)
+        let account_phone = crate::models::account::validate_phone_number(&self.phone_number)
             .map_err(|e| anyhow!("Invalid account phone: {}", e))?;
         let auth_phone = crate::models::account::validate_phone_number(phone)
             .map_err(|e| anyhow!("Invalid authenticated phone: {}", e))?;

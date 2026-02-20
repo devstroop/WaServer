@@ -171,7 +171,7 @@ pub async fn get_metrics(
 
     for info in account_list.accounts {
         // Get the account to retrieve metrics
-        if let Some(account) = manager.get_account(&info.id).await {
+        if let Some(account) = manager.get_account_by_id(info.id).await {
             let metrics = account.get_metrics();
             let status_str = match &info.status {
                 crate::models::account::AccountStatus::Stopped => "stopped",
@@ -181,7 +181,7 @@ pub async fn get_metrics(
             };
             
             account_metrics.push(AccountMetrics {
-                id: info.id,
+                id: info.id.to_string(),
                 status: status_str.to_string(),
                 authorized: info.authorized,
                 total_messages_sent: metrics.total_messages_sent,

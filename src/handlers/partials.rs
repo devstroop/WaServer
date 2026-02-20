@@ -129,14 +129,14 @@ async fn get_first_account(manager: &AccountManager) -> Option<Arc<crate::servic
     let response = manager.list_accounts().await;
     for info in &response.accounts {
         if matches!(info.status, AccountStatus::Running) {
-            if let Some(account) = manager.get_account(&info.id).await {
+            if let Some(account) = manager.get_account_by_id(info.id).await {
                 return Some(account);
             }
         }
     }
     // Fallback to first account if any
     if let Some(info) = response.accounts.first() {
-        return manager.get_account(&info.id).await;
+        return manager.get_account_by_id(info.id).await;
     }
     None
 }

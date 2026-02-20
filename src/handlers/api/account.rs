@@ -1,7 +1,7 @@
 //! WhatsApp Account Operations API
 //!
 //! REST API endpoints for WhatsApp account operations (status, QR, logout, profile, privacy).
-//! Account ID is the phone number in E.164 format.
+//! Account ID is a UUID, phone number is the E.164 identifier.
 //! These endpoints REQUIRE X-Account-Id header.
 
 use std::sync::Arc;
@@ -68,6 +68,7 @@ pub async fn get_account_status(
 
     Json(json!(WhatsAppStatusResponse {
         account_id: info.id,
+        phone_number: info.phone_number,
         status: status_str.to_string(),
         authorized: info.authorized,
         last_activity: info.last_activity.map(|dt| dt.to_rfc3339()),
