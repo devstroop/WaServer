@@ -1,7 +1,18 @@
 //! Authentication Middleware
 //!
-//! Provides API authentication via JWT tokens or static API tokens.
+//! Provides API authentication via JWT tokens or static secret tokens.
 //! Uses `AuthState` which can be applied independently of route-specific state.
+//!
+//! ## Authentication Methods
+//! 
+//! 1. **Static Secret** (`[auth].secret` config): Simple machine-to-machine access
+//!    - Use for: External scripts, CI/CD pipelines, simple integrations
+//!    - Token is configured in `app.toml` under `auth.secret`
+//!
+//! 2. **Local User JWT** (`[auth]` JWT settings): User-based access  
+//!    - Use for: Web UI dashboard, MCP clients, user-specific access control
+//!    - Requires login via `/api/admin/auth/login`
+//!    - JWT tokens contain username for auditing
 
 use std::sync::Arc;
 
@@ -12,31 +23,31 @@ use axum::{
     response::Response,
 };
 
-use crate::{services::AuthTokenService, utils::logging::CorrelationId};
+use crate::{
+    models::auth::AuthenticatedUser,
+    services::AuthTokenService,
+    utils::logging::CorrelationId,
+};
 
 /// Authentication state for middleware
 ///
 /// This is separate from route-specific state so auth can be applied to any router.
 #[derive(Clone)]
 pub struct AuthState {
-    /// Whether authentication is enabled
-    pub auth_enabled: bool,
-    /// Static API token for authentication
-    pub api_token: String,
-    /// JWT token service (always available for local auth)
+    /// Static secret token for authentication (for scripts/CI/CD)
+    pub secret: String,
+    /// JWT token service (for local user authentication)
     pub auth_token_service: Option<Arc<AuthTokenService>>,
 }
 
 impl AuthState {
     /// Create new auth state
     pub fn new(
-        auth_enabled: bool,
-        api_token: String,
+        secret: String,
         auth_token_service: Option<Arc<AuthTokenService>>,
     ) -> Self {
         Self {
-            auth_enabled,
-            api_token,
+            secret,
             auth_token_service,
         }
     }
@@ -46,16 +57,15 @@ impl AuthState {
 ///
 /// Validates Bearer tokens (JWT or static API token) for protected endpoints.
 /// Skips auth for public endpoints like health, swagger, and auth routes.
+///
+/// On successful authentication, adds `AuthenticatedUser` to request extensions
+/// so handlers can determine how the request was authenticated.
 pub async fn auth_middleware(
     State(auth_state): State<AuthState>,
     headers: HeaderMap,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth if disabled in config
-    if !auth_state.auth_enabled {
-        return Ok(next.run(request).await);
-    }
 
     // Skip auth for public endpoints
     let path = request.uri().path();
@@ -77,25 +87,34 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            // First, try JWT validation (always available)
+            // First, try JWT validation (local user authentication)
             if let Some(ref auth_token_service) = auth_state.auth_token_service {
-                if auth_token_service.validate_access_token(token).is_ok() {
+                if let Ok(username) = auth_token_service.validate_access_token(token) {
+                    let authenticated_user = AuthenticatedUser::LocalUser { username: username.clone() };
                     tracing::debug!(
                         correlation_id = %correlation_id.0,
                         path = %path,
+                        auth_method = "jwt",
+                        user = %username,
                         "JWT authentication successful"
                     );
+                    // Store authenticated user in request extensions
+                    request.extensions_mut().insert(authenticated_user);
                     return Ok(next.run(request).await);
                 }
             }
 
-            // Fall back to static token validation
-            if token == auth_state.api_token {
+            // Fall back to static secret token validation
+            if token == auth_state.secret {
+                let authenticated_user = AuthenticatedUser::Secret;
                 tracing::debug!(
                     correlation_id = %correlation_id.0,
                     path = %path,
-                    "Static token authentication successful"
+                    auth_method = "secret",
+                    "Static secret token authentication successful"
                 );
+                // Store authenticated user in request extensions
+                request.extensions_mut().insert(authenticated_user);
                 return Ok(next.run(request).await);
             }
         }
@@ -110,6 +129,46 @@ pub async fn auth_middleware(
     Err(StatusCode::UNAUTHORIZED)
 }
 
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Extract authenticated user from request extensions
+///
+/// Use this in handlers to determine how the request was authenticated:
+/// ```rust,ignore
+/// async fn my_handler(
+///     Extension(auth_user): Extension<AuthenticatedUser>,
+/// ) -> impl IntoResponse {
+///     match auth_user {
+///         AuthenticatedUser::LocalUser { username } => {
+///             // User-based access - log username, apply user-specific limits
+///         }
+///         AuthenticatedUser::Secret => {
+///             // Secret token access - scripts/CI/CD
+///         }
+///     }
+/// }
+/// ```
+///
+/// Or with Optional extraction (for routes that might not have auth):
+/// ```rust,ignore
+/// use axum::Extension;
+/// async fn my_handler(
+///     auth_user: Option<Extension<AuthenticatedUser>>,
+/// ) -> impl IntoResponse {
+///     if let Some(Extension(user)) = auth_user {
+///         // authenticated
+///     }
+/// }
+/// ```
+pub fn get_authenticated_user(request: &Request) -> Option<AuthenticatedUser> {
+    request
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+}
+
 /// Check if path is public (no auth required)
 fn is_public_path(path: &str) -> bool {
     path.starts_with("/health")
@@ -119,10 +178,10 @@ fn is_public_path(path: &str) -> bool {
         || path.starts_with("/swagger-ui")
         || path.starts_with("/api-docs")
         || path.starts_with("/docs")
-        || path.starts_with("/mcp")
         || path == "/api/admin/auth/login"
         || path == "/api/admin/auth/refresh"
         || path == "/api/admin/auth/status"
+        || path == "/api/admin/auth/setup"  // Initial setup (no auth needed)
 }
 
 #[cfg(test)]
@@ -136,12 +195,13 @@ mod tests {
         assert!(is_public_path("/swagger-ui"));
         assert!(is_public_path("/api-docs/openapi.json"));
         assert!(is_public_path("/docs"));
-        assert!(is_public_path("/mcp"));
         assert!(is_public_path("/api/admin/auth/login"));
         assert!(is_public_path("/api/admin/auth/refresh"));
         assert!(is_public_path("/api/admin/auth/status"));
+        assert!(is_public_path("/api/admin/auth/setup"));
 
-        // Protected paths
+        // Protected paths (require auth)
+        assert!(!is_public_path("/mcp"));
         assert!(!is_public_path("/api/v1/accounts"));
         assert!(!is_public_path("/api/v1/account/status"));
         assert!(!is_public_path("/api/v1/chats"));

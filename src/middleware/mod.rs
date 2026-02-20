@@ -19,8 +19,11 @@ use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 // Re-export account middleware
 pub use account::{account_middleware, CurrentAccount};
 
-// Re-export auth middleware
+// Re-export auth middleware and types
 pub use auth::{auth_middleware, AuthState};
+
+// Re-export AuthenticatedUser from models for convenience
+pub use crate::models::auth::AuthenticatedUser;
 
 /// Correlation ID middleware - adds correlation ID to all requests
 pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Response {
