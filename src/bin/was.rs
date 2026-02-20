@@ -172,9 +172,8 @@ async fn run_server(
             (name = "Authentication", description = "Server authentication with JWT tokens"),
             (name = "Accounts", description = "Administrative account management (create, list, delete, start, stop)"),
             // WhatsApp API tags (require X-Account-Id)
-            (name = "WhatsApp - Auth", description = "WhatsApp Web authentication (QR, phone login)"),
-            (name = "WhatsApp - Profile", description = "WhatsApp account operations (profile, privacy)"),
-            (name = "WhatsApp - Chat", description = "Send, receive and manage messages")
+            (name = "Account", description = "WhatsApp authentication, account operations (profile, privacy)"),
+            (name = "Messaging", description = "Send, receive and manage messages")
         ),
         info(
             title = "WhatsApp Server - API",
