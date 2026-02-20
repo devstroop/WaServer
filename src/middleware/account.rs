@@ -117,7 +117,7 @@ mod tests {
 
         // Should NOT require header
         assert!(!requires_account_header("/api/v1/auth/login"));
-        assert!(!requires_account_header("/api/v1/auth/status"));
+        assert!(!requires_account_header("/api/v1/auth/current-user"));
         assert!(!requires_account_header("/api/v1/accounts"));
         assert!(!requires_account_header("/api/v1/accounts/business-1"));
         assert!(!requires_account_header("/health"));

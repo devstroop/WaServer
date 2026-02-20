@@ -30,7 +30,7 @@ pub struct LocalAuthState {
 /// Get local authentication status
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/auth/status",
+    path = "/api/v1/auth/current-user",
     responses(
         (status = 200, description = "Local auth status retrieved successfully", body = LocalAuthStatusResponse)
     ),
@@ -48,7 +48,7 @@ pub async fn get_local_auth_status(
 /// Login with username and password
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/auth/login",
+    path = "/api/v1/auth/login",
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
@@ -90,7 +90,7 @@ pub async fn local_login(
 /// Refresh access token
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/auth/refresh",
+    path = "/api/v1/auth/refresh",
     request_body = RefreshTokenRequest,
     responses(
         (status = 200, description = "Token refreshed successfully", body = RefreshTokenResponse),
@@ -131,8 +131,8 @@ pub async fn refresh_token(
 
 /// Logout from local auth (revoke refresh token)
 #[utoipa::path(
-    post,
-    path = "/api/v1/admin/auth/logout",
+    delete,
+    path = "/api/v1/auth/logout",
     request_body = RefreshTokenRequest,
     responses(
         (status = 200, description = "Logged out successfully", body = SuccessResponse)
@@ -164,7 +164,7 @@ pub async fn local_logout(
 /// Check if initial setup is required
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/auth/setup",
+    path = "/api/v1/auth/setup",
     responses(
         (status = 200, description = "Setup status retrieved", body = SetupStatusResponse)
     ),
@@ -194,7 +194,7 @@ pub async fn get_setup_status(
 /// Complete initial setup - create first admin user
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/auth/setup",
+    path = "/api/v1/auth/setup",
     request_body = SetupRequest,
     responses(
         (status = 200, description = "Setup completed successfully, user logged in", body = LoginResponse),

@@ -218,7 +218,7 @@ async fn run_server(
                 info!("║  Setup Token: {}              ║", setup_token);
                 info!("║                                                                  ║");
                 info!("║  Visit: http://{}:{}/setup                             ║", config.server.host, config.server.port);
-                info!("║  Or POST to: /api/v1/admin/auth/setup                           ║");
+                info!("║  Or POST to: /api/v1/auth/setup                           ║");
                 info!("╚══════════════════════════════════════════════════════════════════╝");
                 info!("");
             } else {
@@ -297,10 +297,10 @@ async fn run_server(
 
     // Local auth routes (JWT-based server authentication)
     let auth_routes = Router::new()
-        .route("/status", get(auth::get_local_auth_status))
+        .route("/current-user", get(auth::get_local_auth_status))
         .route("/login", post(auth::local_login))
         .route("/refresh", post(auth::refresh_token))
-        .route("/logout", post(auth::local_logout))
+        .route("/logout", delete(auth::local_logout))
         // Setup routes (no auth required)
         .route("/setup", get(auth::get_setup_status))
         .route("/setup", post(auth::complete_setup))
@@ -376,10 +376,9 @@ async fn run_server(
         "/api/v1",
         Router::new()
             // Admin routes (server auth, account management)
-            .nest("/admin/auth", auth_routes)
-            .nest("/admin/accounts", accounts_routes)
+            .nest("/auth", auth_routes)
+            .nest("/accounts", accounts_routes)
             // WhatsApp routes (require X-Account-Id header)
-            .nest("/auth", whatsapp_auth_routes)
             .nest("/account", account_routes)
             .nest("/chats", chat_routes)
             .nest("/messages", message_routes),
