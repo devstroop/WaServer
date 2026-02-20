@@ -349,8 +349,23 @@ impl WhatsAppAccount {
         self.operation_semaphore.available_permits() == 0
     }
 
-    /// Execute an operation with exclusive access
+    /// Default operation timeout (30 seconds)
+    const DEFAULT_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// Execute an operation with exclusive access and timeout protection
+    /// 
+    /// This ensures the API layer never hangs indefinitely waiting for browser operations.
+    /// If the operation takes longer than the timeout, it returns an error immediately.
     pub async fn execute_with_busy_flag<F, T>(&self, operation: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>> + Send,
+        T: Send,
+    {
+        self.execute_with_timeout(operation, Self::DEFAULT_OPERATION_TIMEOUT).await
+    }
+
+    /// Execute an operation with custom timeout
+    pub async fn execute_with_timeout<F, T>(&self, operation: F, timeout: Duration) -> Result<T>
     where
         F: std::future::Future<Output = Result<T>> + Send,
         T: Send,
@@ -365,12 +380,56 @@ impl WhatsAppAccount {
             }
         };
 
-        debug!("Account '{}' - operation started", self.id);
-        let result = operation.await;
+        debug!("Account '{}' - operation started (timeout: {:?})", self.id, timeout);
+        
+        // Wrap the operation with a timeout to prevent indefinite hangs
+        let result = match tokio::time::timeout(timeout, operation).await {
+            Ok(result) => result,
+            Err(_) => {
+                error!(
+                    "Account '{}' - operation timed out after {:?}",
+                    self.id, timeout
+                );
+                Err(anyhow!(
+                    "Operation timed out after {:?}. Browser may be unresponsive.",
+                    timeout
+                ))
+            }
+        };
+        
         drop(permit);
         debug!("Account '{}' - operation completed", self.id);
 
         result
+    }
+
+    /// Quick browser health check with short timeout (2 seconds)
+    /// 
+    /// This is used to verify the browser is responsive before starting operations.
+    /// Returns false if browser is dead/unresponsive, allowing fast failure.
+    pub async fn is_browser_responsive(&self) -> bool {
+        if !self.browser_service.is_running().await {
+            return false;
+        }
+
+        // Quick ping with 2 second timeout
+        let check = async {
+            match self.browser_service.get_whatsapp_page().await {
+                Ok(page) => {
+                    // Try a simple operation to verify page is responsive
+                    page.evaluate("1 + 1").await.is_ok()
+                }
+                Err(_) => false,
+            }
+        };
+
+        match tokio::time::timeout(Duration::from_secs(2), check).await {
+            Ok(result) => result,
+            Err(_) => {
+                warn!("Account '{}' - browser health check timed out", self.id);
+                false
+            }
+        }
     }
 
     /// Check authentication status directly
