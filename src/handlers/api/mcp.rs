@@ -280,7 +280,7 @@ async fn execute_tool(
             return McpToolResult {
                 content: vec![McpContent {
                     content_type: "text".to_string(),
-                    text: "No WhatsApp account available. Create one via POST /api/v1/accounts".to_string(),
+                    text: "No WhatsApp instance available. Create one via POST /api/v1/instances".to_string(),
                 }],
                 is_error: Some(true),
             };
@@ -294,7 +294,7 @@ async fn execute_tool(
             content: vec![McpContent {
                 content_type: "text".to_string(),
                 text: format!(
-                    "Account {} browser not running. Start it via POST /api/v1/accounts/{}/start",
+                    "Instance {} browser not running. Start it via POST /api/v1/instances/{}/start",
                     account.id, account.id
                 ),
             }],
