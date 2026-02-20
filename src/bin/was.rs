@@ -168,9 +168,9 @@ async fn run_server(
         modifiers(&SecurityAddon),
         tags(
             // Admin API tags
-            (name = "Admin - Health", description = "Server health and metrics endpoints"),
-            (name = "Admin - Accounts", description = "Account management (create, list, delete, start, stop)"),
-            (name = "Admin - Auth", description = "Server authentication with JWT tokens"),
+            (name = "Health", description = "Server health and metrics endpoints"),
+            (name = "Auth", description = "Server authentication with JWT tokens"),
+            (name = "Accounts", description = "Account management (create, list, delete, start, stop)"),
             // WhatsApp API tags (require X-Account-Id)
             (name = "WhatsApp - Account", description = "WhatsApp account operations (profile, privacy)"),
             (name = "WhatsApp - Auth", description = "WhatsApp Web authentication (QR, phone login)"),
@@ -307,11 +307,13 @@ async fn run_server(
         .route("/setup", post(auth::complete_setup))
         .with_state(local_auth_state);
 
+    // Mount health routes at /api (no auth required)
+    app = app.nest("/api", health_routes);
+
     // Mount admin routes
     app = app.nest(
         "/api/admin",
         Router::new()
-            .merge(health_routes)
             .nest("/accounts", accounts_routes)
             .nest("/auth", admin_auth_routes),
     );
