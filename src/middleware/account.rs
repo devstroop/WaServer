@@ -35,7 +35,7 @@ pub async fn account_middleware(
     // Routes that don't need account context
     // - /api/v1/auth/* (local JWT auth)
     // - /api/v1/accounts/* (account management - uses path param)
-    // - /health, /swagger-ui, etc.
+    // - /health, /api-docs, etc.
     if !requires_account_header(path) {
         return Ok(next.run(request).await);
     }
@@ -121,6 +121,6 @@ mod tests {
         assert!(!requires_account_header("/api/v1/accounts"));
         assert!(!requires_account_header("/api/v1/accounts/business-1"));
         assert!(!requires_account_header("/health"));
-        assert!(!requires_account_header("/swagger-ui"));
+        assert!(!requires_account_header("/api-docs"));
     }
 }

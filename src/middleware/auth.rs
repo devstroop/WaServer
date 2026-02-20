@@ -175,7 +175,7 @@ fn is_public_path(path: &str) -> bool {
         || path.starts_with("/ready")
         || path.starts_with("/live")
         || path.starts_with("/metrics")
-        || path.starts_with("/swagger-ui")
+        || path.starts_with("/api-docs")
         || path.starts_with("/api-docs")
         || path.starts_with("/docs")
         || path == "/api/admin/auth/login"
@@ -192,7 +192,7 @@ mod tests {
     fn test_public_paths() {
         assert!(is_public_path("/health"));
         assert!(is_public_path("/health/live"));
-        assert!(is_public_path("/swagger-ui"));
+        assert!(is_public_path("/api-docs"));
         assert!(is_public_path("/api-docs/openapi.json"));
         assert!(is_public_path("/docs"));
         assert!(is_public_path("/api/admin/auth/login"));

@@ -153,14 +153,14 @@ fn default_swagger_enabled() -> bool {
 }
 
 fn default_swagger_path() -> String {
-    "/swagger-ui".to_string()
+    "/api-docs".to_string()
 }
 
 impl Default for SwaggerConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            path: "/swagger-ui".to_string(),
+            path: "/api-docs".to_string(),
         }
     }
 }

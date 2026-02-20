@@ -132,7 +132,7 @@ curl -N http://localhost:3000/api/v1/chats/events \
   -H "Authorization: Bearer your-api-token"
 ```
 
-**Swagger UI**: http://localhost:3000/swagger-ui/
+**Swagger UI**: http://localhost:3000/api-docs/
 
 ## MCP (Model Context Protocol)
 
@@ -195,7 +195,7 @@ endpoint = "/mcp"
 
 [swagger]
 enabled = true
-path = "/swagger-ui"
+path = "/api-docs"
 
 [webhooks]
 enabled = false

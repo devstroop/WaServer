@@ -70,7 +70,7 @@ enabled = true
 # Enable Swagger UI (set to false to disable API docs in production)
 enabled = true
 # Swagger UI path
-path = "/swagger-ui"
+path = "/api-docs"
 
 # =============================================================================
 # MCP - Model Context Protocol for AI agent integration
