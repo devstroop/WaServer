@@ -194,12 +194,9 @@ async fn run_server(
         tags(
             (name = "Health", description = "Server health and metrics endpoints"),
             (name = "Authentication", description = "Server authentication with JWT tokens"),
-            (name = "Users", description = "User management (create, list, update, delete users)"),
-            (name = "Roles", description = "Role management (create, list, update, delete roles)"),
-            (name = "Permissions", description = "Permission definitions (read-only)"),
-            (name = "Accounts", description = "Administrative account management (create, list, delete, start, stop)"),
-            (name = "Account", description = "WhatsApp authentication, account operations (profile, privacy)"),
-            (name = "Chat", description = "Send, receive and manage messages")
+            (name = "Access", description = "User, role, and permission management (create, list, update, delete)"),
+            (name = "Instances", description = "Instance management (create, list, delete, start, stop)"),
+            (name = "WhatsApp", description = "WhatsApp operations: authentication, profile, privacy, messaging")
         ),
         info(
             title = "WhatsApp Server - API",
