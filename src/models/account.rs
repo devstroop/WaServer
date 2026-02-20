@@ -41,6 +41,249 @@ pub struct AccountBrowserConfig {
     pub extra_args: Vec<String>,
 }
 
+/// Instance-level runtime configuration (managed via API)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceConfig {
+    /// Instance identifier (read-only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<AccountId>,
+    
+    /// Display name for this instance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    
+    /// Auto-start browser on server startup
+    #[serde(default)]
+    pub auto_start: bool,
+    
+    /// Browser configuration
+    #[serde(default)]
+    pub browser: InstanceBrowserConfig,
+    
+    /// Webhook configuration for this instance
+    #[serde(default)]
+    pub webhooks: InstanceWebhookConfig,
+    
+    /// Rate limiting configuration
+    #[serde(default)]
+    pub rate_limits: InstanceRateLimits,
+}
+
+impl Default for InstanceConfig {
+    fn default() -> Self {
+        Self {
+            instance_id: None,
+            display_name: None,
+            auto_start: false,
+            browser: InstanceBrowserConfig::default(),
+            webhooks: InstanceWebhookConfig::default(),
+            rate_limits: InstanceRateLimits::default(),
+        }
+    }
+}
+
+/// Browser-specific configuration for an instance
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceBrowserConfig {
+    /// Run browser in headless mode
+    #[serde(default = "default_true")]
+    pub headless: bool,
+    
+    /// Browser operation timeout in milliseconds
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+    
+    /// Additional browser arguments
+    #[serde(default)]
+    pub extra_args: Vec<String>,
+}
+
+impl Default for InstanceBrowserConfig {
+    fn default() -> Self {
+        Self {
+            headless: true,
+            timeout_ms: 30000,
+            extra_args: vec![],
+        }
+    }
+}
+
+fn default_timeout() -> u64 {
+    30000
+}
+
+/// Webhook configuration for an instance
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceWebhookConfig {
+    /// Enable webhooks for this instance
+    #[serde(default)]
+    pub enabled: bool,
+    
+    /// Webhook endpoints
+    #[serde(default)]
+    pub endpoints: Vec<WebhookEndpoint>,
+    
+    /// Request timeout in milliseconds
+    #[serde(default = "default_webhook_timeout")]
+    pub timeout_ms: u64,
+    
+    /// Number of retry attempts on failure
+    #[serde(default = "default_retry_count")]
+    pub retry_count: u32,
+}
+
+impl Default for InstanceWebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoints: vec![],
+            timeout_ms: 5000,
+            retry_count: 3,
+        }
+    }
+}
+
+fn default_webhook_timeout() -> u64 {
+    5000
+}
+
+fn default_retry_count() -> u32 {
+    3
+}
+
+/// Webhook endpoint configuration
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WebhookEndpoint {
+    /// Webhook URL
+    pub url: String,
+    
+    /// Secret for HMAC signature verification
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    
+    /// Events to subscribe to (e.g., ["message.received", "message.sent"])
+    #[serde(default)]
+    pub events: Vec<String>,
+    
+    /// Custom headers to include
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+}
+
+/// Rate limiting configuration for an instance
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceRateLimits {
+    /// Maximum messages per minute
+    #[serde(default = "default_messages_per_minute")]
+    pub messages_per_minute: u32,
+    
+    /// Maximum API requests per minute  
+    #[serde(default = "default_requests_per_minute")]
+    pub requests_per_minute: u32,
+    
+    /// Cooldown between messages in milliseconds
+    #[serde(default = "default_message_cooldown")]
+    pub message_cooldown_ms: u64,
+}
+
+impl Default for InstanceRateLimits {
+    fn default() -> Self {
+        Self {
+            messages_per_minute: 60,
+            requests_per_minute: 120,
+            message_cooldown_ms: 1000,
+        }
+    }
+}
+
+fn default_messages_per_minute() -> u32 {
+    60
+}
+
+fn default_requests_per_minute() -> u32 {
+    120
+}
+
+fn default_message_cooldown() -> u64 {
+    1000
+}
+
+/// Partial update for browser configuration (all fields optional)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
+pub struct UpdateBrowserConfig {
+    /// Run browser in headless mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headless: Option<bool>,
+    
+    /// Browser operation timeout in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    
+    /// Additional browser arguments
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra_args: Option<Vec<String>>,
+}
+
+/// Partial update for webhook configuration (all fields optional)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
+pub struct UpdateWebhookConfig {
+    /// Enable webhooks for this instance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    
+    /// Webhook endpoints
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoints: Option<Vec<WebhookEndpoint>>,
+    
+    /// Request timeout in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    
+    /// Number of retry attempts on failure
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_count: Option<u32>,
+}
+
+/// Partial update for rate limits (all fields optional)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
+pub struct UpdateRateLimits {
+    /// Maximum messages per minute
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_per_minute: Option<u32>,
+    
+    /// Maximum API requests per minute
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requests_per_minute: Option<u32>,
+    
+    /// Cooldown between messages in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_cooldown_ms: Option<u64>,
+}
+
+/// Request to update instance configuration (all fields optional)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateInstanceConfigRequest {
+    /// Display name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    
+    /// Auto-start on server startup
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_start: Option<bool>,
+    
+    /// Browser configuration updates
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browser: Option<UpdateBrowserConfig>,
+    
+    /// Webhook configuration updates
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub webhooks: Option<UpdateWebhookConfig>,
+    
+    /// Rate limits updates
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limits: Option<UpdateRateLimits>,
+}
+
 impl Default for AccountConfig {
     fn default() -> Self {
         Self {
