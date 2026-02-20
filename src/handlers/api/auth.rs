@@ -9,7 +9,7 @@ use crate::{
     models::auth::{
         AuthStatusResponse, LocalAuthStatusResponse, LoginRequest, LoginResponse,
         PhoneAuthResponse, PhoneLoginRequest, QrCodeResponse, RefreshTokenRequest,
-        RefreshTokenResponse, SuccessResponse,
+        RefreshTokenResponse, SetupRequest, SetupStatusResponse, SuccessResponse,
     },
     models::chat::ErrorResponse,
 };
@@ -403,4 +403,118 @@ pub async fn local_logout(
     Ok(Json(SuccessResponse {
         message: "Logged out successfully".to_string(),
     }))
+}
+
+// =============================================================================
+// Initial Setup Endpoints (no auth required)
+// =============================================================================
+
+/// Check if initial setup is required
+#[utoipa::path(
+    get,
+    path = "/api/admin/auth/setup",
+    responses(
+        (status = 200, description = "Setup status retrieved", body = SetupStatusResponse)
+    ),
+    tag = "Admin - Auth"
+)]
+pub async fn get_setup_status(
+    State(state): State<LocalAuthState>,
+) -> Json<SetupStatusResponse> {
+    let needs_setup = state
+        .auth_token_service
+        .as_ref()
+        .map(|s| s.needs_setup())
+        .unwrap_or(true);
+    
+    let message = if needs_setup {
+        "Initial setup required. Create your admin account using the setup token from the server console.".to_string()
+    } else {
+        "Setup complete. Please login.".to_string()
+    };
+    
+    Json(SetupStatusResponse {
+        needs_setup,
+        message,
+    })
+}
+
+/// Complete initial setup - create first admin user
+#[utoipa::path(
+    post,
+    path = "/api/admin/auth/setup",
+    request_body = SetupRequest,
+    responses(
+        (status = 200, description = "Setup completed successfully, user logged in", body = LoginResponse),
+        (status = 400, description = "Invalid setup token or validation failed", body = ErrorResponse),
+        (status = 409, description = "Setup already completed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Admin - Auth"
+)]
+pub async fn complete_setup(
+    State(state): State<LocalAuthState>,
+    Json(request): Json<SetupRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Get auth token service
+    let auth_token_service = state.auth_token_service.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Auth token service not available".to_string(),
+        }),
+    ))?;
+    
+    // Attempt to complete setup
+    match auth_token_service.complete_setup(&request.setup_token, &request.username, &request.password) {
+        Ok(()) => {
+            info!("Initial setup completed - admin user '{}' created", request.username);
+            // Auto-login the new user after successful setup
+            match auth_token_service.login(&request.username, &request.password) {
+                Ok(login_response) => Ok(Json(login_response)),
+                Err(e) => {
+                    error!("Login failed after setup: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "Setup succeeded but auto-login failed".to_string(),
+                        }),
+                    ))
+                }
+            }
+        }
+        Err(crate::models::error::AuthError::SetupAlreadyComplete) => {
+            Err((
+                StatusCode::CONFLICT,
+                Json(ErrorResponse {
+                    error: "Initial setup has already been completed. Please login instead.".to_string(),
+                }),
+            ))
+        }
+        Err(crate::models::error::AuthError::InvalidToken) => {
+            warn!("Setup attempted with invalid token");
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid setup token. Check the server console for the correct token.".to_string(),
+                }),
+            ))
+        }
+        Err(crate::models::error::AuthError::ValidationFailed(msg)) => {
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: msg,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Setup failed: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Setup failed: {}", e),
+                }),
+            ))
+        }
+    }
 }
