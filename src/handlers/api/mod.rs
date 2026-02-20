@@ -9,6 +9,9 @@ pub mod accounts;
 /// WhatsApp account operations API (status, QR, profile, privacy - uses path param {account_id})
 pub mod account;
 
+/// Admin API (users, roles, permissions)
+pub mod admin;
+
 /// Authentication API handlers (login, logout, QR code, auth status)
 pub mod auth;
 
