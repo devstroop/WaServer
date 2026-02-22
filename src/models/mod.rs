@@ -1,5 +1,4 @@
 pub mod account;
-pub mod admin;
 pub mod auth;
 pub mod chat;
 pub mod config;
@@ -8,7 +7,6 @@ pub mod environment;
 pub mod error;
 pub mod message;
 pub mod session;
-pub mod user;
 
 // Re-export domain models for easier access
 pub use domain::*;
@@ -25,14 +23,4 @@ pub use account::{
     // API query/response types
     ListAccountsQuery, DeleteAccountResponse, DeleteAccountQuery, 
     AccountActionResponse, PhoneLinkRequest,
-};
-
-// Re-export user types
-pub use user::{
-    UserId, User, UserInfo, UserListResponse,
-    CreateUserRequest, UpdateUserRequest, ListUsersQuery,
-    InstanceOwnership, InstanceAccess, InstanceWithOwner, 
-    InstancePermissions, InstanceAccessInfo, InstanceAccessListResponse,
-    GrantInstanceAccessRequest, UpdateInstanceAccessRequest,
-    validate_username, validate_email,
 };

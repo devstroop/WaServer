@@ -18,15 +18,8 @@ args = [
 ]
 
 [auth]
-# Static secret key for scripts/CI/CD pipelines (CHANGE IN PRODUCTION)
+# Static secret key for API authentication (CHANGE IN PRODUCTION)
 secret_key = "change-this-secret-key-in-production"
-# JWT secret key for signing tokens (CHANGE IN PRODUCTION - min 32 chars)
-jwt_secret = "your-super-secret-jwt-key-change-this-in-production-32chars"
-# Access token expiry in hours
-token_expiry_hours = 24
-# Refresh token expiry in days
-refresh_token_expiry_days = 7
-# NOTE: Admin user is created on first run via setup token (no default credentials)
 
 [logging]
 level = "info"
@@ -56,13 +49,6 @@ environment = "development"
 # Accepts: "trace", "debug", "info", "warn", "error" or full format "was=debug,hyper=info"
 log_level = "info"
 health_check_interval = 30
-
-# =============================================================================
-# Web UI - Built-in HTMX dashboard (served from templates)
-# =============================================================================
-[web]
-# Enable Web UI serving (set to false for API-only mode)
-enabled = true
 
 # =============================================================================
 # Swagger UI - Interactive API documentation

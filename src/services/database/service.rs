@@ -47,8 +47,6 @@ impl DatabaseService {
         service.migrate_schema()?;
         // Then create indexes (after columns exist)
         service.init_schema()?;
-        // Initialize user/RBAC schema
-        service.init_user_schema()?;
         info!("Database initialized at: {}", service.db_path);
 
         Ok(service)
@@ -63,7 +61,6 @@ impl DatabaseService {
         };
 
         service.init_schema()?;
-        service.init_user_schema()?;
         info!("In-memory database initialized");
 
         Ok(service)

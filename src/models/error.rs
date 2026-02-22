@@ -192,29 +192,3 @@ impl From<tokio::sync::AcquireError> for WhatsAppError {
     }
 }
 
-// ============================================================================
-// Authentication Errors
-// ============================================================================
-
-/// Errors that can occur during authentication token operations
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error("Invalid credentials")]
-    InvalidCredentials,
-    #[error("Account is disabled")]
-    AccountDisabled,
-    #[error("Token expired")]
-    TokenExpired,
-    #[error("Invalid token")]
-    InvalidToken,
-    #[error("Token generation failed: {0}")]
-    TokenGenerationFailed(String),
-    #[error("Password hashing failed: {0}")]
-    HashingFailed(String),
-    #[error("Initial setup already completed")]
-    SetupAlreadyComplete,
-    #[error("Validation failed: {0}")]
-    ValidationFailed(String),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-}

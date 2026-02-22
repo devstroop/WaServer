@@ -1,7 +1,6 @@
 //! WAS - WhatsApp Server
 //!
 //! REST API and MCP server for WhatsApp Web automation.
-//! Now uses AccountManager for multi-account support (no legacy WhatsAppService).
 //!
 //! ## Usage
 //!
@@ -18,7 +17,7 @@ use tracing::info;
 
 use was::{
     config::AppConfig,
-    services::{AccountManager, AuthTokenService},
+    services::AccountManager,
     utils::logging,
 };
 
@@ -83,7 +82,6 @@ async fn run_server(
     use tower::ServiceBuilder;
     use tower_http::{
         cors::{Any, CorsLayer},
-        services::ServeDir,
         trace::TraceLayer,
     };
     use utoipa::{
@@ -91,13 +89,12 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, instances, instances::InstancesState, admin, auth, chat, health},
-        handlers::{partials, templates},
+        api::{account, instances, chat, health},
         middleware::{
             auth_middleware, correlation_id_middleware,
             request_metrics_middleware, security_headers_middleware, AuthState,
         },
-        models::{admin::*, auth::*, chat::*, account::*},
+        models::{auth::*, chat::*, account::*},
     };
 
     // CORS
@@ -138,37 +135,12 @@ async fn run_server(
             account::update_profile,
             account::get_privacy,
             account::update_privacy,
-            // Local auth (JWT)
-            auth::get_local_auth_status,
-            auth::local_login,
-            auth::refresh_token,
-            auth::local_logout,
-            auth::forgot_password,
-            auth::reset_password,
-            auth::change_password,
-            auth::get_setup_status,
-            auth::complete_setup,
-            // Chat (requires X-Account-Id)
+            // Chat
             chat::list_chats,
             chat::get_chat_messages,
             chat::watch_messages,
             chat::send_message,
             chat::get_message,
-            // Users
-            admin::list_users,
-            admin::create_user,
-            admin::get_user,
-            admin::update_user,
-            admin::delete_user,
-            // Roles
-            admin::list_roles,
-            admin::create_role,
-            admin::get_role,
-            admin::update_role,
-            admin::delete_role,
-            // Permissions
-            admin::list_permissions,
-            admin::get_permission,
         ),
         components(
             schemas(
@@ -176,9 +148,6 @@ async fn run_server(
                 health::HealthResponse, health::ServiceHealth,
                 // Auth
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
-                LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LocalAuthStatusResponse,
-                SetupRequest, SetupStatusResponse,
-                ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordRequest, ResetPasswordResponse, ChangePasswordRequest,
                 // Chat
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
                 // Account management
@@ -191,17 +160,11 @@ async fn run_server(
                 WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo, PrivacySettings,
                 UpdateProfileRequest, UpdatePrivacyRequest,
                 PrivacyVisibility, OnlineVisibility, GroupAddPermission,
-                // Users, Roles, Permissions
-                User, CreateUserRequest, UpdateUserRequest,
-                Role, CreateRoleRequest, UpdateRoleRequest,
-                Permission
             )
         ),
         modifiers(&SecurityAddon),
         tags(
             (name = "Health", description = "Server health and metrics endpoints"),
-            (name = "Authentication", description = "Server authentication with JWT tokens"),
-            (name = "Access", description = "User, role, and permission management (create, list, update, delete)"),
             (name = "Instances", description = "Instance management (create, list, delete, start, stop)"),
             (name = "WhatsApp", description = "WhatsApp operations: authentication, profile, privacy, messaging")
         ),
@@ -225,75 +188,8 @@ async fn run_server(
         }
     }
 
-    // Create central database for users and RBAC
-    // Uses same base directory pattern as AccountManager (~/.was/)
-    let central_data_dir = {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| "/tmp".to_string());
-        std::path::PathBuf::from(home).join(".was").join("data")
-    };
-    
-    // Ensure directory exists
-    if let Err(e) = std::fs::create_dir_all(&central_data_dir) {
-        tracing::error!("Failed to create data directory: {}", e);
-    }
-    
-    let central_db = Arc::new(
-        was::services::database::DatabaseService::new(central_data_dir.to_str().unwrap())
-            .expect("Failed to initialize central database")
-    );
-    info!("💾 Central database initialized at {:?}", central_data_dir);
-
-    // Initialize auth token service for JWT authentication (always enabled)
-    let auth_token_service = match AuthTokenService::new(
-        config.auth.jwt_secret.clone(),
-        config.auth.token_expiry_hours,
-        config.auth.refresh_token_expiry_days,
-        central_db.clone(),
-    ) {
-        Ok(service) => {
-            let service = Arc::new(service);
-            
-            // Check if initial setup is needed
-            if let Some(setup_token) = service.get_setup_token() {
-                info!("🔐 JWT authentication service initialized");
-                info!("");
-                info!("╔══════════════════════════════════════════════════════════════════╗");
-                info!("║                    INITIAL SETUP REQUIRED                        ║");
-                info!("╠══════════════════════════════════════════════════════════════════╣");
-                info!("║  No admin user found. Use this one-time setup token to create    ║");
-                info!("║  your first admin account:                                       ║");
-                info!("║                                                                  ║");
-                info!("║  Setup Token: {}              ║", setup_token);
-                info!("║                                                                  ║");
-                info!("║  Visit: http://{}:{}/setup                             ║", config.server.host, config.server.port);
-                info!("║  Or POST to: /api/v1/auth/setup                           ║");
-                info!("╚══════════════════════════════════════════════════════════════════╝");
-                info!("");
-            } else {
-                info!("🔐 JWT authentication service initialized");
-            }
-            
-            Some(service)
-        }
-        Err(e) => {
-            tracing::error!("Failed to initialize auth token service: {}", e);
-            None
-        }
-    };
-
-    // Create auth state for middleware
-    let auth_state = AuthState::new(
-        config.auth.secret_key.clone(),
-        auth_token_service.clone(),
-    );
-
-    // Create local auth state for JWT routes
-    let local_auth_state = auth::LocalAuthState {
-        config: config.clone(),
-        auth_token_service,
-    };
+    // Create auth state for middleware (secret key only)
+    let auth_state = AuthState::new(config.auth.secret_key.clone());
 
     // Start building the app
     let mut app = Router::new();
@@ -317,11 +213,6 @@ async fn run_server(
     #[cfg(not(feature = "mcp"))]
     info!("🤖 MCP not compiled (build with --features mcp to enable)");
 
-    // ==========================================================================
-    // Admin API Routes (/api/v1/admin) - Server administration, no X-Account-Id
-    // ==========================================================================
-    info!("📖 Admin API at /api/v1/admin");
-
     // Health check routes (no auth required)
     let health_routes = Router::new()
         .route("/health", get(health::health_check))
@@ -330,10 +221,7 @@ async fn run_server(
         .route("/metrics", get(health::get_metrics))
         .with_state(account_manager.clone());
 
-    // Create instances state with both account manager and database
-    let instances_state = InstancesState::new(account_manager.clone(), central_db.clone());
-
-    // Instance management routes (API auth required)
+    // Instance management routes (auth required)
     let instances_routes = Router::new()
         .route("/", get(instances::list_instances))
         .route("/", post(instances::create_instance))
@@ -349,48 +237,22 @@ async fn run_server(
             auth_state.clone(),
             auth_middleware,
         ))
-        .with_state(instances_state);
-
-    // Local auth routes (JWT-based server authentication)
-    let auth_routes = Router::new()
-        .route("/current-user", get(auth::get_local_auth_status))
-        .route("/login", post(auth::local_login))
-        .route("/refresh", post(auth::refresh_token))
-        .route("/logout", delete(auth::local_logout))
-        // Password reset routes (no auth required)
-        .route("/forgot-password", post(auth::forgot_password))
-        .route("/reset-password", post(auth::reset_password))
-        .route("/change-password", post(auth::change_password))
-        // Setup routes (no auth required)
-        .route("/setup", get(auth::get_setup_status))
-        .route("/setup", post(auth::complete_setup))
-        .with_state(local_auth_state);
+        .with_state(account_manager.clone());
 
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
 
-    // ==========================================================================
-    // API v1 Routes (/api/v1)
-    // ==========================================================================
-    info!("📖 API at /api/v1");
-
     // WhatsApp operations routes (profile, privacy, link/unlink, chats, messages)
-    // Uses path parameter :instance_id for all operations
     let whatsapp_routes = Router::new()
-        // WhatsApp linking status and operations
         .route("/:instance_id/status", get(account::get_account_status))
         .route("/:instance_id/unlink", delete(account::unlink))
         .route("/:instance_id/link/qr", get(account::get_qr_code))
         .route("/:instance_id/link/phone", post(account::link_phone))
-        // Profile management (GET + PUT with all fields optional)
         .route("/:instance_id/profile", get(account::get_profile).put(account::update_profile))
-        // Privacy settings (GET + PUT with all fields optional)
         .route("/:instance_id/profile/privacy", get(account::get_privacy).put(account::update_privacy))
-        // Chat routes
         .route("/:instance_id/chats", get(chat::list_chats))
         .route("/:instance_id/chats/events", get(chat::watch_messages))
         .route("/:instance_id/chats/:chat_id", get(chat::get_chat_messages))
-        // Message routes
         .route("/:instance_id/messages", post(chat::send_message))
         .route("/:instance_id/messages/:message_id", get(chat::get_message))
         .layer(middleware::from_fn_with_state(
@@ -399,104 +261,15 @@ async fn run_server(
         ))
         .with_state(account_manager.clone());
 
-    // User management routes (stub)
-    let users_routes = Router::new()
-        .route("/", get(admin::list_users))
-        .route("/", post(admin::create_user))
-        .route("/:user_id", get(admin::get_user))
-        .route("/:user_id", put(admin::update_user))
-        .route("/:user_id", delete(admin::delete_user))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Role management routes (stub)
-    let roles_routes = Router::new()
-        .route("/", get(admin::list_roles))
-        .route("/", post(admin::create_role))
-        .route("/:role_id", get(admin::get_role))
-        .route("/:role_id", put(admin::update_role))
-        .route("/:role_id", delete(admin::delete_role))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Permission routes (stub, read-only)
-    let permissions_routes = Router::new()
-        .route("/", get(admin::list_permissions))
-        .route("/:permission_id", get(admin::get_permission))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ));
-
-    // Access control routes (users, roles, permissions)
-    let access_routes = Router::new()
-        .nest("/users", users_routes)
-        .nest("/roles", roles_routes)
-        .nest("/permissions", permissions_routes);
-
     // Mount all v1 routes
     app = app.nest(
         "/api/v1",
         Router::new()
-            // Admin routes (server auth, instance management, access control)
-            .nest("/auth", auth_routes)
             .nest("/instances", instances_routes)
-            .nest("/admin/access", access_routes)
-            // WhatsApp routes (all use path param :instance_id)
             .nest("/whatsapp", whatsapp_routes),
     );
 
-    // HTMX Page routes (no state required)
-    info!("🌐 HTMX Web UI at /");
-    app = app
-        .route("/", get(templates::dashboard_page))
-        .route("/auth", get(templates::auth_page))
-        .route("/chats", get(templates::chat_page))
-        .route("/settings", get(templates::settings_page))
-        .route("/webhooks", get(templates::webhooks_page))
-        .route("/tokens", get(templates::tokens_page));
-
-    // HTMX Partial routes (for dynamic updates) - need AccountManager state
-    let partials_routes = Router::new()
-        .route("/partials/health-cards", get(partials::health_cards))
-        .route("/partials/auth-panel", get(partials::auth_panel))
-        .route("/partials/qr-code", get(partials::qr_code))
-        .route("/partials/auth-indicator", get(partials::auth_indicator))
-        .route("/partials/phone-pair", post(partials::phone_pair))
-        .route("/partials/chat-list", get(partials::chat_list))
-        .route("/partials/chat-view/:chat_id", get(partials::chat_view))
-        .route(
-            "/partials/link-device-card",
-            get(partials::link_device_card),
-        )
-        .route(
-            "/partials/connected-account",
-            get(partials::connected_account),
-        )
-        .route(
-            "/partials/session-controls",
-            get(partials::session_controls),
-        )
-        .route(
-            "/partials/unlink-account",
-            delete(partials::unlink_account),
-        )
-        .with_state(account_manager.clone());
-
-    // Stateless partials
-    let stateless_partials = Router::new()
-        .route("/partials/server-info", get(partials::server_info))
-        .route("/partials/token-list", get(partials::token_list))
-        .route("/partials/webhook-list", get(partials::webhook_list));
-
-    app = app.merge(partials_routes).merge(stateless_partials);
-
-    // Static files (JS, CSS, images)
-    app = app.nest_service("/static", ServeDir::new("static"));
+    info!("📖 API at /api/v1");
 
     // Swagger UI documentation (configurable)
     if config.swagger.enabled {

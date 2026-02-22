@@ -9,7 +9,6 @@ mod queue;
 mod service;
 mod session;
 mod settings;
-mod users;
 
 // Re-export DatabaseService and constants
 pub use service::{DatabaseService, CONTACT_BATCH_SIZE};

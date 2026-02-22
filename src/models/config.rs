@@ -15,8 +15,6 @@ pub struct AppConfig {
     pub limits: LimitsConfig,
     pub environment: EnvironmentConfig,
     #[serde(default)]
-    pub web: WebConfig,
-    #[serde(default)]
     pub swagger: SwaggerConfig,
     #[serde(default)]
     pub mcp: McpConfig,
@@ -109,34 +107,6 @@ impl Default for McpConfig {
     }
 }
 
-/// Web UI configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct WebConfig {
-    /// Enable Web UI serving
-    #[serde(default = "default_web_enabled")]
-    pub enabled: bool,
-    /// Deprecated: templates are now built-in
-    #[serde(default = "default_web_path")]
-    pub path: String,
-}
-
-fn default_web_enabled() -> bool {
-    true
-}
-
-fn default_web_path() -> String {
-    "templates".to_string()
-}
-
-impl Default for WebConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            path: "templates".to_string(),
-        }
-    }
-}
-
 /// Swagger UI configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SwaggerConfig {
@@ -181,32 +151,11 @@ pub struct BrowserConfig {
 }
 
 /// Authentication configuration
-/// Combines static secret key and JWT-based user authentication
+/// Static secret key for Bearer authentication
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
-    /// Static secret key for Bearer authentication (for scripts/CI/CD)
+    /// Static secret key for Bearer authentication
     pub secret_key: String,
-    /// JWT secret key for signing tokens (min 32 characters)
-    #[serde(default = "default_jwt_secret")]
-    pub jwt_secret: String,
-    /// Access token expiry in hours
-    #[serde(default = "default_token_expiry_hours")]
-    pub token_expiry_hours: i64,
-    /// Refresh token expiry in days
-    #[serde(default = "default_refresh_token_expiry_days")]
-    pub refresh_token_expiry_days: i64,
-}
-
-fn default_jwt_secret() -> String {
-    "your-super-secret-jwt-key-change-this-in-production-32chars".to_string()
-}
-
-fn default_token_expiry_hours() -> i64 {
-    24
-}
-
-fn default_refresh_token_expiry_days() -> i64 {
-    7
 }
 
 /// Logging configuration
@@ -260,9 +209,6 @@ impl Default for AppConfig {
             },
             auth: AuthConfig {
                 secret_key: "change-this-secret-key-in-production".to_string(),
-                jwt_secret: default_jwt_secret(),
-                token_expiry_hours: default_token_expiry_hours(),
-                refresh_token_expiry_days: default_refresh_token_expiry_days(),
             },
             logging: LoggingConfig {
                 level: "info".to_string(),
@@ -287,7 +233,6 @@ impl Default for AppConfig {
                 max_upload_size: 10 * 1024 * 1024, // 10MB
             },
             environment: EnvironmentConfig::default(),
-            web: WebConfig::default(),
             swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
@@ -326,22 +271,13 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static secret key (for programmatic access)
+        // Validate static secret key
         if self.auth.secret_key == "change-this-secret-key-in-production" {
             return Err("Please change the default secret_key in configuration".to_string());
         }
 
         if self.auth.secret_key.len() < 16 {
             return Err("secret_key must be at least 16 characters long".to_string());
-        }
-
-        // Validate JWT config
-        if self.auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
-            tracing::warn!("Using default JWT secret - please change in production!");
-        }
-
-        if self.auth.jwt_secret.len() < 32 {
-            return Err("JWT secret must be at least 32 characters long".to_string());
         }
 
         if self.browser.timeout_ms == 0 {

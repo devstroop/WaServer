@@ -61,7 +61,7 @@ pub mod utils;
 // Server Modules (always included)
 // ============================================================================
 
-/// HTTP handlers (pages, partials, and REST API)
+/// HTTP handlers (REST API)
 pub mod handlers;
 
 /// HTTP middleware

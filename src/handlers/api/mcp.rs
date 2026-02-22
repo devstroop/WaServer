@@ -117,7 +117,7 @@ impl McpState {
 
         // Otherwise, find the first running account
         let account_list = self.account_manager.list_accounts().await;
-        for info in account_list.accounts {
+        for info in &account_list.accounts {
             if matches!(info.status, crate::models::account::AccountStatus::Running) {
                 return self.account_manager.get_account_by_id(info.id).await;
             }
