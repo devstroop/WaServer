@@ -20,7 +20,7 @@
             ],
             "env": {
                 "REST_BASE_URL": "http://localhost:3000",
-                "AUTH_BEARER": "test-api-token-123456789"
+                "AUTH_BEARER": "Bearer change-this-secret-key-in-production"
             }
         }
     }
