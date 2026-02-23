@@ -1,7 +1,7 @@
-//! WhatsApp Account Operations API
+//! WhatsApp Instance Operations API
 //!
-//! REST API endpoints for WhatsApp account operations (status, QR, logout, profile, privacy).
-//! Account ID is a UUID, phone number is the E.164 identifier.
+//! REST API endpoints for WhatsApp instance operations (status, QR, logout, profile, privacy).
+//! Instance ID is a UUID, phone number is the E.164 identifier.
 //! These endpoints use path parameter {instance_id}.
 
 use std::sync::Arc;
@@ -15,18 +15,18 @@ use axum::{
 use serde_json::json;
 
 use crate::{
-    models::account::{
+    models::instance::{
         PhoneLinkRequest, PrivacySettings, ProfileInfo, UpdatePrivacyRequest, UpdateProfileRequest,
         WhatsAppStatusResponse,
     },
-    services::AccountManager,
+    services::InstanceManager,
 };
 
 // === API Handlers ===
 
 /// Get WhatsApp authentication status
 ///
-/// Returns the authentication status and bound phone number for the account.
+/// Returns the authentication status and bound phone number for the instance.
 #[utoipa::path(
     get,
     path = "/api/v1/instances/{instance_id}/status",
@@ -35,42 +35,42 @@ use crate::{
         ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Account status", body = WhatsAppStatusResponse),
-        (status = 404, description = "Account not found"),
+        (status = 200, description = "Instance status", body = WhatsAppStatusResponse),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
-pub async fn get_account_status(
-    State(manager): State<Arc<AccountManager>>,
+pub async fn get_instance_status(
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
-    let info = account.info().await;
+    let info = instance.info().await;
 
-    // Convert AccountStatus enum to string
+    // Convert InstanceStatus enum to string
     let status_str = match &info.status {
-        crate::models::account::AccountStatus::Stopped => "stopped",
-        crate::models::account::AccountStatus::Starting => "starting",
-        crate::models::account::AccountStatus::Running => "running",
-        crate::models::account::AccountStatus::Error(_) => "error",
+        crate::models::instance::InstanceStatus::Stopped => "stopped",
+        crate::models::instance::InstanceStatus::Starting => "starting",
+        crate::models::instance::InstanceStatus::Running => "running",
+        crate::models::instance::InstanceStatus::Error(_) => "error",
     };
 
     Json(json!(WhatsAppStatusResponse {
-        account_id: info.id,
+        instance_id: info.id,
         phone_number: info.phone_number,
         status: status_str.to_string(),
         authorized: info.authorized,
@@ -91,7 +91,7 @@ pub async fn get_account_status(
     ),
     responses(
         (status = 200, description = "QR code"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -99,16 +99,16 @@ pub async fn get_account_status(
     )
 )]
 pub async fn get_qr_code(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -117,18 +117,18 @@ pub async fn get_qr_code(
     };
 
     // Check if browser is running
-    if !account.browser_service().is_running().await {
+    if !instance.browser_service().is_running().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running. Start it first via POST /api/v1/instances/{instance_id}/start"
+                "message": "Instance browser is not running. Start it first via POST /api/v1/instances/{instance_id}/start"
             })),
         )
             .into_response();
     }
 
-    match account.auth_service().get_auth_qr_code().await {
+    match instance.auth_service().get_auth_qr_code().await {
         Ok(qr_code) => Json(json!({
             "qr_code": qr_code,
         }))
@@ -158,25 +158,25 @@ pub async fn get_qr_code(
     responses(
         (status = 200, description = "Phone linking initiated"),
         (status = 400, description = "Invalid request"),
-        (status = 403, description = "Account bound to different phone"),
-        (status = 404, description = "Account not found"),
+        (status = 403, description = "Instance bound to different phone"),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn link_phone(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
     Json(request): Json<PhoneLinkRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -185,24 +185,24 @@ pub async fn link_phone(
     };
 
     // Check if browser is running
-    if !account.browser_service().is_running().await {
+    if !instance.browser_service().is_running().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "message": "Instance browser is not running"
             })),
         )
             .into_response();
     }
 
-    // Validate that the phone number matches the account
-    let account_phone = account.phone_number();
-    let normalized_request = crate::models::account::validate_phone_number(&request.phone_number);
+    // Validate that the phone number matches the instance
+    let instance_phone = instance.phone_number();
+    let normalized_request = crate::models::instance::validate_phone_number(&request.phone_number);
 
     if let Ok(req_phone) = normalized_request {
-        let normalized_account = crate::models::account::validate_phone_number(account_phone)
-            .unwrap_or_else(|_| account_phone.to_string());
+        let normalized_account = crate::models::instance::validate_phone_number(instance_phone)
+            .unwrap_or_else(|_| instance_phone.to_string());
 
         if req_phone != normalized_account {
             return (
@@ -210,7 +210,7 @@ pub async fn link_phone(
                 Json(json!({
                     "error": "phone_mismatch",
                     "message": format!(
-                        "Phone number {} does not match account {}. Use the correct account or create a new one.",
+                        "Phone number {} does not match instance {}. Use the correct instance or create a new one.",
                         req_phone, normalized_account
                     )
                 })),
@@ -219,7 +219,7 @@ pub async fn link_phone(
         }
     }
 
-    match account
+    match instance
         .auth_service()
         .login_with_phone_number(&request.phone_number)
         .await
@@ -228,7 +228,7 @@ pub async fn link_phone(
             // If we got a linking code, it was successful
             let success = linking_code.is_some();
             if success {
-                if let Err(e) = account
+                if let Err(e) = instance
                     .on_whatsapp_authenticated(&request.phone_number)
                     .await
                 {
@@ -261,7 +261,7 @@ pub async fn link_phone(
 
 /// Unlink WhatsApp Web
 ///
-/// Disconnects the WhatsApp Web session for this account.
+/// Disconnects the WhatsApp Web session for this instance.
 #[utoipa::path(
     delete,
     path = "/api/v1/instances/{instance_id}/unlink",
@@ -271,23 +271,23 @@ pub async fn link_phone(
     ),
     responses(
         (status = 200, description = "Unlinked"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn unlink(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -295,9 +295,9 @@ pub async fn unlink(
         }
     };
 
-    match account.auth_service().logout().await {
+    match instance.auth_service().logout().await {
         Ok(_) => {
-            account.invalidate_auth_cache().await;
+            instance.invalidate_auth_cache().await;
             Json(json!({
                 "success": true,
                 "message": "WhatsApp Web session unlinked"
@@ -329,7 +329,7 @@ pub async fn unlink(
     ),
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -337,16 +337,16 @@ pub async fn unlink(
     )
 )]
 pub async fn get_profile(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -354,12 +354,12 @@ pub async fn get_profile(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if !instance.browser_service().is_running().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "message": "Instance browser is not running"
             })),
         )
             .into_response();
@@ -389,7 +389,7 @@ pub async fn get_profile(
     responses(
         (status = 200, description = "Profile updated"),
         (status = 400, description = "Invalid request"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -397,17 +397,17 @@ pub async fn get_profile(
     )
 )]
 pub async fn update_profile(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
     Json(request): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -415,12 +415,12 @@ pub async fn update_profile(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if !instance.browser_service().is_running().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "message": "Instance browser is not running"
             })),
         )
             .into_response();
@@ -459,23 +459,23 @@ pub async fn update_profile(
     ),
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn get_privacy(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let _account = match manager.get_account(&instance_id).await {
+    let _account = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
@@ -501,24 +501,24 @@ pub async fn get_privacy(
     responses(
         (status = 200, description = "Privacy settings updated"),
         (status = 400, description = "Invalid request"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn update_privacy(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
     Json(request): Json<UpdatePrivacyRequest>,
 ) -> impl IntoResponse {
-    let _account = match manager.get_account(&instance_id).await {
+    let _account = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
+                    "error": "instance_not_found",
                     "message": format!("Instance '{}' not found", instance_id)
                 })),
             )

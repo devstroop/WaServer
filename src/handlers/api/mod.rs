@@ -5,8 +5,8 @@
 /// Instance management API (create, list, delete instances)
 pub mod instances;
 
-/// WhatsApp account operations API (status, QR, profile, privacy)
-pub mod account;
+/// WhatsApp instance operations API (status, QR, profile, privacy)
+pub mod whatsapp;
 
 /// Chat/messaging API handlers (send message, get chats, message status)
 pub mod chat;
