@@ -4,7 +4,7 @@
 //! Uses `AuthState` which can be applied independently of route-specific state.
 
 use axum::{
-    extract::{Request, State},
+    extract::{OriginalUri, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -40,7 +40,12 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    let path = request.uri().path().to_string();
+    // Use OriginalUri to get the full path (before nest stripping)
+    let path = request
+        .extensions()
+        .get::<OriginalUri>()
+        .map(|uri| uri.0.path().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
 
     // Get correlation ID for logging
     let correlation_id = request
