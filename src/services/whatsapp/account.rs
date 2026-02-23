@@ -52,9 +52,9 @@ pub struct WhatsAppAccount {
     /// Phone number in E.164 format
     pub phone_number: String,
     /// Account configuration
-    config: AccountConfig,
+    _config: AccountConfig,
     /// Global app config
-    app_config: Arc<AppConfig>,
+    _app_config: Arc<AppConfig>,
     /// Data directory for this account
     data_dir: PathBuf,
     /// Account metadata (includes bound phone)
@@ -131,8 +131,8 @@ impl WhatsAppAccount {
         Ok(Self {
             id: config.id,
             phone_number: config.phone_number.clone(),
-            config,
-            app_config,
+            _config: config,
+            _app_config: app_config,
             data_dir,
             metadata: Arc::new(RwLock::new(metadata)),
             instance_config: Arc::new(RwLock::new(instance_config)),

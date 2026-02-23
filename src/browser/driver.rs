@@ -67,7 +67,7 @@ impl BrowserServiceConfig {
 
 /// Browser service for managing Chrome browser instances
 pub struct BrowserService {
-    config: Arc<AppConfig>,
+    _config: Arc<AppConfig>,
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,
     whatsapp_page: Arc<Mutex<Option<Page>>>,
@@ -78,7 +78,7 @@ impl BrowserService {
     pub fn new(config: Arc<AppConfig>) -> Self {
         let browser_config = BrowserServiceConfig::from_app_config(&config);
         Self {
-            config,
+            _config: config,
             browser_config,
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),
@@ -89,7 +89,7 @@ impl BrowserService {
     /// Create a new browser service with custom configuration (for multi-account)
     pub fn with_config(config: Arc<AppConfig>, browser_config: BrowserServiceConfig) -> Self {
         Self {
-            config,
+            _config: config,
             browser_config,
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),
