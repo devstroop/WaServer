@@ -1261,7 +1261,6 @@ impl ChatServiceTrait for ChatService {
             if !phone.is_empty() && phone.chars().all(|c| c.is_ascii_digit() || c == '+') {
                 self.navigate_to_chat(&page, phone).await?;
                 tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-                navigated = true;
             }
         }
 
