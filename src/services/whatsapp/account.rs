@@ -216,13 +216,6 @@ impl WhatsAppAccount {
         }
     }
 
-    /// Save instance config to disk
-    async fn save_instance_config(&self) -> Result<()> {
-        let config = self.instance_config.read().await;
-        let config_path = self.data_dir.join(INSTANCE_CONFIG_FILE);
-        Self::save_instance_config_to_path(&config_path, &config).await
-    }
-
     async fn save_instance_config_to_path(path: &PathBuf, config: &InstanceConfig) -> Result<()> {
         let content = serde_json::to_string_pretty(config)?;
         tokio::fs::write(path, content).await?;
