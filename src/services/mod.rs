@@ -13,4 +13,4 @@ pub use database::{
     is_self, Contact, DatabaseService, MediaType, Message, MessageStatus, NewMessage, SELF_JID,
 };
 pub use webhook::{WebhookEvent, WebhookMessageData, WebhookService};
-pub use whatsapp::{InstanceManager, ChatService, ChatServiceTrait, WhatsAppInstance};
+pub use whatsapp::{AccountManager, ChatService, ChatServiceTrait, WhatsAppAccount};

@@ -38,7 +38,7 @@ pub struct BrowserServiceConfig {
 }
 
 impl BrowserServiceConfig {
-    /// Create config for a specific instance instance
+    /// Create config for a specific account account
     pub fn for_account(
         account_data_dir: &PathBuf,
         headless: bool,
@@ -60,7 +60,7 @@ impl BrowserServiceConfig {
     }
 }
 
-/// Browser service for managing Chrome browser instances
+/// Browser service for managing Chrome browser accounts
 pub struct BrowserService {
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,

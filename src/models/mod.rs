@@ -1,4 +1,4 @@
-pub mod instance;
+pub mod account;
 pub mod auth;
 pub mod chat;
 pub mod config;
@@ -14,25 +14,24 @@ pub use domain::*;
 // Re-export auth types
 pub use auth::AuthenticatedUser;
 
-// Re-export instance types
-pub use instance::{
+// Re-export account types
+pub use account::{
     phone_to_dir_name,
     validate_phone_number,
-    InstanceActionResponse,
-    InstanceSetupConfig,
-    InstanceId,
-    InstanceInfo,
-    InstanceListResponse,
-    InstanceMetadata,
-    InstanceStatus,
-    CreateInstanceRequest,
-    CreateInstanceResponse,
-    DeleteInstanceQuery,
-    DeleteInstanceResponse,
+    AccountActionResponse,
+    AccountSetupConfig,
+    AccountId,
+    AccountInfo,
+    AccountListResponse,
+    AccountMetadata,
+    AccountStatus,
+    CreateAccountRequest,
+    CreateAccountResponse,
+    DeleteAccountQuery,
+    DeleteAccountResponse,
     // API query/response types
-    ListInstancesQuery,
+    ListAccountsQuery,
     PhoneLinkRequest,
-    PrivacySettings,
     ProfileInfo,
     WhatsAppStatusResponse,
 };

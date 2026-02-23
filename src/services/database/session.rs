@@ -35,14 +35,14 @@ impl DatabaseService {
         }
     }
 
-    /// Check and handle instance change (clear DB if different instance)
+    /// Check and handle account change (clear DB if different account)
     pub fn handle_login(&self, phone_number: &str) -> Result<bool> {
         let previous = self.get_session("logged_in_phone")?;
 
         if let Some(prev_phone) = previous {
             if prev_phone != phone_number {
                 warn!(
-                    "Different instance detected (was: {}, now: {}). Clearing database.",
+                    "Different account detected (was: {}, now: {}). Clearing database.",
                     prev_phone, phone_number
                 );
                 self.clear_all()?;
@@ -60,7 +60,7 @@ impl DatabaseService {
         conn.execute("DELETE FROM messages", [])?;
         conn.execute("DELETE FROM contacts", [])?;
         conn.execute("DELETE FROM session", [])?;
-        info!("Database cleared (logout/instance change)");
+        info!("Database cleared (logout/account change)");
         Ok(())
     }
 }

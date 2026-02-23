@@ -19,27 +19,27 @@ pub struct AppConfig {
     pub mcp: McpConfig,
     #[serde(default)]
     pub webhooks: WebhookConfig,
-    /// Multi-instance configuration
+    /// Multi-account configuration
     #[serde(default)]
-    pub instances: Option<InstancesConfig>,
+    pub accounts: Option<AccountsConfig>,
 }
 
-/// Multi-instance configuration
+/// Multi-account configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct InstancesConfig {
-    /// Base directory for all instance data (default: ~/.was/instances)
+pub struct AccountsConfig {
+    /// Base directory for all account data (default: ~/.was/accounts)
     pub base_directory: Option<PathBuf>,
-    /// Default browser settings for new instances
+    /// Default browser settings for new accounts
     #[serde(default)]
-    pub defaults: InstanceDefaultsConfig,
+    pub defaults: AccountDefaultsConfig,
 }
 
-/// Default settings for new instances
+/// Default settings for new accounts
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct InstanceDefaultsConfig {
+pub struct AccountDefaultsConfig {
     /// Default headless mode
     pub headless: Option<bool>,
-    /// Auto-start instances on server startup
+    /// Auto-start accounts on server startup
     pub auto_start: bool,
 }
 
@@ -207,7 +207,7 @@ impl Default for AppConfig {
             swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
-            instances: None,
+            accounts: None,
         }
     }
 }
