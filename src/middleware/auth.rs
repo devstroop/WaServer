@@ -7,8 +7,10 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
+    Json,
 };
+use serde_json::json;
 
 use crate::{models::auth::AuthenticatedUser, utils::logging::CorrelationId};
 
@@ -37,12 +39,8 @@ pub async fn auth_middleware(
     headers: HeaderMap,
     mut request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
-    // Skip auth for public endpoints
-    let path = request.uri().path();
-    if is_public_path(path) {
-        return Ok(next.run(request).await);
-    }
+) -> Result<Response, Response> {
+    let path = request.uri().path().to_string();
 
     // Get correlation ID for logging
     let correlation_id = request
@@ -79,21 +77,18 @@ pub async fn auth_middleware(
         "Authentication failed - invalid or missing token"
     );
 
-    Err(StatusCode::UNAUTHORIZED)
-}
-
-/// Check if path is public (no auth required)
-fn is_public_path(path: &str) -> bool {
-    path.starts_with("/health")
-        || path.starts_with("/ready")
-        || path.starts_with("/live")
-        || path.starts_with("/metrics")
-        || path.starts_with("/api-docs")
-        || path.starts_with("/docs")
-        || path.starts_with("/api/health")
-        || path.starts_with("/api/ready")
-        || path.starts_with("/api/live")
-        || path.starts_with("/api/metrics")
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "errors": [{
+                "status_code": 401,
+                "message": "Authentication failed - invalid or missing token",
+                "path": path,
+                "correlation_id": correlation_id.0
+            }]
+        })),
+    )
+        .into_response())
 }
 
 #[cfg(test)]
@@ -101,22 +96,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_public_paths() {
-        assert!(is_public_path("/health"));
-        assert!(is_public_path("/health/live"));
-        assert!(is_public_path("/api-docs"));
-        assert!(is_public_path("/api-docs/openapi.json"));
-        assert!(is_public_path("/docs"));
-        assert!(is_public_path("/api/health"));
-        assert!(is_public_path("/api/ready"));
-        assert!(is_public_path("/api/live"));
-        assert!(is_public_path("/api/metrics"));
-
-        // Protected paths (require auth)
-        assert!(!is_public_path("/mcp"));
-        assert!(!is_public_path("/api/v1/accounts"));
-        assert!(!is_public_path("/api/v1/account/status"));
-        assert!(!is_public_path("/api/v1/chats"));
-        assert!(!is_public_path("/api/v1/messages"));
+    fn test_auth_state_creation() {
+        let state = AuthState::new("test-secret-key-12345".to_string());
+        assert_eq!(state.secret_key, "test-secret-key-12345");
     }
 }
