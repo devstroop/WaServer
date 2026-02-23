@@ -2,7 +2,7 @@
 //!
 //! Production-ready middleware for request correlation, metrics, authentication, and security.
 
-pub mod account;
+pub mod instance;
 pub mod auth;
 
 use axum::{extract::Request, http::HeaderMap, middleware::Next, response::Response};
@@ -11,8 +11,8 @@ use tracing::Instrument;
 
 use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 
-// Re-export account middleware
-pub use account::{account_middleware, CurrentAccount};
+// Re-export instance middleware
+pub use instance::{instance_middleware, CurrentInstance};
 
 // Re-export auth middleware and types
 pub use auth::{auth_middleware, AuthState};
