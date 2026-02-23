@@ -1,7 +1,7 @@
 //! Account Middleware
 //!
 //! Extracts X-Account-Id header and adds the account to request extensions.
-//! Only needed for chat and message routes (account routes use path params).
+//! Currently unused — all routes use path parameters for account context.
 
 use std::sync::Arc;
 
@@ -21,11 +21,7 @@ use crate::services::{AccountManager, WhatsAppAccount};
 pub struct CurrentAccount(pub Arc<WhatsAppAccount>);
 
 /// Extract account from X-Account-Id header
-/// Only applies to routes that require account context via header:
-/// - /api/v1/chats/*
-/// - /api/v1/messages/*
-///
-/// Note: /api/v1/account/* routes now use path params instead
+/// Currently unused — all routes use path params with State<Arc<AccountManager>>.
 pub async fn account_middleware(
     State(manager): State<Arc<AccountManager>>,
     headers: HeaderMap,
@@ -35,10 +31,6 @@ pub async fn account_middleware(
     let path = request.uri().path();
 
     // Routes that don't need account context via header
-    // - /api/v1/auth/* (local JWT auth)
-    // - /api/v1/accounts/* (account management - uses path param)
-    // - /api/v1/account/* (now uses path params)
-    // - /health, /api-docs, etc.
     if !requires_account_header(path) {
         return Ok(next.run(request).await);
     }
@@ -111,12 +103,10 @@ mod tests {
         assert!(requires_account_header("/api/v1/messages/123"));
 
         // Should NOT require header (uses path params or no account needed)
-        assert!(!requires_account_header("/api/v1/account/123/status"));
-        assert!(!requires_account_header("/api/v1/account/123/profile"));
-        assert!(!requires_account_header("/api/v1/auth/login"));
-        assert!(!requires_account_header("/api/v1/auth/current-user"));
-        assert!(!requires_account_header("/api/v1/accounts"));
-        assert!(!requires_account_header("/api/v1/accounts/business-1"));
+        assert!(!requires_account_header("/api/v1/instances/123/status"));
+        assert!(!requires_account_header("/api/v1/instances/123/profile"));
+        assert!(!requires_account_header("/api/v1/instances"));
+        assert!(!requires_account_header("/api/v1/instances/business-1"));
         assert!(!requires_account_header("/health"));
         assert!(!requires_account_header("/api-docs"));
     }
