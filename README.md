@@ -112,10 +112,10 @@ GET /api/v1/chats/events
 ### Health
 
 ```bash
-GET /health          # Health check
-GET /ready           # Readiness probe (K8s)
-GET /live            # Liveness probe (K8s)
-GET /metrics         # Service metrics
+GET /api/health      # Health check
+GET /api/ready       # Readiness probe (K8s)
+GET /api/live        # Liveness probe (K8s)
+GET /api/metrics     # Service metrics
 ```
 
 ### Examples
