@@ -123,7 +123,7 @@ async fn run_server(
             instances::start_instance,
             instances::stop_instance,
             instances::discover_instances,
-            instances::live_screenshot,
+            instances::screenshot,
             instances::get_instance_config,
             instances::update_instance_config,
             // WhatsApp operations (uses path param)
@@ -165,8 +165,9 @@ async fn run_server(
         modifiers(&SecurityAddon),
         tags(
             (name = "Health", description = "Server health and metrics endpoints"),
-            (name = "Instances", description = "Instance management (create, list, delete, start, stop)"),
-            (name = "WhatsApp", description = "WhatsApp operations: authentication, profile, privacy, messaging")
+            (name = "Instances", description = "Instance lifecycle management (CRUD, start, stop, config)"),
+            (name = "WhatsApp", description = "WhatsApp operations: linking, profile, privacy"),
+            (name = "Messaging", description = "Chat and message operations")
         ),
         info(
             title = "WhatsApp Server - API",
@@ -221,35 +222,38 @@ async fn run_server(
         .route("/metrics", get(health::get_metrics))
         .with_state(account_manager.clone());
 
-    // Instance management routes (auth required)
+    // All instance routes (management + WhatsApp ops) under one namespace
     let instances_routes = Router::new()
+        // Instance CRUD
         .route("/", get(instances::list_instances))
         .route("/", post(instances::create_instance))
         .route("/discover", post(instances::discover_instances))
         .route("/:instance_id", get(instances::get_instance))
         .route("/:instance_id", delete(instances::delete_instance))
+        // Instance lifecycle
         .route("/:instance_id/start", post(instances::start_instance))
         .route("/:instance_id/stop", post(instances::stop_instance))
-        .route("/:instance_id/live", get(instances::live_screenshot))
+        .route("/:instance_id/screenshot", get(instances::screenshot))
         .route("/:instance_id/config", get(instances::get_instance_config))
-        .route("/:instance_id/config", put(instances::update_instance_config))
-        .layer(middleware::from_fn_with_state(
-            auth_state.clone(),
-            auth_middleware,
-        ))
-        .with_state(account_manager.clone());
-
-    // Mount health routes at /api (no auth required)
-    app = app.nest("/api", health_routes);
-
-    // WhatsApp operations routes (profile, privacy, link/unlink, chats, messages)
-    let whatsapp_routes = Router::new()
+        .route(
+            "/:instance_id/config",
+            put(instances::update_instance_config),
+        )
+        // WhatsApp auth & linking
         .route("/:instance_id/status", get(account::get_account_status))
-        .route("/:instance_id/unlink", delete(account::unlink))
         .route("/:instance_id/link/qr", get(account::get_qr_code))
         .route("/:instance_id/link/phone", post(account::link_phone))
-        .route("/:instance_id/profile", get(account::get_profile).put(account::update_profile))
-        .route("/:instance_id/profile/privacy", get(account::get_privacy).put(account::update_privacy))
+        .route("/:instance_id/unlink", delete(account::unlink))
+        // Profile & privacy
+        .route(
+            "/:instance_id/profile",
+            get(account::get_profile).put(account::update_profile),
+        )
+        .route(
+            "/:instance_id/privacy",
+            get(account::get_privacy).put(account::update_privacy),
+        )
+        // Chats & messages
         .route("/:instance_id/chats", get(chat::list_chats))
         .route("/:instance_id/chats/events", get(chat::watch_messages))
         .route("/:instance_id/chats/:chat_id", get(chat::get_chat_messages))
@@ -261,25 +265,22 @@ async fn run_server(
         ))
         .with_state(account_manager.clone());
 
-    // Mount all v1 routes
-    app = app.nest(
-        "/api/v1",
-        Router::new()
-            .nest("/instances", instances_routes)
-            .nest("/whatsapp", whatsapp_routes),
-    );
+    // Mount health routes at /api (no auth required)
+    app = app.nest("/api", health_routes);
 
-    info!("📖 API at /api/v1");
+    // Mount all v1 routes
+    app = app.nest("/api/v1/instances", instances_routes);
+
+    info!("📖 API at /api/v1/instances");
 
     // Swagger UI documentation (configurable)
     if config.swagger.enabled {
         use utoipa_swagger_ui::SwaggerUi;
-        
+
         info!("📚 Swagger UI at {}", config.swagger.path);
         let swagger_path = config.swagger.path.clone();
-        app = app.merge(
-            SwaggerUi::new(swagger_path).url("/api-docs/openapi.json", ApiDoc::openapi()),
-        );
+        app = app
+            .merge(SwaggerUi::new(swagger_path).url("/api-docs/openapi.json", ApiDoc::openapi()));
     } else {
         info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
