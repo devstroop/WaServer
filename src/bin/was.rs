@@ -152,14 +152,14 @@ async fn run_server(
         components(
             schemas(
                 // Health
-                health::HealthResponse, health::ServiceHealth,
+                health::HealthResponse, health::ServiceHealth, health::StatusResponse,
                 // Auth
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
                 // Chat
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
                 // Instance management
                 CreateInstanceRequest, CreateInstanceResponse, InstanceListResponse, InstanceInfo, InstanceStatus,
-                DeleteInstanceResponse, DeleteInstanceQuery, InstanceActionResponse, ListInstancesQuery,
+                DeleteInstanceResponse, DeleteInstanceQuery, InstanceActionResponse, ListInstancesQuery, BrowserOverrides,
                 // Instance configuration
                 InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, WebhookEndpoint, InstanceRateLimits,
                 UpdateInstanceConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,

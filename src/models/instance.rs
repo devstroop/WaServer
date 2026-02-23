@@ -17,9 +17,9 @@ pub type InstanceId = Uuid;
 pub struct InstanceSetupConfig {
     /// Unique instance identifier (UUID)
     pub id: InstanceId,
-    /// Phone number in E.164 format (e.g., "1234567890")
-    pub phone_number: String,
-    /// Optional display name for the instance
+    /// Phone number in E.164 format (populated after WhatsApp login)
+    pub phone_number: Option<String>,
+    /// Optional display name for the instance (populated after WhatsApp login)
     pub display_name: Option<String>,
     /// Data directory for this instance (browser profile, database, etc.)
     pub data_dir: PathBuf,
@@ -289,7 +289,7 @@ impl Default for InstanceSetupConfig {
     fn default() -> Self {
         Self {
             id: Uuid::nil(),
-            phone_number: String::new(),
+            phone_number: None,
             display_name: None,
             data_dir: PathBuf::new(),
             browser: BrowserOverrides::default(),
@@ -304,9 +304,9 @@ pub struct InstanceInfo {
     /// Unique instance identifier (UUID)
     #[schema(value_type = String, format = "uuid")]
     pub id: InstanceId,
-    /// Phone number in E.164 format
-    pub phone_number: String,
-    /// Display name
+    /// Phone number in E.164 format (populated after WhatsApp login)
+    pub phone_number: Option<String>,
+    /// Display name (populated after WhatsApp login)
     pub display_name: Option<String>,
     /// Current instance status (stopped, starting, running, error)
     pub status: InstanceStatus,
@@ -343,9 +343,9 @@ impl Default for InstanceStatus {
 pub struct InstanceMetadata {
     /// Unique instance identifier (UUID)
     pub id: InstanceId,
-    /// Phone number in E.164 format
-    pub phone_number: String,
-    /// Display name
+    /// Phone number in E.164 format (populated after WhatsApp login)
+    pub phone_number: Option<String>,
+    /// Display name (populated after WhatsApp login)
     pub display_name: Option<String>,
     /// Timestamp when instance was created
     pub created_at: DateTime<Utc>,
@@ -355,10 +355,10 @@ pub struct InstanceMetadata {
 
 impl InstanceMetadata {
     /// Create new metadata for a fresh instance
-    pub fn new(id: InstanceId, phone_number: &str, display_name: Option<String>) -> Self {
+    pub fn new(id: InstanceId, phone_number: Option<String>, display_name: Option<String>) -> Self {
         Self {
             id,
-            phone_number: phone_number.to_string(),
+            phone_number,
             display_name,
             created_at: Utc::now(),
             first_linked_at: None,
@@ -443,13 +443,11 @@ pub struct ProfileInfo {
 /// Request to create a new instance
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateInstanceRequest {
-    /// Phone number in E.164 format (e.g., "+1234567890")
-    pub phone_number: String,
-    /// Optional display name
-    pub display_name: Option<String>,
     /// Browser configuration overrides
+    #[serde(default)]
     pub browser: Option<BrowserOverrides>,
     /// Auto-start browser on server startup
+    #[serde(default)]
     pub auto_start: Option<bool>,
 }
 
@@ -459,8 +457,6 @@ pub struct CreateInstanceResponse {
     /// Unique instance identifier (UUID)
     #[schema(value_type = String, format = "uuid")]
     pub id: InstanceId,
-    /// Phone number in E.164 format
-    pub phone_number: String,
     pub status: String,
     pub data_directory: String,
     pub created_at: String,
@@ -485,8 +481,8 @@ pub struct WhatsAppStatusResponse {
     /// Unique instance identifier (UUID)
     #[schema(value_type = String, format = "uuid")]
     pub instance_id: InstanceId,
-    /// Phone number in E.164 format
-    pub phone_number: String,
+    /// Phone number in E.164 format (populated after WhatsApp login)
+    pub phone_number: Option<String>,
     /// Instance status (stopped, starting, running, error)
     pub status: String,
     /// Whether WhatsApp Web is authorized

@@ -7,7 +7,7 @@ use super::instance::WhatsAppInstance;
 use crate::{
     config::AppConfig,
     models::instance::{
-        phone_to_dir_name, validate_phone_number, InstanceSetupConfig, InstanceId, InstanceListResponse,
+        validate_phone_number, InstanceSetupConfig, InstanceId, InstanceListResponse,
         InstanceMetadata, CreateInstanceRequest, CreateInstanceResponse,
     },
 };
@@ -71,45 +71,17 @@ impl InstanceManager {
         &self,
         request: CreateInstanceRequest,
     ) -> Result<CreateInstanceResponse> {
-        // Validate and normalize phone number
-        let phone_number = validate_phone_number(&request.phone_number)
-            .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
-
-        // Check if phone number is already used
-        {
-            let phone_map = self.phone_to_id.read().await;
-            if phone_map.contains_key(&phone_number) {
-                return Err(anyhow!(
-                    "Instance for phone '{}' already exists",
-                    phone_number
-                ));
-            }
-        }
-
-        // Use phone digits as directory name
-        let dir_name = phone_to_dir_name(&phone_number);
-        let instance_dir = self.base_dir.join(&dir_name);
-
-        // Check if directory already exists (instance was previously created)
-        if instance_dir.exists() {
-            // Check for metadata file
-            let metadata_path = instance_dir.join(METADATA_FILE);
-            if metadata_path.exists() {
-                return Err(anyhow!(
-                    "Instance directory for phone '{}' already exists. Use discover_instances() to load it.",
-                    phone_number
-                ));
-            }
-        }
-
         // Generate new UUID for this instance
         let instance_id = Uuid::new_v4();
 
-        // Create instance config
+        // Use UUID as directory name
+        let instance_dir = self.base_dir.join(instance_id.to_string());
+
+        // Create instance config (phone_number and display_name are None at creation)
         let setup_config = InstanceSetupConfig {
             id: instance_id,
-            phone_number: phone_number.clone(),
-            display_name: request.display_name.clone(),
+            phone_number: None,
+            display_name: None,
             data_dir: instance_dir.clone(),
             browser: request.browser.clone().unwrap_or_default(),
             auto_start: request.auto_start.unwrap_or(false),
@@ -123,19 +95,11 @@ impl InstanceManager {
             let mut instances = self.instances.write().await;
             instances.insert(instance_id, instance);
         }
-        {
-            let mut phone_map = self.phone_to_id.write().await;
-            phone_map.insert(phone_number.clone(), instance_id);
-        }
 
-        info!(
-            "Created instance '{}' for phone '{}'",
-            instance_id, phone_number
-        );
+        info!("Created instance '{}'", instance_id);
 
         Ok(CreateInstanceResponse {
             id: instance_id,
-            phone_number,
             status: "created".to_string(),
             data_directory: instance_dir.to_string_lossy().to_string(),
             created_at: Utc::now().to_rfc3339(),
@@ -176,6 +140,36 @@ impl InstanceManager {
         None
     }
 
+    /// Register a phone number for an instance (called after WhatsApp authentication)
+    pub async fn register_phone(&self, instance_id: InstanceId, phone: &str) -> Result<()> {
+        let phone = validate_phone_number(phone)
+            .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
+
+        // Check for conflict: another instance already has this phone
+        {
+            let phone_map = self.phone_to_id.read().await;
+            if let Some(&existing_id) = phone_map.get(&phone) {
+                if existing_id != instance_id {
+                    return Err(anyhow!(
+                        "Phone '{}' is already registered to instance '{}'",
+                        phone, existing_id
+                    ));
+                }
+                // Already registered to this instance — nothing to do
+                return Ok(());
+            }
+        }
+
+        // Register the mapping
+        {
+            let mut phone_map = self.phone_to_id.write().await;
+            phone_map.insert(phone.clone(), instance_id);
+        }
+
+        info!("Registered phone '{}' for instance '{}'", phone, instance_id);
+        Ok(())
+    }
+
     /// Get an instance, returning an error if not found
     pub async fn get_instance_or_error(&self, id: &str) -> Result<Arc<WhatsAppInstance>> {
         self.get_instance(id)
@@ -210,16 +204,17 @@ impl InstanceManager {
             .ok_or_else(|| anyhow!("Instance '{}' not found", id))?;
 
         let instance_id = instance.id;
-        let phone_number = instance.phone_number.clone();
+        let phone_number = instance.phone_number().map(|s| s.to_string());
 
-        // Remove from both maps
+        // Remove from instances map
         {
             let mut instances = self.instances.write().await;
             instances.remove(&instance_id);
         }
-        {
+        // Remove from phone map if phone was set
+        if let Some(ref phone) = phone_number {
             let mut phone_map = self.phone_to_id.write().await;
-            phone_map.remove(&phone_number);
+            phone_map.remove(phone);
         }
 
         // Stop the instance first
@@ -231,19 +226,19 @@ impl InstanceManager {
         }
 
         if delete_data {
-            let dir_name = phone_to_dir_name(&phone_number);
-            let instance_dir = self.base_dir.join(&dir_name);
+            // Directory is UUID-based
+            let instance_dir = self.base_dir.join(instance_id.to_string());
             if instance_dir.exists() {
                 tokio::fs::remove_dir_all(&instance_dir).await?;
                 info!(
-                    "Deleted instance '{}' (phone: {}) and all data",
-                    instance_id, phone_number
+                    "Deleted instance '{}' and all data",
+                    instance_id
                 );
             }
         } else {
             info!(
-                "Deleted instance '{}' (phone: {}) (data preserved)",
-                instance_id, phone_number
+                "Deleted instance '{}' (data preserved)",
+                instance_id
             );
         }
 
@@ -318,7 +313,7 @@ impl InstanceManager {
 
             // Load the instance
             match self
-                .load_instance_from_dir(instance_id, &phone_number, &path, &metadata)
+                .load_instance_from_dir(instance_id, phone_number.as_deref(), &path, &metadata)
                 .await
             {
                 Ok(()) => {
@@ -341,35 +336,36 @@ impl InstanceManager {
     async fn load_instance_from_dir(
         &self,
         instance_id: InstanceId,
-        phone_number: &str,
+        phone_number: Option<&str>,
         data_dir: &PathBuf,
         metadata: &InstanceMetadata,
     ) -> Result<()> {
         // Create config from metadata
         let setup_config = InstanceSetupConfig {
             id: instance_id,
-            phone_number: phone_number.to_string(),
+            phone_number: phone_number.map(|s| s.to_string()),
             display_name: metadata.display_name.clone(),
             data_dir: data_dir.clone(),
             browser: Default::default(),
             auto_start: false,
         };
 
-        // Create instance instance
+        // Create instance
         let instance = Arc::new(WhatsAppInstance::new(setup_config, self.config.clone()).await?);
 
-        // Store in both maps
+        // Store in instances map
         {
             let mut instances = self.instances.write().await;
             instances.insert(instance_id, instance);
         }
-        {
+        // Store in phone map if phone is known
+        if let Some(phone) = phone_number {
             let mut phone_map = self.phone_to_id.write().await;
-            phone_map.insert(phone_number.to_string(), instance_id);
+            phone_map.insert(phone.to_string(), instance_id);
         }
 
         info!(
-            "Loaded instance '{}' (phone: {}) from {:?}",
+            "Loaded instance '{}' (phone: {:?}) from {:?}",
             instance_id, phone_number, data_dir
         );
         Ok(())

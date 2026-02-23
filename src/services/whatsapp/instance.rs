@@ -45,12 +45,10 @@ const METADATA_FILE: &str = "instance.json";
 const INSTANCE_CONFIG_FILE: &str = "instance_config.json";
 
 /// Self-contained WhatsApp instance with isolated resources
-/// Each instance is identified by UUID and bound to exactly one phone number
+/// Each instance is identified by UUID. Phone/display_name live in metadata after WhatsApp login.
 pub struct WhatsAppInstance {
     /// Instance identifier (UUID)
     pub id: InstanceId,
-    /// Phone number in E.164 format
-    pub phone_number: String,
     /// Instance configuration
     _config: InstanceSetupConfig,
     /// Global app config
@@ -89,8 +87,8 @@ impl WhatsAppInstance {
         let data_dir = config.data_dir.clone();
 
         info!(
-            "Creating instance '{}' (phone: {}) at {:?}",
-            config.id, config.phone_number, data_dir
+            "Creating instance '{}' at {:?}",
+            config.id, data_dir
         );
 
         // Ensure instance directories exist
@@ -136,7 +134,6 @@ impl WhatsAppInstance {
 
         Ok(Self {
             id: config.id,
-            phone_number: config.phone_number.clone(),
             _config: config,
             _app_config: app_config,
             data_dir,
@@ -169,8 +166,7 @@ impl WhatsAppInstance {
             debug!("Loaded metadata for instance '{}'", config.id);
             Ok(metadata)
         } else {
-            let metadata =
-                InstanceMetadata::new(config.id, &config.phone_number, config.display_name.clone());
+            let metadata = InstanceMetadata::new(config.id, config.phone_number.clone(), config.display_name.clone());
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
             info!("Created new metadata for instance '{}'", config.id);
             Ok(metadata)
@@ -360,9 +356,9 @@ impl WhatsAppInstance {
         self.status.read().await.clone()
     }
 
-    /// Get phone number
-    pub fn phone_number(&self) -> &str {
-        &self.phone_number
+    /// Get phone number from metadata (None if not yet authenticated with WhatsApp)
+    pub fn phone_number(&self) -> Option<String> {
+        self.metadata.try_read().ok().and_then(|m| m.phone_number.clone())
     }
 
     /// Get instance info
@@ -380,7 +376,7 @@ impl WhatsAppInstance {
 
         InstanceInfo {
             id: self.id,
-            phone_number: self.phone_number.clone(),
+            phone_number: metadata.phone_number.clone(),
             display_name: metadata.display_name.clone(),
             status,
             authorized,
@@ -389,36 +385,35 @@ impl WhatsAppInstance {
         }
     }
 
-    /// Called when WhatsApp Web authentication completes
-    /// Verifies the phone matches the instance's phone_number
+    /// Called when WhatsApp Web authentication completes.
+    /// Sets the phone number and display name from the authenticated session.
     pub async fn on_whatsapp_authenticated(&self, phone: &str) -> Result<()> {
-        // Normalize both phone numbers for comparison
-        let instance_phone = crate::models::instance::validate_phone_number(&self.phone_number)
-            .map_err(|e| anyhow!("Invalid instance phone: {}", e))?;
         let auth_phone = crate::models::instance::validate_phone_number(phone)
             .map_err(|e| anyhow!("Invalid authenticated phone: {}", e))?;
 
-        if instance_phone != auth_phone {
-            // REJECT: Different phone trying to use this instance
-            return Err(anyhow!(
-                "WhatsApp authenticated with phone {} but this instance is for {}. \
-                 Create a new instance for phone {}.",
-                auth_phone,
-                instance_phone,
-                auth_phone
-            ));
+        // Check if another phone was already bound
+        let current_phone = self.metadata.read().await.phone_number.clone();
+        if let Some(ref existing) = current_phone {
+            if *existing != auth_phone {
+                return Err(anyhow!(
+                    "Instance is already bound to phone {}. Cannot rebind to {}.",
+                    existing, auth_phone
+                ));
+            }
         }
 
-        // Update first_linked_at if not set
+        // Update metadata
         let mut metadata = self.metadata.write().await;
+        if metadata.phone_number.is_none() {
+            metadata.phone_number = Some(auth_phone.clone());
+        }
         if metadata.first_linked_at.is_none() {
             metadata.first_linked_at = Some(Utc::now());
-            drop(metadata);
-            self.save_metadata().await?;
-            info!("Instance '{}' first linked", self.id);
         }
+        drop(metadata);
+        self.save_metadata().await?;
 
-        debug!("Phone {} authenticated to instance '{}'", phone, self.id);
+        info!("Instance '{}' authenticated with phone '{}'", self.id, auth_phone);
         Ok(())
     }
 
