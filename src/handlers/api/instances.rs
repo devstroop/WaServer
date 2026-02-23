@@ -15,11 +15,11 @@ use axum::{
 use serde_json::json;
 
 use crate::{
-    models::account::{
-        AccountActionResponse, CreateAccountRequest, DeleteAccountQuery, DeleteAccountResponse,
-        ListAccountsQuery, UpdateInstanceConfigRequest,
+    models::instance::{
+        InstanceActionResponse, CreateInstanceRequest, DeleteInstanceQuery, DeleteInstanceResponse,
+        ListInstancesQuery, UpdateInstanceConfigRequest,
     },
-    services::AccountManager,
+    services::InstanceManager,
 };
 
 // === API Handlers ===
@@ -30,16 +30,16 @@ use crate::{
     path = "/api/v1/instances",
     tag = "Instances",
     responses(
-        (status = 200, description = "List of instances", body = AccountListResponse),
+        (status = 200, description = "List of instances", body = InstanceListResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn list_instances(
-    State(manager): State<Arc<AccountManager>>,
-    Query(_query): Query<ListAccountsQuery>,
+    State(manager): State<Arc<InstanceManager>>,
+    Query(_query): Query<ListInstancesQuery>,
 ) -> impl IntoResponse {
-    let accounts = manager.list_accounts().await;
-    Json(accounts)
+    let instances = manager.list_instances().await;
+    Json(instances)
 }
 
 /// Create a new instance
@@ -47,19 +47,19 @@ pub async fn list_instances(
     post,
     path = "/api/v1/instances",
     tag = "Instances",
-    request_body = CreateAccountRequest,
+    request_body = CreateInstanceRequest,
     responses(
-        (status = 201, description = "Instance created", body = CreateAccountResponse),
+        (status = 201, description = "Instance created", body = CreateInstanceResponse),
         (status = 400, description = "Invalid request"),
         (status = 409, description = "Instance already exists"),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn create_instance(
-    State(manager): State<Arc<AccountManager>>,
-    Json(request): Json<CreateAccountRequest>,
+    State(manager): State<Arc<InstanceManager>>,
+    Json(request): Json<CreateInstanceRequest>,
 ) -> impl IntoResponse {
-    match manager.create_account(request).await {
+    match manager.create_instance(request).await {
         Ok(response) => (StatusCode::CREATED, Json(json!(response))).into_response(),
         Err(e) => {
             let error_msg = e.to_string();
@@ -91,18 +91,18 @@ pub async fn create_instance(
         ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
     ),
     responses(
-        (status = 200, description = "Instance info", body = AccountInfo),
+        (status = 200, description = "Instance info", body = InstanceInfo),
         (status = 404, description = "Instance not found"),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn get_instance(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    match manager.get_account(&instance_id).await {
-        Some(account) => {
-            let info = account.info().await;
+    match manager.get_instance(&instance_id).await {
+        Some(instance) => {
+            let info = instance.info().await;
             Json(json!(info)).into_response()
         }
         None => (
@@ -126,27 +126,27 @@ pub async fn get_instance(
         ("delete_data" = bool, Query, description = "Delete all instance data")
     ),
     responses(
-        (status = 200, description = "Instance deleted", body = DeleteAccountResponse),
+        (status = 200, description = "Instance deleted", body = DeleteInstanceResponse),
         (status = 404, description = "Instance not found"),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn delete_instance(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
-    Query(query): Query<DeleteAccountQuery>,
+    Query(query): Query<DeleteInstanceQuery>,
 ) -> impl IntoResponse {
     match manager
-        .delete_account(&instance_id, query.delete_data)
+        .delete_instance(&instance_id, query.delete_data)
         .await
     {
-        Ok(account_id) => Json(json!(DeleteAccountResponse {
+        Ok(instance_id) => Json(json!(DeleteInstanceResponse {
             message: if query.delete_data {
                 "Instance and all data deleted".to_string()
             } else {
                 "Instance deleted, data preserved".to_string()
             },
-            account_id,
+            instance_id,
             data_deleted: query.delete_data,
         }))
         .into_response(),
@@ -170,17 +170,17 @@ pub async fn delete_instance(
         ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
     ),
     responses(
-        (status = 200, description = "Instance started", body = AccountActionResponse),
+        (status = 200, description = "Instance started", body = InstanceActionResponse),
         (status = 404, description = "Instance not found"),
         (status = 409, description = "Instance already running"),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn start_instance(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
@@ -194,12 +194,12 @@ pub async fn start_instance(
         }
     };
 
-    let account_id = account.id;
+    let instance_id = instance.id;
 
-    match account.start().await {
-        Ok(()) => Json(json!(AccountActionResponse {
+    match instance.start().await {
+        Ok(()) => Json(json!(InstanceActionResponse {
             message: "Instance started successfully".to_string(),
-            account_id,
+            instance_id,
         }))
         .into_response(),
         Err(e) => {
@@ -232,16 +232,16 @@ pub async fn start_instance(
         ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
     ),
     responses(
-        (status = 200, description = "Instance stopped", body = AccountActionResponse),
+        (status = 200, description = "Instance stopped", body = InstanceActionResponse),
         (status = 404, description = "Instance not found"),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn stop_instance(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
@@ -255,12 +255,12 @@ pub async fn stop_instance(
         }
     };
 
-    let account_id = account.id;
+    let instance_id = instance.id;
 
-    match account.stop().await {
-        Ok(()) => Json(json!(AccountActionResponse {
+    match instance.stop().await {
+        Ok(()) => Json(json!(InstanceActionResponse {
             message: "Instance stopped successfully".to_string(),
-            account_id,
+            instance_id,
         }))
         .into_response(),
         Err(e) => (
@@ -284,8 +284,8 @@ pub async fn stop_instance(
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn discover_instances(State(manager): State<Arc<AccountManager>>) -> impl IntoResponse {
-    match manager.discover_accounts().await {
+pub async fn discover_instances(State(manager): State<Arc<InstanceManager>>) -> impl IntoResponse {
+    match manager.discover_instances().await {
         Ok(discovered) => Json(json!({
             "message": format!("Discovered {} instances", discovered.len()),
             "discovered": discovered,
@@ -318,10 +318,10 @@ pub async fn discover_instances(State(manager): State<Arc<AccountManager>>) -> i
     security(("bearer_auth" = []))
 )]
 pub async fn screenshot(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
@@ -335,7 +335,7 @@ pub async fn screenshot(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if !instance.browser_service().is_running().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
@@ -345,7 +345,7 @@ pub async fn screenshot(
         ).into_response();
     }
 
-    match account.browser_service().screenshot().await {
+    match instance.browser_service().screenshot().await {
         Ok(png_data) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "image/png")],
@@ -378,10 +378,10 @@ pub async fn screenshot(
     security(("bearer_auth" = []))
 )]
 pub async fn get_instance_config(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
@@ -395,7 +395,7 @@ pub async fn get_instance_config(
         }
     };
 
-    let config = account.get_config().await;
+    let config = instance.get_config().await;
     Json(config).into_response()
 }
 
@@ -416,11 +416,11 @@ pub async fn get_instance_config(
     security(("bearer_auth" = []))
 )]
 pub async fn update_instance_config(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
     Path(instance_id): Path<String>,
     Json(request): Json<UpdateInstanceConfigRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&instance_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
@@ -434,7 +434,7 @@ pub async fn update_instance_config(
         }
     };
 
-    match account.update_config(request).await {
+    match instance.update_config(request).await {
         Ok(config) => Json(json!({
             "message": "Configuration updated successfully",
             "config": config,
