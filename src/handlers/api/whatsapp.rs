@@ -196,22 +196,31 @@ pub async fn link_phone(
             .into_response();
     }
 
-    // Validate that the phone number matches the instance
-    let instance_phone = instance.phone_number();
-    let normalized_request = crate::models::instance::validate_phone_number(&request.phone_number);
+    // Validate phone number from request
+    let req_phone = match crate::models::instance::validate_phone_number(&request.phone_number) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "invalid_phone",
+                    "message": e
+                })),
+            )
+                .into_response();
+        }
+    };
 
-    if let Ok(req_phone) = normalized_request {
-        let normalized_account = crate::models::instance::validate_phone_number(instance_phone)
-            .unwrap_or_else(|_| instance_phone.to_string());
-
-        if req_phone != normalized_account {
+    // If instance already has a phone bound, it must match
+    if let Some(existing_phone) = instance.phone_number() {
+        if existing_phone != req_phone {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
                     "error": "phone_mismatch",
                     "message": format!(
-                        "Phone number {} does not match instance {}. Use the correct instance or create a new one.",
-                        req_phone, normalized_account
+                        "Instance is already bound to phone {}. Cannot link to {}.",
+                        existing_phone, req_phone
                     )
                 })),
             )
@@ -225,7 +234,6 @@ pub async fn link_phone(
         .await
     {
         Ok(linking_code) => {
-            // If we got a linking code, it was successful
             let success = linking_code.is_some();
             if success {
                 if let Err(e) = instance
@@ -240,6 +248,10 @@ pub async fn link_phone(
                         })),
                     )
                         .into_response();
+                }
+                // Register phone in manager's lookup map
+                if let Err(e) = manager.register_phone(instance.id, &req_phone).await {
+                    tracing::warn!("Failed to register phone in manager: {}", e);
                 }
             }
             Json(json!({

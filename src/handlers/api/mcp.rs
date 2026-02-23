@@ -389,18 +389,24 @@ async fn execute_tool(
             }
 
             match instance.auth_service().login_with_phone_number(phone_number).await {
-                Ok(code) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: json!({
-                            "instance_id": instance.id,
-                            "linking_code": code,
-                            "instructions": "Enter this code in WhatsApp mobile app under Linked Devices"
-                        })
-                        .to_string(),
-                    }],
-                    is_error: None,
-                },
+                Ok(code) => {
+                    // Register phone on successful auth
+                    if code.is_some() {
+                        let _ = instance.on_whatsapp_authenticated(phone_number).await;
+                    }
+                    McpToolResult {
+                        content: vec![McpContent {
+                            content_type: "text".to_string(),
+                            text: json!({
+                                "instance_id": instance.id,
+                                "linking_code": code,
+                                "instructions": "Enter this code in WhatsApp mobile app under Linked Devices"
+                            })
+                            .to_string(),
+                        }],
+                        is_error: None,
+                    }
+                }
                 Err(e) => McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
