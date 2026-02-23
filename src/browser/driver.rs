@@ -3,7 +3,6 @@
 //! Chrome browser lifecycle management using chromiumoxide.
 //! Handles browser launch, page management, and session persistence.
 
-use crate::config::AppConfig;
 use anyhow::Result;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::page::Page;
@@ -12,6 +11,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
+
+/// Default browser arguments for Chrome automation
+pub const DEFAULT_BROWSER_ARGS: &[&str] = &[
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--disable-popup-blocking",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+];
 
 /// Browser service configuration
 #[derive(Debug, Clone)]
@@ -27,47 +38,30 @@ pub struct BrowserServiceConfig {
 }
 
 impl BrowserServiceConfig {
-    /// Create config from AppConfig (legacy single-account mode)
-    pub fn from_app_config(config: &AppConfig) -> Self {
-        let base_dir = if cfg!(target_os = "windows") {
-            std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-                std::env::var("APPDATA").unwrap_or_else(|_| "C:\\Users\\Public".to_string())
-            })
-        } else {
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-        };
-
-        Self {
-            user_data_dir: PathBuf::from(format!("{}/was/chrome-profile", base_dir)),
-            headless: config.browser.headless,
-            timeout_ms: config.browser.timeout_ms,
-            args: config.browser.args.clone(),
+    /// Create config for a specific instance instance
+    pub fn for_account(
+        account_data_dir: &PathBuf,
+        headless: bool,
+        timeout_ms: u64,
+        extra_args: Vec<String>,
+    ) -> Self {
+        let mut args: Vec<String> = DEFAULT_BROWSER_ARGS.iter().map(|s| s.to_string()).collect();
+        for arg in extra_args {
+            if !args.contains(&arg) {
+                args.push(arg);
+            }
         }
-    }
-
-    /// Create config for a specific account
-    pub fn for_account(account_data_dir: &PathBuf, headless: bool, timeout_ms: u64) -> Self {
         Self {
             user_data_dir: account_data_dir.join("chrome-profile"),
             headless,
             timeout_ms,
-            args: vec![
-                "--disable-blink-features=AutomationControlled".to_string(),
-                "--no-sandbox".to_string(),
-                "--disable-setuid-sandbox".to_string(),
-                "--disable-dev-shm-usage".to_string(),
-                "--disable-extensions".to_string(),
-                "--disable-popup-blocking".to_string(),
-                "--disable-gpu".to_string(),
-                "--disable-software-rasterizer".to_string(),
-            ],
+            args,
         }
     }
 }
 
 /// Browser service for managing Chrome browser instances
 pub struct BrowserService {
-    _config: Arc<AppConfig>,
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,
     whatsapp_page: Arc<Mutex<Option<Page>>>,
@@ -75,21 +69,9 @@ pub struct BrowserService {
 }
 
 impl BrowserService {
-    pub fn new(config: Arc<AppConfig>) -> Self {
-        let browser_config = BrowserServiceConfig::from_app_config(&config);
+    /// Create a new browser service with the given configuration
+    pub fn new(browser_config: BrowserServiceConfig) -> Self {
         Self {
-            _config: config,
-            browser_config,
-            browser: Arc::new(Mutex::new(None)),
-            whatsapp_page: Arc::new(Mutex::new(None)),
-            user_data_dir: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    /// Create a new browser service with custom configuration (for multi-account)
-    pub fn with_config(config: Arc<AppConfig>, browser_config: BrowserServiceConfig) -> Self {
-        Self {
-            _config: config,
             browser_config,
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),

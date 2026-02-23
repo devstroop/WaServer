@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{debug, error, info, warn};
 
-use super::driver::BrowserService;
+use super::driver::{BrowserService, BrowserServiceConfig, DEFAULT_BROWSER_ARGS};
 use super::session::SessionManager;
 
 /// The main WAS (WhatsApp Server) library interface.
@@ -39,7 +39,16 @@ impl WhatsAppEngine {
 
         // Initialize browser service
         debug!("Initializing browser service");
-        let browser_service = Arc::new(BrowserService::new(config.clone()));
+        let base_dir = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| "/tmp".to_string());
+        let browser_config = BrowserServiceConfig {
+            user_data_dir: std::path::PathBuf::from(format!("{}/was/chrome-profile", base_dir)),
+            headless: true,
+            timeout_ms: 30000,
+            args: DEFAULT_BROWSER_ARGS.iter().map(|s| s.to_string()).collect(),
+        };
+        let browser_service = Arc::new(BrowserService::new(browser_config));
 
         // Initialize auth service
         debug!("Initializing auth service");
