@@ -830,6 +830,7 @@ where
                 .post(mcp_streamable_handler)
                 .delete(mcp_session_delete_handler),
         )
+        .route("/message", axum::routing::post(mcp_message_handler))
         .route("/info", axum::routing::get(mcp_info_handler))
         .route("/health", axum::routing::get(mcp_health_handler))
         .with_state(state)
