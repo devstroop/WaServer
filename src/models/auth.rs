@@ -14,16 +14,6 @@ pub enum AuthenticatedUser {
 }
 
 impl AuthenticatedUser {
-    /// Check if authenticated via static secret token
-    pub fn is_secret(&self) -> bool {
-        matches!(self, AuthenticatedUser::Secret)
-    }
-
-    /// Check if user is an admin (secret tokens are always admin)
-    pub fn is_admin(&self) -> bool {
-        true
-    }
-
     /// Get a display name for logging
     pub fn display_name(&self) -> String {
         "secret".to_string()
