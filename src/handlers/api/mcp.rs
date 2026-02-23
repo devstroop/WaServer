@@ -3,7 +3,7 @@
 // This module implements an MCP server that exposes WAS (WhatsApp Server) functionality
 // as tools that AI agents can use. Communication happens over Server-Sent Events (SSE).
 //
-// Now uses AccountManager for multi-account support.
+// Now uses InstanceManager for multi-instance support.
 
 use axum::{
     extract::{Query, State},
@@ -22,7 +22,7 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::services::{AccountManager, WhatsAppAccount};
+use crate::services::{InstanceManager, WhatsAppInstance};
 
 // ============================================================================
 // MCP Protocol Types
@@ -87,45 +87,48 @@ pub struct McpSession {
     pub id: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub tx: mpsc::Sender<McpResponse>,
-    /// Optional account ID to use for this session
-    pub account_id: Option<String>,
+    /// Optional instance ID to use for this session
+    pub instance_id: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct McpState {
     pub sessions: Arc<RwLock<HashMap<String, McpSession>>>,
-    pub account_manager: Arc<AccountManager>,
+    pub instance_manager: Arc<InstanceManager>,
 }
 
 impl McpState {
-    pub fn new(account_manager: Arc<AccountManager>) -> Self {
+    pub fn new(instance_manager: Arc<InstanceManager>) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            account_manager,
+            instance_manager,
         }
     }
 
-    /// Get a running account for MCP operations
-    /// Priority: 1) Session account_id, 2) First running account
-    pub async fn get_account(&self, session_account_id: Option<&str>) -> Option<Arc<WhatsAppAccount>> {
-        // If session has a specific account, use that
-        if let Some(account_id) = session_account_id {
-            if let Some(account) = self.account_manager.get_account(account_id).await {
-                return Some(account);
+    /// Get a running instance for MCP operations
+    /// Priority: 1) Session instance_id, 2) First running instance
+    pub async fn get_instance(
+        &self,
+        session_instance_id: Option<&str>,
+    ) -> Option<Arc<WhatsAppInstance>> {
+        // If session has a specific instance, use that
+        if let Some(instance_id) = session_instance_id {
+            if let Some(instance) = self.instance_manager.get_instance(instance_id).await {
+                return Some(instance);
             }
         }
 
-        // Otherwise, find the first running account
-        let account_list = self.account_manager.list_accounts().await;
-        for info in account_list.accounts {
-            if matches!(info.status, crate::models::account::AccountStatus::Running) {
-                return self.account_manager.get_account(&info.id).await;
+        // Otherwise, find the first running instance
+        let instance_list = self.instance_manager.list_instances().await;
+        for info in &instance_list.instances {
+            if matches!(info.status, crate::models::instance::InstanceStatus::Running) {
+                return self.instance_manager.get_instance_by_id(info.id).await;
             }
         }
 
-        // No running account, try to get any account
-        if let Some(info) = account_list.accounts.first() {
-            return self.account_manager.get_account(&info.id).await;
+        // No running instance, try to get any instance
+        if let Some(info) = instance_list.instances.first() {
+            return self.instance_manager.get_instance_by_id(info.id).await;
         }
 
         None
@@ -140,7 +143,8 @@ fn get_available_tools() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "whatsapp_get_auth_status".to_string(),
-            description: "Check if WhatsApp Web is currently authenticated and get sender ID".to_string(),
+            description: "Check if WhatsApp Web is currently authenticated and get sender ID"
+                .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -149,7 +153,9 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_get_qr_code".to_string(),
-            description: "Get QR code for WhatsApp Web authentication. Returns base64-encoded QR code image.".to_string(),
+            description:
+                "Get QR code for WhatsApp Web authentication. Returns base64-encoded QR code image."
+                    .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -158,7 +164,9 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_login_with_phone".to_string(),
-            description: "Initiate phone number authentication for WhatsApp Web. Returns a linking code.".to_string(),
+            description:
+                "Initiate phone number authentication for WhatsApp Web. Returns a linking code."
+                    .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -181,7 +189,8 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_send_message".to_string(),
-            description: "Send a text message, file, or both to a WhatsApp contact or group".to_string(),
+            description: "Send a text message, file, or both to a WhatsApp contact or group"
+                .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -211,8 +220,8 @@ fn get_available_tools() -> Vec<McpTool> {
             }),
         },
         McpTool {
-            name: "whatsapp_list_accounts".to_string(),
-            description: "List all WhatsApp accounts managed by the server".to_string(),
+            name: "whatsapp_list_instances".to_string(),
+            description: "List all WhatsApp instances managed by the server".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -230,26 +239,30 @@ async fn execute_tool(
     tool_name: &str,
     arguments: &Value,
     state: &McpState,
-    session_account_id: Option<&str>,
+    session_instance_id: Option<&str>,
 ) -> McpToolResult {
-    // Handle tools that don't need an account
+    // Handle tools that don't need an instance
     match tool_name {
-        "whatsapp_list_accounts" => {
-            let account_list = state.account_manager.list_accounts().await;
+        "whatsapp_list_instances" => {
+            let instance_list = state.instance_manager.list_instances().await;
             return McpToolResult {
                 content: vec![McpContent {
                     content_type: "text".to_string(),
-                    text: serde_json::to_string_pretty(&account_list).unwrap_or_default(),
+                    text: serde_json::to_string_pretty(&instance_list).unwrap_or_default(),
                 }],
                 is_error: None,
             };
         }
         "whatsapp_health_check" => {
-            let account_count = state.account_manager.count().await;
-            let running_account = state.get_account(session_account_id).await;
-            let (is_busy, auth_ok) = if let Some(account) = running_account {
-                let busy = account.is_busy().await;
-                let auth = account.auth_service().is_authorized().await.unwrap_or(false);
+            let instance_count = state.instance_manager.count().await;
+            let running_account = state.get_instance(session_instance_id).await;
+            let (is_busy, auth_ok) = if let Some(instance) = running_account {
+                let busy = instance.is_busy().await;
+                let auth = instance
+                    .auth_service()
+                    .is_authorized()
+                    .await
+                    .unwrap_or(false);
                 (busy, auth)
             } else {
                 (false, false)
@@ -262,7 +275,7 @@ async fn execute_tool(
                         "status": if auth_ok { "healthy" } else { "degraded" },
                         "authenticated": auth_ok,
                         "service_busy": is_busy,
-                        "accounts_count": account_count,
+                        "instances_count": instance_count,
                         "version": env!("CARGO_PKG_VERSION")
                     })
                     .to_string(),
@@ -273,29 +286,33 @@ async fn execute_tool(
         _ => {}
     }
 
-    // Get account for tools that need one
-    let account = match state.get_account(session_account_id).await {
+    // Get instance for tools that need one
+    let instance = match state.get_instance(session_instance_id).await {
         Some(acc) => acc,
         None => {
             return McpToolResult {
                 content: vec![McpContent {
                     content_type: "text".to_string(),
-                    text: "No WhatsApp account available. Create one via POST /api/v1/accounts".to_string(),
+                    text: "No WhatsApp instance available. Create one via POST /api/v1/instances"
+                        .to_string(),
                 }],
                 is_error: Some(true),
             };
         }
     };
 
-    // Check if account browser is running for most operations
-    let needs_browser = !matches!(tool_name, "whatsapp_list_accounts" | "whatsapp_health_check");
-    if needs_browser && !account.browser_service().is_running().await {
+    // Check if instance browser is running for most operations
+    let needs_browser = !matches!(
+        tool_name,
+        "whatsapp_list_instances" | "whatsapp_health_check"
+    );
+    if needs_browser && !instance.browser_service().is_running().await {
         return McpToolResult {
             content: vec![McpContent {
                 content_type: "text".to_string(),
                 text: format!(
-                    "Account {} browser not running. Start it via POST /api/v1/accounts/{}/start",
-                    account.id, account.id
+                    "Instance {} browser not running. Start it via POST /api/v1/instances/{}/start",
+                    instance.id, instance.id
                 ),
             }],
             is_error: Some(true),
@@ -303,61 +320,57 @@ async fn execute_tool(
     }
 
     match tool_name {
-        "whatsapp_get_auth_status" => {
-            match account.auth_service().is_authorized().await {
-                Ok(authorized) => {
-                    let sender_id = if authorized {
-                        account.auth_service().get_sender_id().await.ok().flatten()
-                    } else {
-                        None
-                    };
+        "whatsapp_get_auth_status" => match instance.auth_service().is_authorized().await {
+            Ok(authorized) => {
+                let sender_id = if authorized {
+                    instance.auth_service().get_sender_id().await.ok().flatten()
+                } else {
+                    None
+                };
 
-                    McpToolResult {
-                        content: vec![McpContent {
-                            content_type: "text".to_string(),
-                            text: json!({
-                                "account_id": account.id,
-                                "authorized": authorized,
-                                "sender_id": sender_id
-                            })
-                            .to_string(),
-                        }],
-                        is_error: None,
-                    }
-                }
-                Err(e) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: format!("Error checking auth status: {}", e),
-                    }],
-                    is_error: Some(true),
-                },
-            }
-        }
-
-        "whatsapp_get_qr_code" => {
-            match account.auth_service().get_auth_qr_code().await {
-                Ok(qr_code) => McpToolResult {
+                McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
                         text: json!({
-                            "account_id": account.id,
-                            "qr_code": qr_code,
-                            "instructions": "Scan this QR code with WhatsApp mobile app to authenticate"
+                            "instance_id": instance.id,
+                            "authorized": authorized,
+                            "sender_id": sender_id
                         })
                         .to_string(),
                     }],
                     is_error: None,
-                },
-                Err(e) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: format!("Error getting QR code: {}", e),
-                    }],
-                    is_error: Some(true),
-                },
+                }
             }
-        }
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error checking auth status: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
+
+        "whatsapp_get_qr_code" => match instance.auth_service().get_auth_qr_code().await {
+            Ok(qr_code) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: json!({
+                        "instance_id": instance.id,
+                        "qr_code": qr_code,
+                        "instructions": "Scan this QR code with WhatsApp mobile app to authenticate"
+                    })
+                    .to_string(),
+                }],
+                is_error: None,
+            },
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error getting QR code: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
 
         "whatsapp_login_with_phone" => {
             let phone_number = arguments
@@ -375,19 +388,25 @@ async fn execute_tool(
                 };
             }
 
-            match account.auth_service().login_with_phone_number(phone_number).await {
-                Ok(code) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: json!({
-                            "account_id": account.id,
-                            "linking_code": code,
-                            "instructions": "Enter this code in WhatsApp mobile app under Linked Devices"
-                        })
-                        .to_string(),
-                    }],
-                    is_error: None,
-                },
+            match instance.auth_service().login_with_phone_number(phone_number).await {
+                Ok(code) => {
+                    // Register phone on successful auth
+                    if code.is_some() {
+                        let _ = instance.on_whatsapp_authenticated(phone_number).await;
+                    }
+                    McpToolResult {
+                        content: vec![McpContent {
+                            content_type: "text".to_string(),
+                            text: json!({
+                                "instance_id": instance.id,
+                                "linking_code": code,
+                                "instructions": "Enter this code in WhatsApp mobile app under Linked Devices"
+                            })
+                            .to_string(),
+                        }],
+                        is_error: None,
+                    }
+                }
                 Err(e) => McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
@@ -398,34 +417,35 @@ async fn execute_tool(
             }
         }
 
-        "whatsapp_logout" => {
-            match account.auth_service().logout().await {
-                Ok(_) => {
-                    account.invalidate_auth_cache().await;
-                    McpToolResult {
-                        content: vec![McpContent {
-                            content_type: "text".to_string(),
-                            text: json!({
-                                "account_id": account.id,
-                                "message": "Successfully logged out from WhatsApp Web"
-                            })
-                            .to_string(),
-                        }],
-                        is_error: None,
-                    }
-                }
-                Err(e) => McpToolResult {
+        "whatsapp_logout" => match instance.auth_service().logout().await {
+            Ok(_) => {
+                instance.invalidate_auth_cache().await;
+                McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
-                        text: format!("Error logging out: {}", e),
+                        text: json!({
+                            "instance_id": instance.id,
+                            "message": "Successfully logged out from WhatsApp Web"
+                        })
+                        .to_string(),
                     }],
-                    is_error: Some(true),
-                },
+                    is_error: None,
+                }
             }
-        }
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error logging out: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
 
         "whatsapp_send_message" => {
-            let phone = arguments.get("phone").and_then(|v| v.as_str()).unwrap_or("");
+            let phone = arguments
+                .get("phone")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let message = arguments.get("message").and_then(|v| v.as_str());
             let file_path = arguments.get("file_path").and_then(|v| v.as_str());
 
@@ -449,9 +469,9 @@ async fn execute_tool(
                 };
             }
 
-            match account
+            match instance
                 .execute_with_busy_flag(async {
-                    account
+                    instance
                         .chat_service()
                         .send_message(phone, message, file_path, None)
                         .await
@@ -459,12 +479,12 @@ async fn execute_tool(
                 .await
             {
                 Ok(_) => {
-                    account.track_message_sent();
+                    instance.track_message_sent();
                     McpToolResult {
                         content: vec![McpContent {
                             content_type: "text".to_string(),
                             text: json!({
-                                "account_id": account.id,
+                                "instance_id": instance.id,
                                 "message": format!("Message sent successfully to {}", phone)
                             })
                             .to_string(),
@@ -473,7 +493,7 @@ async fn execute_tool(
                     }
                 }
                 Err(e) => {
-                    account.track_error();
+                    instance.track_error();
                     McpToolResult {
                         content: vec![McpContent {
                             content_type: "text".to_string(),
@@ -502,7 +522,7 @@ async fn execute_tool(
 async fn handle_mcp_request(
     request: McpRequest,
     state: &McpState,
-    session_account_id: Option<&str>,
+    session_instance_id: Option<&str>,
 ) -> McpResponse {
     let id = request.id.clone();
 
@@ -559,7 +579,7 @@ async fn handle_mcp_request(
             info!("MCP: Tool call - {}", tool_name);
             debug!("MCP: Tool arguments: {:?}", arguments);
 
-            let result = execute_tool(tool_name, &arguments, state, session_account_id).await;
+            let result = execute_tool(tool_name, &arguments, state, session_instance_id).await;
 
             McpResponse {
                 jsonrpc: "2.0".to_string(),
@@ -614,9 +634,9 @@ async fn handle_mcp_request(
 pub struct SseQuery {
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
-    /// Optional account ID to use for this session
+    /// Optional instance ID to use for this session
     #[serde(rename = "accountId")]
-    account_id: Option<String>,
+    instance_id: Option<String>,
 }
 
 /// SSE endpoint for MCP connection
@@ -624,11 +644,16 @@ pub async fn mcp_sse_handler(
     State(state): State<McpState>,
     Query(query): Query<SseQuery>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let session_id = query.session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-    let account_id = query.account_id;
+    let session_id = query
+        .session_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let instance_id = query.instance_id;
     let (tx, mut rx) = mpsc::channel::<McpResponse>(100);
 
-    info!("MCP SSE: New connection - session_id: {}, account_id: {:?}", session_id, account_id);
+    info!(
+        "MCP SSE: New connection - session_id: {}, instance_id: {:?}",
+        session_id, instance_id
+    );
 
     // Store session
     {
@@ -639,7 +664,7 @@ pub async fn mcp_sse_handler(
                 id: session_id.clone(),
                 created_at: chrono::Utc::now(),
                 tx,
-                account_id: account_id.clone(),
+                instance_id: instance_id.clone(),
             },
         );
     }
@@ -691,18 +716,18 @@ pub async fn mcp_streamable_handler(
         .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    // Get account ID from header
-    let account_id = headers
-        .get("X-Account-Id")
+    // Get instance ID from header
+    let instance_id = headers
+        .get("X-Instance-Id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
     info!(
-        "MCP Streamable: session={}, method={}, account={:?}",
-        session_id, request.method, account_id
+        "MCP Streamable: session={}, method={}, instance={:?}",
+        session_id, request.method, instance_id
     );
 
-    let response = handle_mcp_request(request, &state, account_id.as_deref()).await;
+    let response = handle_mcp_request(request, &state, instance_id.as_deref()).await;
 
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
@@ -735,19 +760,19 @@ pub async fn mcp_message_handler(
         }
     };
 
-    // Get account_id from query or session
-    let account_id = query.account_id.clone().or_else(|| {
+    // Get instance_id from query or session
+    let instance_id = query.instance_id.clone().or_else(|| {
         // Try to get from existing session
         let sessions = state.sessions.try_read().ok()?;
-        sessions.get(&session_id)?.account_id.clone()
+        sessions.get(&session_id)?.instance_id.clone()
     });
 
     debug!(
-        "MCP Message: session={}, method={}, account={:?}",
-        session_id, request.method, account_id
+        "MCP Message: session={}, method={}, instance={:?}",
+        session_id, request.method, instance_id
     );
 
-    let response = handle_mcp_request(request, &state, account_id.as_deref()).await;
+    let response = handle_mcp_request(request, &state, instance_id.as_deref()).await;
 
     // Send via SSE channel
     let sessions = state.sessions.read().await;
@@ -765,14 +790,14 @@ pub async fn mcp_message_handler(
 
 /// Simple info endpoint about MCP server
 pub async fn mcp_info_handler(State(state): State<McpState>) -> impl IntoResponse {
-    let accounts_count = state.account_manager.count().await;
+    let instances_count = state.instance_manager.count().await;
     Json(json!({
         "name": "was",
         "version": env!("CARGO_PKG_VERSION"),
         "protocol": "MCP",
         "transport": "Streamable HTTP",
         "endpoint": "/mcp",
-        "accounts_count": accounts_count,
+        "instances_count": instances_count,
         "tools": get_available_tools().iter().map(|t| &t.name).collect::<Vec<_>>()
     }))
 }
@@ -803,11 +828,11 @@ pub async fn mcp_session_delete_handler(
 /// Health check for MCP service
 pub async fn mcp_health_handler(State(state): State<McpState>) -> impl IntoResponse {
     let sessions = state.sessions.read().await;
-    let accounts_count = state.account_manager.count().await;
+    let instances_count = state.instance_manager.count().await;
     Json(json!({
         "status": "ok",
         "active_sessions": sessions.len(),
-        "accounts_count": accounts_count,
+        "instances_count": instances_count,
         "protocol_version": "2025-06-18"
     }))
 }
@@ -817,11 +842,11 @@ pub async fn mcp_health_handler(State(state): State<McpState>) -> impl IntoRespo
 // ============================================================================
 
 /// Create MCP routes that can be nested into the main app
-pub fn mcp_routes<S>(account_manager: Arc<AccountManager>) -> Router<S>
+pub fn mcp_routes<S>(instance_manager: Arc<InstanceManager>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    let state = McpState::new(account_manager);
+    let state = McpState::new(instance_manager);
 
     Router::new()
         .route(
@@ -830,6 +855,7 @@ where
                 .post(mcp_streamable_handler)
                 .delete(mcp_session_delete_handler),
         )
+        .route("/message", axum::routing::post(mcp_message_handler))
         .route("/info", axum::routing::get(mcp_info_handler))
         .route("/health", axum::routing::get(mcp_health_handler))
         .with_state(state)

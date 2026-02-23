@@ -1,16 +1,12 @@
 //! REST API Handlers for WAS (WhatsApp Server)
 //!
 //! This module contains Axum handlers for the REST API endpoints.
-//! These handlers serve external integrations and programmatic access.
 
-/// Account management API (create, list, delete accounts - no X-Account-Id required)
-pub mod accounts;
+/// Instance management API (create, list, delete instances)
+pub mod instances;
 
-/// WhatsApp account operations API (status, QR, profile, privacy - requires X-Account-Id)
-pub mod account;
-
-/// Authentication API handlers (login, logout, QR code, auth status)
-pub mod auth;
+/// WhatsApp instance operations API (status, QR, profile, privacy)
+pub mod whatsapp;
 
 /// Chat/messaging API handlers (send message, get chats, message status)
 pub mod chat;

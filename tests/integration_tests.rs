@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 const BASE_URL: &str = "http://localhost:3000";
-const API_TOKEN: &str = "test-api-token-123456789";
+const SECRET: &str = "test-secret-token-123456789";
 
 /// Integration tests for WAS (WhatsApp Server) API
 #[cfg(test)]
@@ -17,7 +17,7 @@ mod tests {
 
         let response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .send()
             .await?;
 
@@ -40,7 +40,7 @@ mod tests {
 
         let response = client
             .get(&format!("{}/api/auth/qrcode", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .send()
             .await?;
 
@@ -59,7 +59,7 @@ mod tests {
 
         let response = client
             .post(&format!("{}/api/auth/phone/1234567890", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .send()
             .await?;
 
@@ -82,7 +82,7 @@ mod tests {
         // First check if we're authorized
         let auth_response = client
             .get(&format!("{}/api/auth/status", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .send()
             .await?;
 
@@ -97,7 +97,7 @@ mod tests {
         // Send a test message
         let response = client
             .post(&format!("{}/api/chat/send", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .query(&[("phone", "1234567890")])
             .query(&[("text", "Hello from Rust WAS Test!")])
             .send()
@@ -123,7 +123,7 @@ mod tests {
 
         let response = client
             .post(&format!("{}/api/auth/logout", BASE_URL))
-            .header("Authorization", format!("Bearer {}", API_TOKEN))
+            .header("Authorization", format!("Bearer {}", SECRET))
             .send()
             .await?;
 
@@ -189,7 +189,7 @@ mod tests {
             let handle = tokio::spawn(async move {
                 let response = client
                     .get(&format!("{}/api/auth/status", BASE_URL))
-                    .header("Authorization", format!("Bearer {}", API_TOKEN))
+                    .header("Authorization", format!("Bearer {}", SECRET))
                     .send()
                     .await?;
 

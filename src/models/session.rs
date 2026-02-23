@@ -11,7 +11,7 @@ pub struct SessionData {
     pub session_id: String,
     pub phone_number: Option<String>,
     pub authenticated_at: DateTime<Utc>,
-    pub browser_cookies: Option<String>,   // JSON serialized cookies
-    pub local_storage: Option<String>,     // JSON serialized local storage
-    pub session_storage: Option<String>,   // JSON serialized session storage
+    pub browser_cookies: Option<String>, // JSON serialized cookies
+    pub local_storage: Option<String>,   // JSON serialized local storage
+    pub session_storage: Option<String>, // JSON serialized session storage
 }

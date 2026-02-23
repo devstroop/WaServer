@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /messages/send-file` - Send file attachments
 - `GET /contacts` - Retrieve contacts list
 - `GET /chats` - Retrieve chat list
-- `GET /health` - Health check endpoint
+- `GET /api/health` - Health check endpoint
 
 ### Documentation
 - **README.md**: Complete project overview with architecture diagrams

@@ -5,9 +5,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - WHATSAPP_HOST=0.0.0.0
-      - WHATSAPP_PORT=3000
-      - WHATSAPP_API_TOKEN=${WHATSAPP_API_TOKEN:-your-secure-api-token}
+      - WAS__SERVER__HOST=0.0.0.0
+      - WAS__SERVER__PORT=3000
+      - WAS__AUTH__SECRET_KEY=${WAS__AUTH__SECRET_KEY:-your-secure-secret}
       - RUST_LOG=info
     volumes:
       # Persist browser session data
@@ -20,7 +20,7 @@ services:
       - seccomp=unconfined
     shm_size: '2gb'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

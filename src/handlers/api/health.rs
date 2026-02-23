@@ -1,14 +1,14 @@
 // Health Check and Metrics Endpoints
 //
 // Production-ready health checking for monitoring and observability
-// Now uses AccountManager for multi-account status
+// Now uses InstanceManager for multi-instance status
 
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc, time::{Instant, SystemTime}};
 use utoipa::ToSchema;
 
-use crate::services::AccountManager;
+use crate::services::InstanceManager;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
@@ -16,7 +16,7 @@ pub struct HealthResponse {
     pub timestamp: u64,
     pub version: String,
     pub uptime_seconds: u64,
-    pub accounts_count: usize,
+    pub instances_count: usize,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -33,12 +33,12 @@ pub struct MetricsResponse {
     pub timestamp: u64,
     pub uptime_seconds: u64,
     pub memory_usage_bytes: u64,
-    pub accounts_count: usize,
-    pub accounts: Vec<AccountMetrics>,
+    pub instances_count: usize,
+    pub instances: Vec<InstanceMetrics>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct AccountMetrics {
+pub struct InstanceMetrics {
     pub id: String,
     pub status: String,
     pub authorized: bool,
@@ -46,10 +46,18 @@ pub struct AccountMetrics {
     pub error_count: u64,
 }
 
-static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
+static START_INSTANT: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
-fn get_start_time() -> SystemTime {
-    *START_TIME.get_or_init(SystemTime::now)
+/// Call once at server startup to record the start time.
+pub fn init() {
+    START_INSTANT.get_or_init(Instant::now);
+}
+
+fn uptime_secs() -> u64 {
+    START_INSTANT
+        .get()
+        .map(|t| t.elapsed().as_secs())
+        .unwrap_or(0)
 }
 
 /// Health Check Endpoint
@@ -58,29 +66,26 @@ fn get_start_time() -> SystemTime {
 /// This endpoint is typically used by load balancers and monitoring systems.
 #[utoipa::path(
     get,
-    path = "/api/admin/health",
+    path = "/api/health",
     responses(
         (status = 200, description = "Service is healthy", body = HealthResponse),
         (status = 503, description = "Service is unhealthy", body = HealthResponse)
     ),
-    tag = "Admin - Health"
+    tag = "Health"
 )]
 pub async fn health_check(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
 ) -> Result<Json<HealthResponse>, StatusCode> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    let uptime = SystemTime::now()
-        .duration_since(get_start_time())
-        .unwrap()
-        .as_secs();
+    let uptime = uptime_secs();
 
-    let accounts_count = manager.count().await;
+    let instances_count = manager.count().await;
 
-    // Server is healthy if it's running (accounts health is separate concern)
+    // Server is healthy if it's running (instances health is separate concern)
     let server_health = ServiceHealth {
         status: "healthy".to_string(),
         last_check: now,
@@ -96,7 +101,7 @@ pub async fn health_check(
         timestamp: now,
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
-        accounts_count,
+        instances_count,
         services,
     };
 
@@ -107,18 +112,24 @@ pub async fn health_check(
 ///
 /// Returns whether the service is ready to accept traffic.
 /// This is typically used by Kubernetes readiness probes.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct StatusResponse {
+    pub status: String,
+}
+
 #[utoipa::path(
     get,
-    path = "/api/admin/ready",
+    path = "/api/ready",
     responses(
-        (status = 200, description = "Service is ready"),
+        (status = 200, description = "Service is ready", body = StatusResponse),
         (status = 503, description = "Service is not ready")
     ),
-    tag = "Admin - Health"
+    tag = "Health"
 )]
-pub async fn readiness_check() -> Result<(), StatusCode> {
-    // Server is ready if we can respond
-    Ok(())
+pub async fn readiness_check() -> Json<StatusResponse> {
+    Json(StatusResponse {
+        status: "ready".to_string(),
+    })
 }
 
 /// Liveness Check Endpoint
@@ -127,15 +138,17 @@ pub async fn readiness_check() -> Result<(), StatusCode> {
 /// This is typically used by Kubernetes liveness probes.
 #[utoipa::path(
     get,
-    path = "/api/admin/live",
+    path = "/api/live",
     responses(
-        (status = 200, description = "Service is alive"),
+        (status = 200, description = "Service is alive", body = StatusResponse),
         (status = 503, description = "Service is not responding")
     ),
-    tag = "Admin - Health"
+    tag = "Health"
 )]
-pub async fn liveness_check() -> Result<(), StatusCode> {
-    Ok(())
+pub async fn liveness_check() -> Json<StatusResponse> {
+    Json(StatusResponse {
+        status: "alive".to_string(),
+    })
 }
 
 /// Metrics Endpoint
@@ -144,44 +157,39 @@ pub async fn liveness_check() -> Result<(), StatusCode> {
 /// This endpoint provides performance and usage statistics.
 #[utoipa::path(
     get,
-    path = "/api/admin/metrics",
+    path = "/api/metrics",
     responses(
         (status = 200, description = "Metrics data", body = MetricsResponse)
     ),
-    tag = "Metrics"
+    tag = "Health"
 )]
-pub async fn get_metrics(
-    State(manager): State<Arc<AccountManager>>,
-) -> Json<MetricsResponse> {
+pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<MetricsResponse> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    let uptime = SystemTime::now()
-        .duration_since(get_start_time())
-        .unwrap()
-        .as_secs();
+    let uptime = uptime_secs();
 
     let memory_usage = get_memory_usage();
 
-    // Get metrics from all accounts
-    let account_list = manager.list_accounts().await;
-    let mut account_metrics = Vec::new();
+    // Get metrics from all instances
+    let instance_list = manager.list_instances().await;
+    let mut instance_metrics = Vec::new();
 
-    for info in account_list.accounts {
-        // Get the account to retrieve metrics
-        if let Some(account) = manager.get_account(&info.id).await {
-            let metrics = account.get_metrics();
+    for info in instance_list.instances {
+        // Get the instance to retrieve metrics
+        if let Some(instance) = manager.get_instance_by_id(info.id).await {
+            let metrics = instance.get_metrics();
             let status_str = match &info.status {
-                crate::models::account::AccountStatus::Stopped => "stopped",
-                crate::models::account::AccountStatus::Starting => "starting",
-                crate::models::account::AccountStatus::Running => "running",
-                crate::models::account::AccountStatus::Error(_) => "error",
+                crate::models::instance::InstanceStatus::Stopped => "stopped",
+                crate::models::instance::InstanceStatus::Starting => "starting",
+                crate::models::instance::InstanceStatus::Running => "running",
+                crate::models::instance::InstanceStatus::Error(_) => "error",
             };
-            
-            account_metrics.push(AccountMetrics {
-                id: info.id,
+
+            instance_metrics.push(InstanceMetrics {
+                id: info.id.to_string(),
                 status: status_str.to_string(),
                 authorized: info.authorized,
                 total_messages_sent: metrics.total_messages_sent,
@@ -194,12 +202,32 @@ pub async fn get_metrics(
         timestamp: now,
         uptime_seconds: uptime,
         memory_usage_bytes: memory_usage,
-        accounts_count: account_metrics.len(),
-        accounts: account_metrics,
+        instances_count: instance_metrics.len(),
+        instances: instance_metrics,
     })
 }
 
 fn get_memory_usage() -> u64 {
-    // Placeholder - in production use jemalloc or similar
-    std::process::id() as u64 * 1024 * 1024
+    // Linux: read RSS from /proc/self/status
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(val) = line.strip_prefix("VmRSS:") {
+                if let Ok(kb) = val.trim().trim_end_matches(" kB").trim().parse::<u64>() {
+                    return kb * 1024;
+                }
+            }
+        }
+    }
+    // macOS / fallback: use ps command
+    if let Ok(output) = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+    {
+        if let Ok(rss_str) = String::from_utf8(output.stdout) {
+            if let Ok(kb) = rss_str.trim().parse::<u64>() {
+                return kb * 1024;
+            }
+        }
+    }
+    0
 }

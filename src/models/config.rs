@@ -7,44 +7,39 @@ use super::environment::EnvironmentConfig;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub server: ServerConfig,
-    pub browser: BrowserConfig,
     pub auth: AuthConfig,
-    #[serde(default)]
-    pub local_auth: LocalAuthConfig,
     pub logging: LoggingConfig,
     pub cache: CacheConfig,
     pub cors: CorsConfig,
     pub limits: LimitsConfig,
     pub environment: EnvironmentConfig,
     #[serde(default)]
-    pub web: WebConfig,
-    #[serde(default)]
     pub swagger: SwaggerConfig,
     #[serde(default)]
     pub mcp: McpConfig,
     #[serde(default)]
     pub webhooks: WebhookConfig,
-    /// Multi-account configuration
+    /// Multi-instance configuration
     #[serde(default)]
-    pub accounts: Option<AccountsConfig>,
+    pub instances: Option<InstancesConfig>,
 }
 
-/// Multi-account configuration
+/// Multi-instance configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AccountsConfig {
-    /// Base directory for all account data (default: ~/.was/accounts)
+pub struct InstancesConfig {
+    /// Base directory for all instance data (default: ~/.was/instances)
     pub base_directory: Option<PathBuf>,
-    /// Default browser settings for new accounts
+    /// Default browser settings for new instances
     #[serde(default)]
-    pub defaults: AccountDefaultsConfig,
+    pub defaults: InstanceDefaultsConfig,
 }
 
-/// Default settings for new accounts
+/// Default settings for new instances
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct AccountDefaultsConfig {
+pub struct InstanceDefaultsConfig {
     /// Default headless mode
     pub headless: Option<bool>,
-    /// Auto-start accounts on server startup
+    /// Auto-start instances on server startup
     pub auto_start: bool,
 }
 
@@ -94,10 +89,6 @@ pub struct McpConfig {
     pub enabled: bool,
     /// MCP endpoint path
     pub endpoint: String,
-    /// Enable SSE transport
-    pub sse_enabled: bool,
-    /// SSE heartbeat interval in seconds
-    pub heartbeat_interval_secs: u64,
 }
 
 impl Default for McpConfig {
@@ -105,36 +96,6 @@ impl Default for McpConfig {
         Self {
             enabled: true,
             endpoint: "/mcp".to_string(),
-            sse_enabled: true,
-            heartbeat_interval_secs: 30,
-        }
-    }
-}
-
-/// Web UI configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct WebConfig {
-    /// Enable Web UI serving
-    #[serde(default = "default_web_enabled")]
-    pub enabled: bool,
-    /// Deprecated: templates are now built-in
-    #[serde(default = "default_web_path")]
-    pub path: String,
-}
-
-fn default_web_enabled() -> bool {
-    true
-}
-
-fn default_web_path() -> String {
-    "templates".to_string()
-}
-
-impl Default for WebConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            path: "templates".to_string(),
         }
     }
 }
@@ -155,14 +116,14 @@ fn default_swagger_enabled() -> bool {
 }
 
 fn default_swagger_path() -> String {
-    "/swagger-ui".to_string()
+    "/api-docs".to_string()
 }
 
 impl Default for SwaggerConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            path: "/swagger-ui".to_string(),
+            path: "/api-docs".to_string(),
         }
     }
 }
@@ -174,79 +135,12 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
-/// Browser configuration for Playwright
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BrowserConfig {
-    pub headless: bool,
-    pub timeout_ms: u64,
-    pub args: Vec<String>,
-}
-
 /// Authentication configuration
+/// Static secret key for Bearer authentication
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
-    /// Enable Bearer token authentication
-    #[serde(default = "default_auth_enabled")]
-    pub enabled: bool,
-    /// API token for Bearer authentication
-    pub api_token: String,
-}
-
-fn default_auth_enabled() -> bool {
-    true
-}
-
-/// Local authentication configuration (JWT-based)
-/// JWT authentication is always enabled - use this for username/password login.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct LocalAuthConfig {
-    /// JWT secret key for signing tokens (min 32 characters)
-    #[serde(default = "default_jwt_secret")]
-    pub jwt_secret: String,
-    /// Access token expiry in hours
-    #[serde(default = "default_token_expiry_hours")]
-    pub token_expiry_hours: i64,
-    /// Refresh token expiry in days
-    #[serde(default = "default_refresh_token_expiry_days")]
-    pub refresh_token_expiry_days: i64,
-    /// Default admin username
-    #[serde(default = "default_username")]
-    pub default_username: String,
-    /// Default admin password
-    #[serde(default = "default_password")]
-    pub default_password: String,
-}
-
-fn default_jwt_secret() -> String {
-    "your-super-secret-jwt-key-change-this-in-production-32chars".to_string()
-}
-
-fn default_token_expiry_hours() -> i64 {
-    24
-}
-
-fn default_refresh_token_expiry_days() -> i64 {
-    7
-}
-
-fn default_username() -> String {
-    "admin".to_string()
-}
-
-fn default_password() -> String {
-    "admin123".to_string()
-}
-
-impl Default for LocalAuthConfig {
-    fn default() -> Self {
-        Self {
-            jwt_secret: default_jwt_secret(),
-            token_expiry_hours: default_token_expiry_hours(),
-            refresh_token_expiry_days: default_refresh_token_expiry_days(),
-            default_username: default_username(),
-            default_password: default_password(),
-        }
-    }
+    /// Static secret key for Bearer authentication
+    pub secret_key: String,
 }
 
 /// Logging configuration
@@ -284,25 +178,9 @@ impl Default for AppConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
             },
-            browser: BrowserConfig {
-                headless: false,
-                timeout_ms: 30000,
-                args: vec![
-                    "--disable-blink-features=AutomationControlled".to_string(),
-                    "--no-sandbox".to_string(),
-                    "--disable-setuid-sandbox".to_string(),
-                    "--disable-dev-shm-usage".to_string(),
-                    "--disable-extensions".to_string(),
-                    "--disable-popup-blocking".to_string(),
-                    "--disable-gpu".to_string(),
-                    "--disable-software-rasterizer".to_string(),
-                ],
-            },
             auth: AuthConfig {
-                enabled: true,
-                api_token: "your-secure-api-token-change-this".to_string(),
+                secret_key: "change-this-secret-key-in-production".to_string(),
             },
-            local_auth: LocalAuthConfig::default(),
             logging: LoggingConfig {
                 level: "info".to_string(),
             },
@@ -326,11 +204,10 @@ impl Default for AppConfig {
                 max_upload_size: 10 * 1024 * 1024, // 10MB
             },
             environment: EnvironmentConfig::default(),
-            web: WebConfig::default(),
             swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
-            accounts: None,
+            instances: None,
         }
     }
 }
@@ -343,7 +220,7 @@ impl AppConfig {
 
         let mut builder = config::Config::builder()
             .add_source(config::File::with_name("config/app").required(false))
-            .add_source(config::Environment::with_prefix("WHATSAPP").separator("__"));
+            .add_source(config::Environment::with_prefix("WAS").separator("__"));
 
         // Try to load from current directory if config/app doesn't exist
         if std::fs::metadata("config/app.toml").is_err() {
@@ -365,28 +242,13 @@ impl AppConfig {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static API token (for programmatic access)
-        if self.auth.enabled {
-            if self.auth.api_token == "your-secure-api-token-change-this" {
-                return Err("Please change the default API token in configuration".to_string());
-            }
-
-            if self.auth.api_token.len() < 16 {
-                return Err("API token must be at least 16 characters long".to_string());
-            }
+        // Validate static secret key
+        if self.auth.secret_key == "change-this-secret-key-in-production" {
+            return Err("Please change the default secret_key in configuration".to_string());
         }
 
-        // Validate local auth config (JWT is always enabled)
-        if self.local_auth.jwt_secret == "your-super-secret-jwt-key-change-in-production" {
-            tracing::warn!("Using default JWT secret - please change in production!");
-        }
-
-        if self.local_auth.jwt_secret.len() < 32 {
-            return Err("JWT secret must be at least 32 characters long".to_string());
-        }
-
-        if self.browser.timeout_ms == 0 {
-            return Err("Browser timeout cannot be 0".to_string());
+        if self.auth.secret_key.len() < 16 {
+            return Err("secret_key must be at least 16 characters long".to_string());
         }
 
         if self.limits.max_concurrent_requests == 0 {

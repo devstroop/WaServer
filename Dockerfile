@@ -72,13 +72,13 @@ RUN mkdir -p /app/data
 
 # Set environment variables
 ENV WHATSAPP_HOST=0.0.0.0
-ENV WHATSAPP_PORT=3000
+ENV WAS__SERVER__PORT=3000
 ENV CHROME_PATH=/usr/bin/chromium
 
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://localhost:3000/api/health || exit 1
 
 CMD ["was"]

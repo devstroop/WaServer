@@ -9,8 +9,6 @@ use std::env;
 pub struct EnvironmentConfig {
     pub environment: Environment,
     pub log_level: String,
-    pub rust_log: String,
-    pub debug_mode: bool,
     pub health_check_interval: u64,
     /// Directory for persistent data (database, media files)
     pub data_directory: Option<String>,
@@ -28,8 +26,6 @@ impl Default for EnvironmentConfig {
         Self {
             environment: Environment::Development,
             log_level: "info".to_string(),
-            rust_log: "was=info".to_string(),
-            debug_mode: false,
             health_check_interval: 30,
             data_directory: Some("data".to_string()),
         }
@@ -49,28 +45,9 @@ impl EnvironmentConfig {
             };
         }
 
-        // Log level
-        if let Ok(log_level) = env::var("LOG_LEVEL") {
+        // Log level (standard RUST_LOG)
+        if let Ok(log_level) = env::var("RUST_LOG") {
             config.log_level = log_level;
-        }
-
-        // RUST_LOG override
-        if let Ok(rust_log) = env::var("RUST_LOG") {
-            config.rust_log = rust_log;
-        } else {
-            // Set default RUST_LOG based on environment
-            config.rust_log = match config.environment {
-                Environment::Production => "was=warn,error".to_string(),
-                Environment::Staging => "was=info".to_string(),
-                Environment::Development => "was=debug".to_string(),
-            };
-        }
-
-        // Debug mode
-        if let Ok(debug_str) = env::var("DEBUG") {
-            config.debug_mode = debug_str.to_lowercase() == "true" || debug_str == "1";
-        } else {
-            config.debug_mode = matches!(config.environment, Environment::Development);
         }
 
         // Health check interval
@@ -100,8 +77,21 @@ impl EnvironmentConfig {
         self.environment == Environment::Development
     }
 
+    /// Get RUST_LOG filter string from log_level
     pub fn get_rust_log_filter(&self) -> String {
-        self.rust_log.clone()
+        // If already contains '=' (e.g., "was=debug"), use as-is
+        if self.log_level.contains('=') {
+            self.log_level.clone()
+        } else {
+            // Simple level like "info" -> "was=info"
+            format!("was={}", self.log_level)
+        }
+    }
+
+    pub fn is_debug(&self) -> bool {
+        matches!(self.log_level.as_str(), "debug" | "trace")
+            || self.log_level.contains("debug")
+            || self.log_level.contains("trace")
     }
 
     pub fn should_show_detailed_errors(&self) -> bool {
@@ -109,6 +99,6 @@ impl EnvironmentConfig {
     }
 
     pub fn should_enable_request_logging(&self) -> bool {
-        self.debug_mode || !self.is_production()
+        self.is_debug() || !self.is_production()
     }
 }

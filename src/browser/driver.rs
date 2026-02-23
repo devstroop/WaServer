@@ -3,7 +3,6 @@
 //! Chrome browser lifecycle management using chromiumoxide.
 //! Handles browser launch, page management, and session persistence.
 
-use crate::config::AppConfig;
 use anyhow::Result;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::page::Page;
@@ -12,6 +11,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
+
+/// Default browser arguments for Chrome automation
+pub const DEFAULT_BROWSER_ARGS: &[&str] = &[
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--disable-popup-blocking",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+];
 
 /// Browser service configuration
 #[derive(Debug, Clone)]
@@ -27,47 +38,30 @@ pub struct BrowserServiceConfig {
 }
 
 impl BrowserServiceConfig {
-    /// Create config from AppConfig (legacy single-account mode)
-    pub fn from_app_config(config: &AppConfig) -> Self {
-        let base_dir = if cfg!(target_os = "windows") {
-            std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-                std::env::var("APPDATA").unwrap_or_else(|_| "C:\\Users\\Public".to_string())
-            })
-        } else {
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-        };
-
-        Self {
-            user_data_dir: PathBuf::from(format!("{}/was/chrome-profile", base_dir)),
-            headless: config.browser.headless,
-            timeout_ms: config.browser.timeout_ms,
-            args: config.browser.args.clone(),
+    /// Create config for a specific instance instance
+    pub fn for_account(
+        account_data_dir: &PathBuf,
+        headless: bool,
+        timeout_ms: u64,
+        extra_args: Vec<String>,
+    ) -> Self {
+        let mut args: Vec<String> = DEFAULT_BROWSER_ARGS.iter().map(|s| s.to_string()).collect();
+        for arg in extra_args {
+            if !args.contains(&arg) {
+                args.push(arg);
+            }
         }
-    }
-
-    /// Create config for a specific account
-    pub fn for_account(account_data_dir: &PathBuf, headless: bool, timeout_ms: u64) -> Self {
         Self {
             user_data_dir: account_data_dir.join("chrome-profile"),
             headless,
             timeout_ms,
-            args: vec![
-                "--disable-blink-features=AutomationControlled".to_string(),
-                "--no-sandbox".to_string(),
-                "--disable-setuid-sandbox".to_string(),
-                "--disable-dev-shm-usage".to_string(),
-                "--disable-extensions".to_string(),
-                "--disable-popup-blocking".to_string(),
-                "--disable-gpu".to_string(),
-                "--disable-software-rasterizer".to_string(),
-            ],
+            args,
         }
     }
 }
 
 /// Browser service for managing Chrome browser instances
 pub struct BrowserService {
-    config: Arc<AppConfig>,
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,
     whatsapp_page: Arc<Mutex<Option<Page>>>,
@@ -75,21 +69,9 @@ pub struct BrowserService {
 }
 
 impl BrowserService {
-    pub fn new(config: Arc<AppConfig>) -> Self {
-        let browser_config = BrowserServiceConfig::from_app_config(&config);
+    /// Create a new browser service with the given configuration
+    pub fn new(browser_config: BrowserServiceConfig) -> Self {
         Self {
-            config,
-            browser_config,
-            browser: Arc::new(Mutex::new(None)),
-            whatsapp_page: Arc::new(Mutex::new(None)),
-            user_data_dir: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    /// Create a new browser service with custom configuration (for multi-account)
-    pub fn with_config(config: Arc<AppConfig>, browser_config: BrowserServiceConfig) -> Self {
-        Self {
-            config,
             browser_config,
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),
@@ -122,7 +104,11 @@ impl BrowserService {
             browser_config = browser_config.arg(arg);
         }
 
-        let user_data_dir = self.browser_config.user_data_dir.to_string_lossy().to_string();
+        let user_data_dir = self
+            .browser_config
+            .user_data_dir
+            .to_string_lossy()
+            .to_string();
 
         // Ensure the directory exists
         std::fs::create_dir_all(&user_data_dir)
@@ -352,17 +338,37 @@ impl BrowserService {
         self.create_new_page(url).await
     }
 
+    /// Page health check timeout (2 seconds)
+    const PAGE_HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
     /// Get the persistent WhatsApp Web page
+    ///
+    /// Includes timeout protection to avoid hanging when browser is unresponsive.
     pub async fn get_whatsapp_page(&self) -> Result<Page> {
+        // First, try to reuse existing page with timeout-protected check
         {
             let page_guard = self.whatsapp_page.lock().await;
             if let Some(ref page) = *page_guard {
-                if page.url().await.is_ok() {
-                    debug!("Reusing existing WhatsApp Web page");
-                    return Ok(page.clone());
+                // Use timeout to check if page is still responsive
+                let page_check = async { page.url().await };
+
+                match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, page_check).await {
+                    Ok(Ok(_)) => {
+                        debug!("Reusing existing WhatsApp Web page");
+                        return Ok(page.clone());
+                    }
+                    Ok(Err(e)) => {
+                        debug!("Existing page is invalid: {}", e);
+                    }
+                    Err(_) => {
+                        tracing::warn!("Page health check timed out - page may be unresponsive");
+                    }
                 }
             }
         }
+
+        // Clear stale page reference
+        *self.whatsapp_page.lock().await = None;
 
         debug!("Creating new WhatsApp Web page");
         let page = self.create_new_page("https://web.whatsapp.com").await?;
@@ -405,9 +411,47 @@ impl BrowserService {
         Ok(page)
     }
 
-    /// Check if browser is running
+    /// Check if browser is running (basic check - only verifies handle exists)
     pub async fn is_running(&self) -> bool {
         self.browser.lock().await.is_some()
+    }
+
+    /// Check if browser is actually responsive (with timeout)
+    ///
+    /// This does a real check that the browser can respond to commands.
+    /// Use this for health checks rather than `is_running()`.
+    pub async fn is_responsive(&self) -> bool {
+        if !self.is_running().await {
+            return false;
+        }
+
+        // Try to get the page with timeout
+        match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, self.get_whatsapp_page()).await {
+            Ok(Ok(page)) => {
+                // Try a simple evaluation to verify responsiveness
+                match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, page.evaluate("true")).await {
+                    Ok(Ok(_)) => true,
+                    _ => {
+                        tracing::warn!("Browser page not responding to commands");
+                        false
+                    }
+                }
+            }
+            _ => {
+                tracing::warn!("Failed to get browser page for health check");
+                false
+            }
+        }
+    }
+
+    /// Force reset the browser state when it's unresponsive
+    ///
+    /// This clears the browser handle so the next operation will attempt
+    /// to reinitialize. Useful when the browser process has died.
+    pub async fn force_reset(&self) {
+        tracing::warn!("Force resetting browser state");
+        *self.whatsapp_page.lock().await = None;
+        *self.browser.lock().await = None;
     }
 
     /// Close the browser and clean up resources
@@ -432,5 +476,25 @@ impl BrowserService {
 
         info!("Browser service closed successfully");
         Ok(())
+    }
+
+    /// Take a screenshot of the current page
+    ///
+    /// Returns PNG image data as bytes. Useful for live feed/monitoring.
+    pub async fn screenshot(&self) -> Result<Vec<u8>> {
+        let page = self.get_whatsapp_page().await?;
+
+        use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
+
+        let screenshot = page
+            .screenshot(
+                chromiumoxide::page::ScreenshotParams::builder()
+                    .format(CaptureScreenshotFormat::Png)
+                    .full_page(false)
+                    .build(),
+            )
+            .await?;
+
+        Ok(screenshot)
     }
 }

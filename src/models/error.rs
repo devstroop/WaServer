@@ -191,22 +191,3 @@ impl From<tokio::sync::AcquireError> for WhatsAppError {
         WhatsAppError::Internal(format!("Semaphore acquire error: {}", err))
     }
 }
-
-// ============================================================================
-// Authentication Errors
-// ============================================================================
-
-/// Errors that can occur during authentication token operations
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error("Invalid credentials")]
-    InvalidCredentials,
-    #[error("Token expired")]
-    TokenExpired,
-    #[error("Invalid token")]
-    InvalidToken,
-    #[error("Token generation failed: {0}")]
-    TokenGenerationFailed(String),
-    #[error("Password hashing failed: {0}")]
-    HashingFailed(String),
-}

@@ -16,11 +16,11 @@
         "rest-api": {
             "command": "node",
             "args": [
-                "~/McpServers/rest-mcp/build/index.js"
+                "~/mcp-servers/rest-mcp/build/index.js"
             ],
             "env": {
                 "REST_BASE_URL": "http://localhost:3000",
-                "AUTH_BEARER": "test-api-token-123456789"
+                "AUTH_BEARER": "Bearer change-this-secret-key-in-production"
             }
         }
     }

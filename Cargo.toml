@@ -81,21 +81,14 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
-# JWT for local authentication
-jsonwebtoken = "9.3"
-bcrypt = "0.15"
-
-# Templating for HTMX frontend
-askama = "0.12"
-askama_axum = "0.4"
-
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # OpenAPI documentation
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "7.0", features = ["axum"] }
 
 # ============================================================================
 # Optional Dependencies

@@ -1,6 +1,12 @@
 //! Database Service Core
 //!
 //! Creates and manages the SQLite connection, schema initialization, and migrations.
+//!
+//! Schema documentation: See `sql/` directory for complete schema files:
+//! - `sql/schema.sql` - Table definitions
+//! - `sql/indexes.sql` - Performance indexes
+//! - `sql/migrations.sql` - Migration scripts
+//! - `sql/ERD.sql` - Entity relationship diagram
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};

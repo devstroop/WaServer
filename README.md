@@ -112,10 +112,10 @@ GET /api/v1/chats/events
 ### Health
 
 ```bash
-GET /health          # Health check
-GET /ready           # Readiness probe (K8s)
-GET /live            # Liveness probe (K8s)
-GET /metrics         # Service metrics
+GET /api/health      # Health check
+GET /api/ready       # Readiness probe (K8s)
+GET /api/live        # Liveness probe (K8s)
+GET /api/metrics     # Service metrics
 ```
 
 ### Examples
@@ -132,7 +132,7 @@ curl -N http://localhost:3000/api/v1/chats/events \
   -H "Authorization: Bearer your-api-token"
 ```
 
-**Swagger UI**: http://localhost:3000/swagger-ui/
+**Swagger UI**: http://localhost:3000/api-docs/
 
 ## MCP (Model Context Protocol)
 
@@ -187,7 +187,7 @@ timeout_ms = 30000
 
 [auth]
 enabled = true
-api_token = "your-secure-api-token"
+secret = "your-secure-secret"
 
 [mcp]
 enabled = true
@@ -195,7 +195,7 @@ endpoint = "/mcp"
 
 [swagger]
 enabled = true
-path = "/swagger-ui"
+path = "/api-docs"
 
 [webhooks]
 enabled = false
@@ -209,9 +209,9 @@ secret = "hmac-secret"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WHATSAPP_HOST` | Server host | `0.0.0.0` |
-| `WHATSAPP_PORT` | Server port | `3000` |
-| `WHATSAPP_API_TOKEN` | API bearer token | - |
+| `WAS_HOST` | Server host | `0.0.0.0` |
+| `WAS_PORT` | Server port | `3000` |
+| `WAS__AUTH__SECRET_KEY` | Secret key | - |
 | `RUST_LOG` | Log level | `info` |
 
 ## Webhooks

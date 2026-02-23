@@ -1,0 +1,569 @@
+//! WhatsApp Instance Operations API
+//!
+//! REST API endpoints for WhatsApp instance operations (status, QR, logout, profile, privacy).
+//! Instance ID is a UUID, phone number is the E.164 identifier.
+//! These endpoints use path parameter {instance_id}.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use serde_json::json;
+
+use crate::{
+    models::instance::{
+        PhoneLinkRequest, PrivacySettings, ProfileInfo, UpdatePrivacyRequest, UpdateProfileRequest,
+        WhatsAppStatusResponse,
+    },
+    services::InstanceManager,
+};
+
+// === API Handlers ===
+
+/// Get WhatsApp authentication status
+///
+/// Returns the authentication status and bound phone number for the instance.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/status",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Instance status", body = WhatsAppStatusResponse),
+        (status = 404, description = "Instance not found"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_instance_status(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+    let info = instance.info().await;
+
+    // Convert InstanceStatus enum to string
+    let status_str = match &info.status {
+        crate::models::instance::InstanceStatus::Stopped => "stopped",
+        crate::models::instance::InstanceStatus::Starting => "starting",
+        crate::models::instance::InstanceStatus::Running => "running",
+        crate::models::instance::InstanceStatus::Error(_) => "error",
+    };
+
+    Json(json!(WhatsAppStatusResponse {
+        instance_id: info.id,
+        phone_number: info.phone_number,
+        status: status_str.to_string(),
+        authorized: info.authorized,
+        last_activity: info.last_activity.map(|dt| dt.to_rfc3339()),
+    }))
+    .into_response()
+}
+
+/// Get QR code for WhatsApp Web linking
+///
+/// Returns a QR code image (base64) for linking WhatsApp on mobile device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/link/qr",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "QR code"),
+        (status = 404, description = "Instance not found"),
+        (status = 503, description = "Browser not running"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_qr_code(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Check if browser is running
+    if !instance.browser_service().is_running().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "browser_not_running",
+                "message": "Instance browser is not running. Start it first via POST /api/v1/instances/{instance_id}/start"
+            })),
+        )
+            .into_response();
+    }
+
+    match instance.auth_service().get_auth_qr_code().await {
+        Ok(qr_code) => Json(json!({
+            "qr_code": qr_code,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "qr_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Link via phone number
+///
+/// Initiates phone number linking flow.
+#[utoipa::path(
+    post,
+    path = "/api/v1/instances/{instance_id}/link/phone",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    request_body = PhoneLinkRequest,
+    responses(
+        (status = 200, description = "Phone linking initiated"),
+        (status = 400, description = "Invalid request"),
+        (status = 403, description = "Instance bound to different phone"),
+        (status = 404, description = "Instance not found"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn link_phone(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+    Json(request): Json<PhoneLinkRequest>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Check if browser is running
+    if !instance.browser_service().is_running().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "browser_not_running",
+                "message": "Instance browser is not running"
+            })),
+        )
+            .into_response();
+    }
+
+    // Validate phone number from request
+    let req_phone = match crate::models::instance::validate_phone_number(&request.phone_number) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "invalid_phone",
+                    "message": e
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // If instance already has a phone bound, it must match
+    if let Some(existing_phone) = instance.phone_number() {
+        if existing_phone != req_phone {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "phone_mismatch",
+                    "message": format!(
+                        "Instance is already bound to phone {}. Cannot link to {}.",
+                        existing_phone, req_phone
+                    )
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    match instance
+        .auth_service()
+        .login_with_phone_number(&request.phone_number)
+        .await
+    {
+        Ok(linking_code) => {
+            let success = linking_code.is_some();
+            if success {
+                if let Err(e) = instance
+                    .on_whatsapp_authenticated(&request.phone_number)
+                    .await
+                {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        Json(json!({
+                            "error": "binding_failed",
+                            "message": e.to_string()
+                        })),
+                    )
+                        .into_response();
+                }
+                // Register phone in manager's lookup map
+                if let Err(e) = manager.register_phone(instance.id, &req_phone).await {
+                    tracing::warn!("Failed to register phone in manager: {}", e);
+                }
+            }
+            Json(json!({
+                "success": success,
+                "linking_code": linking_code,
+            }))
+            .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "link_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Unlink WhatsApp Web
+///
+/// Disconnects the WhatsApp Web session for this instance.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/instances/{instance_id}/unlink",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Unlinked"),
+        (status = 404, description = "Instance not found"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn unlink(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    match instance.auth_service().logout().await {
+        Ok(_) => {
+            instance.invalidate_auth_cache().await;
+            Json(json!({
+                "success": true,
+                "message": "WhatsApp Web session unlinked"
+            }))
+            .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "unlink_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+// === Profile Management ===
+
+/// Get profile info
+///
+/// Returns the WhatsApp profile information (name, about, picture).
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/profile",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Profile info", body = ProfileInfo),
+        (status = 404, description = "Instance not found"),
+        (status = 503, description = "Browser not running"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_profile(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    if !instance.browser_service().is_running().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "browser_not_running",
+                "message": "Instance browser is not running"
+            })),
+        )
+            .into_response();
+    }
+
+    // TODO: Implement actual profile fetching from WhatsApp Web
+    // For now, return placeholder
+    Json(json!(ProfileInfo {
+        name: None,
+        about: None,
+        picture_url: None,
+    }))
+    .into_response()
+}
+
+/// Update profile
+///
+/// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
+#[utoipa::path(
+    put,
+    path = "/api/v1/instances/{instance_id}/profile",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    request_body = UpdateProfileRequest,
+    responses(
+        (status = 200, description = "Profile updated"),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Instance not found"),
+        (status = 503, description = "Browser not running"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_profile(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+    Json(request): Json<UpdateProfileRequest>,
+) -> impl IntoResponse {
+    let instance = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    if !instance.browser_service().is_running().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "browser_not_running",
+                "message": "Instance browser is not running"
+            })),
+        )
+            .into_response();
+    }
+
+    // TODO: Implement actual profile update via WhatsApp Web automation
+    let mut updated = Vec::new();
+    if request.name.is_some() {
+        updated.push("name");
+    }
+    if request.about.is_some() {
+        updated.push("about");
+    }
+    if request.picture.is_some() {
+        updated.push("picture");
+    }
+
+    Json(json!({
+        "success": true,
+        "message": "Profile update not yet implemented",
+        "fields_requested": updated,
+        "profile": request
+    }))
+    .into_response()
+}
+
+// === Privacy Settings ===
+
+/// Get privacy settings
+#[utoipa::path(
+    get,
+    path = "/api/v1/instances/{instance_id}/privacy",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Privacy settings", body = PrivacySettings),
+        (status = 404, description = "Instance not found"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_privacy(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    let _account = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // TODO: Implement actual privacy settings fetching from WhatsApp Web
+    Json(json!(PrivacySettings::default())).into_response()
+}
+
+/// Update privacy settings
+///
+/// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
+#[utoipa::path(
+    put,
+    path = "/api/v1/instances/{instance_id}/privacy",
+    tag = "WhatsApp",
+    params(
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+    ),
+    request_body = UpdatePrivacyRequest,
+    responses(
+        (status = 200, description = "Privacy settings updated"),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Instance not found"),
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_privacy(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
+    Json(request): Json<UpdatePrivacyRequest>,
+) -> impl IntoResponse {
+    let _account = match manager.get_instance(&instance_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // TODO: Implement actual privacy update via WhatsApp Web automation
+    let mut updated = Vec::new();
+    if request.last_seen.is_some() {
+        updated.push("last_seen");
+    }
+    if request.online.is_some() {
+        updated.push("online");
+    }
+    if request.profile_photo.is_some() {
+        updated.push("profile_photo");
+    }
+    if request.about.is_some() {
+        updated.push("about");
+    }
+    if request.read_receipts.is_some() {
+        updated.push("read_receipts");
+    }
+    if request.groups.is_some() {
+        updated.push("groups");
+    }
+
+    Json(json!({
+        "success": true,
+        "message": "Privacy update not yet implemented",
+        "fields_requested": updated,
+        "privacy": request
+    }))
+    .into_response()
+}

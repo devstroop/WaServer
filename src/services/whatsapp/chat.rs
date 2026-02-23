@@ -322,12 +322,12 @@ impl ChatService {
 
         let result = page.evaluate(listener_script).await?;
         let status: serde_json::Value = result.into_value().unwrap_or_default();
-        
+
         let status_str = status
             .get("status")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        
+
         match status_str {
             "installed" => info!("Message listener installed successfully"),
             "already_active" => debug!("Message listener already active"),
@@ -1261,7 +1261,6 @@ impl ChatServiceTrait for ChatService {
             if !phone.is_empty() && phone.chars().all(|c| c.is_ascii_digit() || c == '+') {
                 self.navigate_to_chat(&page, phone).await?;
                 tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-                navigated = true;
             }
         }
 
@@ -1434,7 +1433,7 @@ impl ChatServiceTrait for ChatService {
     }
 
     /// Watch for new incoming messages (returns new messages since last check)
-    /// 
+    ///
     /// This uses an event-driven approach with MutationObserver and Notification API
     /// interception instead of polling the DOM. Much more efficient for real-time
     /// message detection.

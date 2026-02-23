@@ -2,25 +2,23 @@
 //!
 //! Production-ready middleware for request correlation, metrics, authentication, and security.
 
-pub mod account;
+pub mod instance;
 pub mod auth;
 
-use axum::{
-    extract::Request,
-    http::HeaderMap,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::HeaderMap, middleware::Next, response::Response};
 use std::time::SystemTime;
 use tracing::Instrument;
 
 use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 
-// Re-export account middleware
-pub use account::{account_middleware, CurrentAccount};
+// Re-export instance middleware
+pub use instance::{instance_middleware, CurrentInstance};
 
-// Re-export auth middleware
+// Re-export auth middleware and types
 pub use auth::{auth_middleware, AuthState};
+
+// Re-export AuthenticatedUser from models for convenience
+pub use crate::models::auth::AuthenticatedUser;
 
 /// Correlation ID middleware - adds correlation ID to all requests
 pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Response {

@@ -1,4 +1,4 @@
-pub mod account;
+pub mod instance;
 pub mod auth;
 pub mod chat;
 pub mod config;
@@ -11,13 +11,28 @@ pub mod session;
 // Re-export domain models for easier access
 pub use domain::*;
 
-// Re-export account types
-pub use account::{
-    AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
-    CreateAccountRequest, CreateAccountResponse, AccountListResponse,
-    WhatsAppStatusResponse, ProfileInfo, PrivacySettings, 
-    validate_phone_number, phone_to_dir_name,
+// Re-export auth types
+pub use auth::AuthenticatedUser;
+
+// Re-export instance types
+pub use instance::{
+    phone_to_dir_name,
+    validate_phone_number,
+    InstanceActionResponse,
+    InstanceSetupConfig,
+    InstanceId,
+    InstanceInfo,
+    InstanceListResponse,
+    InstanceMetadata,
+    InstanceStatus,
+    CreateInstanceRequest,
+    CreateInstanceResponse,
+    DeleteInstanceQuery,
+    DeleteInstanceResponse,
     // API query/response types
-    ListAccountsQuery, DeleteAccountResponse, DeleteAccountQuery, 
-    AccountActionResponse, PhoneLinkRequest,
+    ListInstancesQuery,
+    PhoneLinkRequest,
+    PrivacySettings,
+    ProfileInfo,
+    WhatsAppStatusResponse,
 };
