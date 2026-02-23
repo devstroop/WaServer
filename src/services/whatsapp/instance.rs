@@ -1,15 +1,15 @@
-//! WhatsApp Account Service
+//! WhatsApp Instance Service
 //!
-//! Self-contained WhatsApp account with isolated resources.
-//! Each account has its own browser profile, database, and session data.
-//! Account ID is a UUID, phone_number is the E.164 identifier.
+//! Self-contained WhatsApp instance with isolated resources.
+//! Each instance has its own browser profile, database, and session data.
+//! Instance ID is a UUID, phone_number is the E.164 identifier.
 
 use super::chat::{ChatService, ChatServiceTrait};
 use crate::{
     browser::{BrowserService, BrowserServiceConfig},
     config::AppConfig,
-    models::account::{
-        AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
+    models::instance::{
+        InstanceSetupConfig, InstanceId, InstanceInfo, InstanceMetadata, InstanceStatus,
         InstanceBrowserConfig, InstanceConfig, InstanceRateLimits, InstanceWebhookConfig,
         UpdateInstanceConfigRequest,
     },
@@ -38,27 +38,27 @@ struct CachedAuthStatus {
 /// Cache TTL for auth status (5 seconds)
 const AUTH_CACHE_TTL: Duration = Duration::from_secs(5);
 
-/// Account metadata filename
-const METADATA_FILE: &str = "account.json";
+/// Instance metadata filename
+const METADATA_FILE: &str = "instance.json";
 
 /// Instance runtime config filename
 const INSTANCE_CONFIG_FILE: &str = "instance_config.json";
 
-/// Self-contained WhatsApp account with isolated resources
-/// Each account is identified by UUID and bound to exactly one phone number
-pub struct WhatsAppAccount {
-    /// Account identifier (UUID)
-    pub id: AccountId,
+/// Self-contained WhatsApp instance with isolated resources
+/// Each instance is identified by UUID and bound to exactly one phone number
+pub struct WhatsAppInstance {
+    /// Instance identifier (UUID)
+    pub id: InstanceId,
     /// Phone number in E.164 format
     pub phone_number: String,
-    /// Account configuration
-    _config: AccountConfig,
+    /// Instance configuration
+    _config: InstanceSetupConfig,
     /// Global app config
     _app_config: Arc<AppConfig>,
-    /// Data directory for this account
+    /// Data directory for this instance
     data_dir: PathBuf,
-    /// Account metadata (includes bound phone)
-    metadata: Arc<RwLock<AccountMetadata>>,
+    /// Instance metadata (includes bound phone)
+    metadata: Arc<RwLock<InstanceMetadata>>,
     /// Instance runtime configuration (API-managed)
     instance_config: Arc<RwLock<InstanceConfig>>,
     /// Isolated browser service
@@ -71,53 +71,50 @@ pub struct WhatsAppAccount {
     database: Arc<DatabaseService>,
     /// Webhook service
     webhook_service: Arc<WebhookService>,
-    /// Current account status
-    status: Arc<RwLock<AccountStatus>>,
+    /// Current instance status
+    status: Arc<RwLock<InstanceStatus>>,
     /// Operation semaphore for mutual exclusion
     operation_semaphore: Arc<Semaphore>,
     /// Service metrics
     metrics: ServiceMetrics,
-    /// Whether the account is initialized
+    /// Whether the instance is initialized
     initialized: Arc<Mutex<bool>>,
     /// Cached auth status
     auth_cache: Arc<Mutex<Option<CachedAuthStatus>>>,
 }
 
-impl WhatsAppAccount {
-    /// Create a new WhatsApp account with isolated data directory
-    pub async fn new(config: AccountConfig, app_config: Arc<AppConfig>) -> Result<Self> {
+impl WhatsAppInstance {
+    /// Create a new WhatsApp instance with isolated data directory
+    pub async fn new(config: InstanceSetupConfig, app_config: Arc<AppConfig>) -> Result<Self> {
         let data_dir = config.data_dir.clone();
 
         info!(
-            "Creating account '{}' (phone: {}) at {:?}",
+            "Creating instance '{}' (phone: {}) at {:?}",
             config.id, config.phone_number, data_dir
         );
 
-        // Ensure account directories exist
+        // Ensure instance directories exist
         tokio::fs::create_dir_all(&data_dir).await?;
         tokio::fs::create_dir_all(data_dir.join("chrome-profile")).await?;
         tokio::fs::create_dir_all(data_dir.join("sessions")).await?;
         tokio::fs::create_dir_all(data_dir.join("media")).await?;
 
-        // Load or create account metadata
+        // Load or create instance metadata
         let metadata = Self::load_or_create_metadata(&data_dir, &config).await?;
 
         // Load or create instance runtime config
         let instance_config = Self::load_or_create_instance_config(&data_dir, &config).await?;
 
-        // Create browser service with account-specific profile
-        let headless = config
-            .browser
-            .headless
-            .unwrap_or(app_config.browser.headless);
-        let browser_config =
-            BrowserServiceConfig::for_account(&data_dir, headless, app_config.browser.timeout_ms);
-        let browser_service = Arc::new(BrowserService::with_config(
-            app_config.clone(),
-            browser_config,
-        ));
+        // Create browser service with instance-specific profile from instance config
+        let browser_config = BrowserServiceConfig::for_account(
+            &data_dir,
+            instance_config.browser.headless,
+            instance_config.browser.timeout_ms,
+            instance_config.browser.extra_args.clone(),
+        );
+        let browser_service = Arc::new(BrowserService::new(browser_config));
 
-        // Create database in account directory
+        // Create database in instance directory
         let database = Arc::new(
             DatabaseService::new(data_dir.to_str().unwrap())
                 .map_err(|e| anyhow!("Failed to create database: {}", e))?,
@@ -150,7 +147,7 @@ impl WhatsAppAccount {
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             database,
             webhook_service,
-            status: Arc::new(RwLock::new(AccountStatus::Stopped)),
+            status: Arc::new(RwLock::new(InstanceStatus::Stopped)),
             operation_semaphore: Arc::new(Semaphore::new(1)),
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
@@ -158,24 +155,24 @@ impl WhatsAppAccount {
         })
     }
 
-    /// Load or create account metadata
+    /// Load or create instance metadata
     async fn load_or_create_metadata(
         data_dir: &PathBuf,
-        config: &AccountConfig,
-    ) -> Result<AccountMetadata> {
+        config: &InstanceSetupConfig,
+    ) -> Result<InstanceMetadata> {
         let metadata_path = data_dir.join(METADATA_FILE);
 
         if metadata_path.exists() {
             let content = tokio::fs::read_to_string(&metadata_path).await?;
-            let metadata: AccountMetadata = serde_json::from_str(&content)
-                .map_err(|e| anyhow!("Failed to parse account metadata: {}", e))?;
-            debug!("Loaded metadata for account '{}'", config.id);
+            let metadata: InstanceMetadata = serde_json::from_str(&content)
+                .map_err(|e| anyhow!("Failed to parse instance metadata: {}", e))?;
+            debug!("Loaded metadata for instance '{}'", config.id);
             Ok(metadata)
         } else {
             let metadata =
-                AccountMetadata::new(config.id, &config.phone_number, config.display_name.clone());
+                InstanceMetadata::new(config.id, &config.phone_number, config.display_name.clone());
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
-            info!("Created new metadata for account '{}'", config.id);
+            info!("Created new metadata for instance '{}'", config.id);
             Ok(metadata)
         }
     }
@@ -187,7 +184,7 @@ impl WhatsAppAccount {
         Self::save_metadata_to_path(&metadata_path, &metadata).await
     }
 
-    async fn save_metadata_to_path(path: &PathBuf, metadata: &AccountMetadata) -> Result<()> {
+    async fn save_metadata_to_path(path: &PathBuf, metadata: &InstanceMetadata) -> Result<()> {
         let content = serde_json::to_string_pretty(metadata)?;
         tokio::fs::write(path, content).await?;
         Ok(())
@@ -196,7 +193,7 @@ impl WhatsAppAccount {
     /// Load or create instance runtime config
     async fn load_or_create_instance_config(
         data_dir: &PathBuf,
-        config: &AccountConfig,
+        config: &InstanceSetupConfig,
     ) -> Result<InstanceConfig> {
         let config_path = data_dir.join(INSTANCE_CONFIG_FILE);
 
@@ -204,10 +201,10 @@ impl WhatsAppAccount {
             let content = tokio::fs::read_to_string(&config_path).await?;
             let instance_config: InstanceConfig = serde_json::from_str(&content)
                 .map_err(|e| anyhow!("Failed to parse instance config: {}", e))?;
-            debug!("Loaded instance config for account '{}'", config.id);
+            debug!("Loaded instance config for instance '{}'", config.id);
             Ok(instance_config)
         } else {
-            // Create default config from AccountConfig
+            // Create default config from InstanceSetupConfig
             let instance_config = InstanceConfig {
                 instance_id: Some(config.id),
                 display_name: config.display_name.clone(),
@@ -221,7 +218,7 @@ impl WhatsAppAccount {
                 rate_limits: InstanceRateLimits::default(),
             };
             Self::save_instance_config_to_path(&config_path, &instance_config).await?;
-            info!("Created new instance config for account '{}'", config.id);
+            info!("Created new instance config for instance '{}'", config.id);
             Ok(instance_config)
         }
     }
@@ -299,53 +296,53 @@ impl WhatsAppAccount {
         let config_path = self.data_dir.join(INSTANCE_CONFIG_FILE);
         Self::save_instance_config_to_path(&config_path, &config).await?;
 
-        info!("Updated instance config for account '{}'", self.id);
+        info!("Updated instance config for instance '{}'", self.id);
         Ok(config.clone())
     }
 
-    /// Start the account (launch browser, navigate to WhatsApp)
+    /// Start the instance (launch browser, navigate to WhatsApp)
     pub async fn start(&self) -> Result<()> {
         let mut status = self.status.write().await;
 
         match &*status {
-            AccountStatus::Running => {
-                return Err(anyhow!("Account '{}' is already running", self.id));
+            InstanceStatus::Running => {
+                return Err(anyhow!("Instance '{}' is already running", self.id));
             }
-            AccountStatus::Starting => {
-                return Err(anyhow!("Account '{}' is already starting", self.id));
+            InstanceStatus::Starting => {
+                return Err(anyhow!("Instance '{}' is already starting", self.id));
             }
             _ => {}
         }
 
-        *status = AccountStatus::Starting;
+        *status = InstanceStatus::Starting;
         drop(status);
 
-        info!("Starting account '{}'", self.id);
+        info!("Starting instance '{}'", self.id);
 
         match self.browser_service.initialize().await {
             Ok(()) => {
                 let mut status = self.status.write().await;
-                *status = AccountStatus::Running;
+                *status = InstanceStatus::Running;
                 let mut initialized = self.initialized.lock().await;
                 *initialized = true;
-                info!("Account '{}' started successfully", self.id);
+                info!("Instance '{}' started successfully", self.id);
                 Ok(())
             }
             Err(e) => {
                 let mut status = self.status.write().await;
-                *status = AccountStatus::Error(e.to_string());
-                error!("Failed to start account '{}': {}", self.id, e);
+                *status = InstanceStatus::Error(e.to_string());
+                error!("Failed to start instance '{}': {}", self.id, e);
                 Err(e)
             }
         }
     }
 
-    /// Stop the account (close browser, cleanup)
+    /// Stop the instance (close browser, cleanup)
     pub async fn stop(&self) -> Result<()> {
-        info!("Stopping account '{}'", self.id);
+        info!("Stopping instance '{}'", self.id);
 
         let mut status = self.status.write().await;
-        *status = AccountStatus::Stopped;
+        *status = InstanceStatus::Stopped;
         drop(status);
 
         let mut initialized = self.initialized.lock().await;
@@ -354,12 +351,12 @@ impl WhatsAppAccount {
 
         self.browser_service.close().await?;
 
-        info!("Account '{}' stopped", self.id);
+        info!("Instance '{}' stopped", self.id);
         Ok(())
     }
 
-    /// Get current account status
-    pub async fn status(&self) -> AccountStatus {
+    /// Get current instance status
+    pub async fn status(&self) -> InstanceStatus {
         self.status.read().await.clone()
     }
 
@@ -368,8 +365,8 @@ impl WhatsAppAccount {
         &self.phone_number
     }
 
-    /// Get account info
-    pub async fn info(&self) -> AccountInfo {
+    /// Get instance info
+    pub async fn info(&self) -> InstanceInfo {
         let metadata = self.metadata.read().await;
         let status = self.status.read().await.clone();
         let browser_running = self.browser_service.is_running().await;
@@ -381,7 +378,7 @@ impl WhatsAppAccount {
             false
         };
 
-        AccountInfo {
+        InstanceInfo {
             id: self.id,
             phone_number: self.phone_number.clone(),
             display_name: metadata.display_name.clone(),
@@ -393,21 +390,21 @@ impl WhatsAppAccount {
     }
 
     /// Called when WhatsApp Web authentication completes
-    /// Verifies the phone matches the account's phone_number
+    /// Verifies the phone matches the instance's phone_number
     pub async fn on_whatsapp_authenticated(&self, phone: &str) -> Result<()> {
         // Normalize both phone numbers for comparison
-        let account_phone = crate::models::account::validate_phone_number(&self.phone_number)
-            .map_err(|e| anyhow!("Invalid account phone: {}", e))?;
-        let auth_phone = crate::models::account::validate_phone_number(phone)
+        let instance_phone = crate::models::instance::validate_phone_number(&self.phone_number)
+            .map_err(|e| anyhow!("Invalid instance phone: {}", e))?;
+        let auth_phone = crate::models::instance::validate_phone_number(phone)
             .map_err(|e| anyhow!("Invalid authenticated phone: {}", e))?;
 
-        if account_phone != auth_phone {
-            // REJECT: Different phone trying to use this account
+        if instance_phone != auth_phone {
+            // REJECT: Different phone trying to use this instance
             return Err(anyhow!(
-                "WhatsApp authenticated with phone {} but this account is for {}. \
-                 Create a new account for phone {}.",
+                "WhatsApp authenticated with phone {} but this instance is for {}. \
+                 Create a new instance for phone {}.",
                 auth_phone,
-                account_phone,
+                instance_phone,
                 auth_phone
             ));
         }
@@ -418,10 +415,10 @@ impl WhatsAppAccount {
             metadata.first_linked_at = Some(Utc::now());
             drop(metadata);
             self.save_metadata().await?;
-            info!("Account '{}' first linked", self.id);
+            info!("Instance '{}' first linked", self.id);
         }
 
-        debug!("Phone {} authenticated to account '{}'", phone, self.id);
+        debug!("Phone {} authenticated to instance '{}'", phone, self.id);
         Ok(())
     }
 
@@ -461,7 +458,7 @@ impl WhatsAppAccount {
 
     // === Operations ===
 
-    /// Check if the account is currently busy
+    /// Check if the instance is currently busy
     pub async fn is_busy(&self) -> bool {
         self.operation_semaphore.available_permits() == 0
     }
@@ -492,14 +489,14 @@ impl WhatsAppAccount {
             Ok(permit) => permit,
             Err(_) => {
                 return Err(anyhow!(
-                    "Account '{}' is busy with another operation",
+                    "Instance '{}' is busy with another operation",
                     self.id
                 ));
             }
         };
 
         debug!(
-            "Account '{}' - operation started (timeout: {:?})",
+            "Instance '{}' - operation started (timeout: {:?})",
             self.id, timeout
         );
 
@@ -508,7 +505,7 @@ impl WhatsAppAccount {
             Ok(result) => result,
             Err(_) => {
                 error!(
-                    "Account '{}' - operation timed out after {:?}",
+                    "Instance '{}' - operation timed out after {:?}",
                     self.id, timeout
                 );
                 Err(anyhow!(
@@ -519,7 +516,7 @@ impl WhatsAppAccount {
         };
 
         drop(permit);
-        debug!("Account '{}' - operation completed", self.id);
+        debug!("Instance '{}' - operation completed", self.id);
 
         result
     }
@@ -547,7 +544,7 @@ impl WhatsAppAccount {
         match tokio::time::timeout(Duration::from_secs(2), check).await {
             Ok(result) => result,
             Err(_) => {
-                warn!("Account '{}' - browser health check timed out", self.id);
+                warn!("Instance '{}' - browser health check timed out", self.id);
                 false
             }
         }
@@ -568,13 +565,13 @@ impl WhatsAppAccount {
                     _ => false,
                 };
                 debug!(
-                    "Account '{}' - auth check result: {}",
+                    "Instance '{}' - auth check result: {}",
                     self.id, is_authorized
                 );
                 Ok(is_authorized)
             }
             Err(e) => {
-                error!("Account '{}' - error checking auth status: {}", self.id, e);
+                error!("Instance '{}' - error checking auth status: {}", self.id, e);
                 Ok(false)
             }
         }
@@ -587,7 +584,7 @@ impl WhatsAppAccount {
             let cache = self.auth_cache.lock().await;
             if let Some(cached) = cache.as_ref() {
                 if cached.cached_at.elapsed() < AUTH_CACHE_TTL {
-                    debug!("Account '{}' - returning cached auth status", self.id);
+                    debug!("Instance '{}' - returning cached auth status", self.id);
                     return Ok(cached.status.clone());
                 }
             }
@@ -635,7 +632,7 @@ impl WhatsAppAccount {
         *cache = None;
     }
 
-    /// Check if account is initialized
+    /// Check if instance is initialized
     pub async fn is_initialized(&self) -> bool {
         *self.initialized.lock().await
     }
@@ -643,7 +640,7 @@ impl WhatsAppAccount {
     /// Health check
     pub async fn health_check(&self) -> Result<()> {
         if !self.is_initialized().await {
-            return Err(anyhow!("Account '{}' not initialized", self.id));
+            return Err(anyhow!("Instance '{}' not initialized", self.id));
         }
 
         match self.browser_service.get_whatsapp_page().await {
@@ -651,7 +648,7 @@ impl WhatsAppAccount {
             Err(e) => {
                 self.metrics.increment_error_count();
                 Err(anyhow!(
-                    "Browser unhealthy for account '{}': {}",
+                    "Browser unhealthy for instance '{}': {}",
                     self.id,
                     e
                 ))
@@ -683,7 +680,7 @@ impl WhatsAppAccount {
                 .find_element("div[data-animate-modal-backdrop='true']")
                 .await
             {
-                debug!("Account '{}' - dismissing dialog", self.id);
+                debug!("Instance '{}' - dismissing dialog", self.id);
                 backdrop.click().await?;
 
                 tokio::time::timeout(std::time::Duration::from_millis(10000), async {
@@ -720,29 +717,29 @@ impl WhatsAppAccount {
 
         loop {
             if self.is_busy().await {
-                debug!("Account '{}' - busy, pausing queue", self.id);
+                debug!("Instance '{}' - busy, pausing queue", self.id);
                 break;
             }
 
             let item = match self.database.dequeue_next() {
                 Ok(Some(item)) => item,
                 Ok(None) => {
-                    debug!("Account '{}' - queue empty", self.id);
+                    debug!("Instance '{}' - queue empty", self.id);
                     break;
                 }
                 Err(e) => {
-                    error!("Account '{}' - error dequeuing: {}", self.id, e);
+                    error!("Instance '{}' - error dequeuing: {}", self.id, e);
                     break;
                 }
             };
 
             info!(
-                "Account '{}' - processing message {} to {}",
+                "Instance '{}' - processing message {} to {}",
                 self.id, item.id, item.recipient
             );
 
             if let Err(e) = self.database.mark_processing(&item.id) {
-                error!("Account '{}' - failed to mark processing: {}", self.id, e);
+                error!("Instance '{}' - failed to mark processing: {}", self.id, e);
                 continue;
             }
 
@@ -762,26 +759,26 @@ impl WhatsAppAccount {
             match result {
                 Ok(_) => {
                     if let Err(e) = self.database.mark_sent(&item.id) {
-                        error!("Account '{}' - failed to mark sent: {}", self.id, e);
+                        error!("Instance '{}' - failed to mark sent: {}", self.id, e);
                     }
                     processed_count += 1;
                     self.track_message_sent();
-                    info!("Account '{}' - message {} sent", self.id, item.id);
+                    info!("Instance '{}' - message {} sent", self.id, item.id);
                 }
                 Err(e) => {
                     let error_msg = e.to_string();
                     error!(
-                        "Account '{}' - failed to send {}: {}",
+                        "Instance '{}' - failed to send {}: {}",
                         self.id, item.id, error_msg
                     );
 
                     if let Err(db_err) = self.database.mark_failed(&item.id, &error_msg) {
-                        error!("Account '{}' - failed to mark failed: {}", self.id, db_err);
+                        error!("Instance '{}' - failed to mark failed: {}", self.id, db_err);
                     }
                     self.track_error();
 
                     if error_msg.contains("Not authorized") {
-                        warn!("Account '{}' - stopping queue due to auth error", self.id);
+                        warn!("Instance '{}' - stopping queue due to auth error", self.id);
                         break;
                     }
                 }
