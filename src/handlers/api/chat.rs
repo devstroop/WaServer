@@ -88,9 +88,10 @@ pub async fn list_chats(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("Instance '{}' not found", instance_id),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "Instance '{}' not found",
+                    instance_id
+                ))),
             ));
         }
     };
@@ -99,18 +100,16 @@ pub async fn list_chats(
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string(),
-            }),
+            Json(ErrorResponse::new("Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string())),
         ));
     }
 
     if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Account is busy, please try again later".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Account is busy, please try again later".to_string(),
+            )),
         ));
     }
 
@@ -126,9 +125,12 @@ pub async fn list_chats(
         }
         Err(e) => {
             let error_msg = e.to_string();
-            error!("Account {} - Error listing chats: {}", account.id, error_msg);
+            error!(
+                "Account {} - Error listing chats: {}",
+                account.id, error_msg
+            );
             let (status, msg) = categorize_error(&error_msg);
-            Err((status, Json(ErrorResponse { error: msg })))
+            Err((status, Json(ErrorResponse::new(msg))))
         }
     }
 }
@@ -178,9 +180,10 @@ pub async fn get_chat_messages(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("Instance '{}' not found", instance_id),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "Instance '{}' not found",
+                    instance_id
+                ))),
             ));
         }
     };
@@ -189,22 +192,25 @@ pub async fn get_chat_messages(
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Browser not running. Start account first.".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Browser not running. Start account first.".to_string(),
+            )),
         ));
     }
 
     if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Account is busy, please try again later".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Account is busy, please try again later".to_string(),
+            )),
         ));
     }
 
-    debug!("Account {} - Getting messages for chat: {}", account.id, chat_id);
+    debug!(
+        "Account {} - Getting messages for chat: {}",
+        account.id, chat_id
+    );
 
     let limit = params.limit;
     let load_more = params.load_more.unwrap_or(false);
@@ -228,18 +234,21 @@ pub async fn get_chat_messages(
         }
         Err(e) => {
             let error_msg = e.to_string();
-            error!("Account {} - Error getting messages: {}", account.id, error_msg);
+            error!(
+                "Account {} - Error getting messages: {}",
+                account.id, error_msg
+            );
 
             if error_msg.contains("Invalid phone") {
                 Err((
                     StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Chat not found or invalid phone number".to_string(),
-                    }),
+                    Json(ErrorResponse::new(
+                        "Chat not found or invalid phone number".to_string(),
+                    )),
                 ))
             } else {
                 let (status, msg) = categorize_error(&error_msg);
-                Err((status, Json(ErrorResponse { error: msg })))
+                Err((status, Json(ErrorResponse::new(msg))))
             }
         }
     }
@@ -280,9 +289,10 @@ pub async fn watch_messages(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("Instance '{}' not found", instance_id),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "Instance '{}' not found",
+                    instance_id
+                ))),
             ));
         }
     };
@@ -290,18 +300,14 @@ pub async fn watch_messages(
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Browser not running".to_string(),
-            }),
+            Json(ErrorResponse::new("Browser not running".to_string())),
         ));
     }
 
     if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Account is busy".to_string(),
-            }),
+            Json(ErrorResponse::new("Account is busy".to_string())),
         ));
     }
 
@@ -311,13 +317,17 @@ pub async fn watch_messages(
 
     match result {
         Ok(messages) => {
-            debug!("Account {} - Watch found {} new messages", account.id, messages.len());
+            debug!(
+                "Account {} - Watch found {} new messages",
+                account.id,
+                messages.len()
+            );
             Ok(Json(messages))
         }
         Err(e) => {
             let error_msg = e.to_string();
             let (status, msg) = categorize_error(&error_msg);
-            Err((status, Json(ErrorResponse { error: msg })))
+            Err((status, Json(ErrorResponse::new(msg))))
         }
     }
 }
@@ -362,9 +372,10 @@ pub async fn send_message(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("Instance '{}' not found", instance_id),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "Instance '{}' not found",
+                    instance_id
+                ))),
             ));
         }
     };
@@ -373,9 +384,7 @@ pub async fn send_message(
     if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string(),
-            }),
+            Json(ErrorResponse::new("Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string())),
         ));
     }
 
@@ -383,10 +392,9 @@ pub async fn send_message(
     if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "Account is busy processing another operation, please try again later"
-                    .to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Account is busy processing another operation, please try again later".to_string(),
+            )),
         ));
     }
 
@@ -400,9 +408,7 @@ pub async fn send_message(
         error!("Error processing multipart data: {}", e);
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid multipart data".to_string(),
-            }),
+            Json(ErrorResponse::new("Invalid multipart data".to_string())),
         )
     })? {
         if let Some(name) = field.name() {
@@ -412,9 +418,7 @@ pub async fn send_message(
                         error!("Error reading phone field: {}", e);
                         (
                             StatusCode::BAD_REQUEST,
-                            Json(ErrorResponse {
-                                error: "Invalid phone field".to_string(),
-                            }),
+                            Json(ErrorResponse::new("Invalid phone field".to_string())),
                         )
                     })?);
                 }
@@ -423,9 +427,7 @@ pub async fn send_message(
                         error!("Error reading text field: {}", e);
                         (
                             StatusCode::BAD_REQUEST,
-                            Json(ErrorResponse {
-                                error: "Invalid text field".to_string(),
-                            }),
+                            Json(ErrorResponse::new("Invalid text field".to_string())),
                         )
                     })?);
                 }
@@ -447,9 +449,9 @@ pub async fn send_message(
                             error!("Failed to create staging directory: {}", e);
                             return Err((
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse {
-                                    error: "Failed to create attachments directory".to_string(),
-                                }),
+                                Json(ErrorResponse::new(
+                                    "Failed to create attachments directory".to_string(),
+                                )),
                             ));
                         }
 
@@ -457,9 +459,7 @@ pub async fn send_message(
                             error!("Error reading file data: {}", e);
                             (
                                 StatusCode::BAD_REQUEST,
-                                Json(ErrorResponse {
-                                    error: "Failed to read file data".to_string(),
-                                }),
+                                Json(ErrorResponse::new("Failed to read file data".to_string())),
                             )
                         })?;
 
@@ -467,9 +467,9 @@ pub async fn send_message(
                             error!("Failed to save attachment file: {}", e);
                             return Err((
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse {
-                                    error: "Failed to save attachment file".to_string(),
-                                }),
+                                Json(ErrorResponse::new(
+                                    "Failed to save attachment file".to_string(),
+                                )),
                             ));
                         }
 
@@ -488,21 +488,22 @@ pub async fn send_message(
     let phone = phone.ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Phone number is required".to_string(),
-            }),
+            Json(ErrorResponse::new("Phone number is required".to_string())),
         )
     })?;
 
-    debug!("Account {} - Processing send message request for phone: {}", account.id, phone);
+    debug!(
+        "Account {} - Processing send message request for phone: {}",
+        account.id, phone
+    );
 
     // Validate that at least text or file is provided
     if attachment_path.is_none() && text.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Either text message or file attachment must be provided".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Either text message or file attachment must be provided".to_string(),
+            )),
         ));
     }
 
@@ -562,7 +563,10 @@ pub async fn send_message(
         Ok(_) => {
             let msg_id = Uuid::new_v4().to_string();
             account.track_message_sent();
-            info!("Account {} - Message sent successfully to {} (id: {})", account.id, phone, msg_id);
+            info!(
+                "Account {} - Message sent successfully to {} (id: {})",
+                account.id, phone, msg_id
+            );
             Ok(Json(SendMessageResponse {
                 status: "Message sent successfully".to_string(),
                 message_id: msg_id,
@@ -571,10 +575,13 @@ pub async fn send_message(
         Err(e) => {
             let error_msg = e.to_string();
             account.track_error();
-            error!("Account {} - Error sending message: {}", account.id, error_msg);
-            
+            error!(
+                "Account {} - Error sending message: {}",
+                account.id, error_msg
+            );
+
             let (status, msg) = categorize_error(&error_msg);
-            Err((status, Json(ErrorResponse { error: msg })))
+            Err((status, Json(ErrorResponse::new(msg))))
         }
     }
 }
@@ -612,9 +619,10 @@ pub async fn get_message(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("Instance '{}' not found", instance_id),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "Instance '{}' not found",
+                    instance_id
+                ))),
             ));
         }
     };
@@ -624,17 +632,13 @@ pub async fn get_message(
         Ok(Some(msg)) => Ok(Json(Message::from(msg))),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Message not found".to_string(),
-            }),
+            Json(ErrorResponse::new("Message not found".to_string())),
         )),
         Err(e) => {
             error!("Account {} - Failed to get message: {}", account.id, e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("Failed to get message: {}", e),
-                }),
+                Json(ErrorResponse::new(format!("Failed to get message: {}", e))),
             ))
         }
     }
