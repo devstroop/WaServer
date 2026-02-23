@@ -1,4 +1,4 @@
-pub mod account;
+pub mod instance;
 pub mod auth;
 pub mod chat;
 pub mod config;
@@ -14,23 +14,23 @@ pub use domain::*;
 // Re-export auth types
 pub use auth::AuthenticatedUser;
 
-// Re-export account types
-pub use account::{
+// Re-export instance types
+pub use instance::{
     phone_to_dir_name,
     validate_phone_number,
-    AccountActionResponse,
-    AccountConfig,
-    AccountId,
-    AccountInfo,
-    AccountListResponse,
-    AccountMetadata,
-    AccountStatus,
-    CreateAccountRequest,
-    CreateAccountResponse,
-    DeleteAccountQuery,
-    DeleteAccountResponse,
+    InstanceActionResponse,
+    InstanceSetupConfig,
+    InstanceId,
+    InstanceInfo,
+    InstanceListResponse,
+    InstanceMetadata,
+    InstanceStatus,
+    CreateInstanceRequest,
+    CreateInstanceResponse,
+    DeleteInstanceQuery,
+    DeleteInstanceResponse,
     // API query/response types
-    ListAccountsQuery,
+    ListInstancesQuery,
     PhoneLinkRequest,
     PrivacySettings,
     ProfileInfo,

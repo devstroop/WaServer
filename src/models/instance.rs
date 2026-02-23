@@ -1,7 +1,7 @@
-//! Account Models
+//! Instance Models
 //!
-//! Types for multi-account WhatsApp management.
-//! Account ID is a UUID, phone_number is a unique field in E.164 format.
+//! Types for multi-instance WhatsApp management.
+//! Instance ID is a UUID, phone_number is a unique field in E.164 format.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -9,34 +9,34 @@ use std::path::PathBuf;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-/// Unique identifier for a WhatsApp account (UUID)
-pub type AccountId = Uuid;
+/// Unique identifier for a WhatsApp instance (UUID)
+pub type InstanceId = Uuid;
 
-/// Account configuration
+/// Instance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountConfig {
-    /// Unique account identifier (UUID)
-    pub id: AccountId,
+pub struct InstanceSetupConfig {
+    /// Unique instance identifier (UUID)
+    pub id: InstanceId,
     /// Phone number in E.164 format (e.g., "1234567890")
     pub phone_number: String,
-    /// Optional display name for the account
+    /// Optional display name for the instance
     pub display_name: Option<String>,
-    /// Data directory for this account (browser profile, database, etc.)
+    /// Data directory for this instance (browser profile, database, etc.)
     pub data_dir: PathBuf,
     /// Browser configuration overrides
     #[serde(default)]
-    pub browser: AccountBrowserConfig,
+    pub browser: BrowserOverrides,
     /// Whether to auto-start the browser on server startup
     #[serde(default)]
     pub auto_start: bool,
 }
 
-/// Browser configuration specific to an account
+/// Browser configuration specific to an instance
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct AccountBrowserConfig {
-    /// Override headless mode for this account
+pub struct BrowserOverrides {
+    /// Override headless mode for this instance
     pub headless: Option<bool>,
-    /// Additional browser args specific to this account
+    /// Additional browser args specific to this instance
     #[serde(default)]
     pub extra_args: Vec<String>,
 }
@@ -45,8 +45,9 @@ pub struct AccountBrowserConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InstanceConfig {
     /// Instance identifier (read-only)
+    #[schema(value_type = Option<String>, format = "uuid")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub instance_id: Option<AccountId>,
+    pub instance_id: Option<InstanceId>,
 
     /// Display name for this instance
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -284,76 +285,77 @@ pub struct UpdateInstanceConfigRequest {
     pub rate_limits: Option<UpdateRateLimits>,
 }
 
-impl Default for AccountConfig {
+impl Default for InstanceSetupConfig {
     fn default() -> Self {
         Self {
             id: Uuid::nil(),
             phone_number: String::new(),
             display_name: None,
             data_dir: PathBuf::new(),
-            browser: AccountBrowserConfig::default(),
+            browser: BrowserOverrides::default(),
             auto_start: false,
         }
     }
 }
 
-/// Account status information (returned by API)
+/// Instance status information (returned by API)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AccountInfo {
-    /// Unique account identifier (UUID)
-    pub id: AccountId,
+pub struct InstanceInfo {
+    /// Unique instance identifier (UUID)
+    #[schema(value_type = String, format = "uuid")]
+    pub id: InstanceId,
     /// Phone number in E.164 format
     pub phone_number: String,
     /// Display name
     pub display_name: Option<String>,
-    /// Current account status (stopped, starting, running, error)
-    pub status: AccountStatus,
+    /// Current instance status (stopped, starting, running, error)
+    pub status: InstanceStatus,
     /// Whether WhatsApp Web is authorized/authenticated
     pub authorized: bool,
-    /// Timestamp when account was created
+    /// Timestamp when instance was created
     pub created_at: DateTime<Utc>,
     /// Timestamp of last WhatsApp activity
     pub last_activity: Option<DateTime<Utc>>,
 }
 
-/// Account runtime status
+/// Instance runtime status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AccountStatus {
-    /// Account exists but browser is not running
+pub enum InstanceStatus {
+    /// Instance exists but browser is not running
     Stopped,
     /// Browser is starting up
     Starting,
     /// Browser is running and ready
     Running,
-    /// Account has an error
+    /// Instance has an error
     Error(String),
 }
 
-impl Default for AccountStatus {
+impl Default for InstanceStatus {
     fn default() -> Self {
         Self::Stopped
     }
 }
 
-/// Persistent account metadata (stored in account.json)
+/// Persistent instance metadata (stored in instance.json)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountMetadata {
-    /// Unique account identifier (UUID)
-    pub id: AccountId,
+pub struct InstanceMetadata {
+    /// Unique instance identifier (UUID)
+    pub id: InstanceId,
     /// Phone number in E.164 format
     pub phone_number: String,
     /// Display name
     pub display_name: Option<String>,
-    /// Timestamp when account was created
+    /// Timestamp when instance was created
     pub created_at: DateTime<Utc>,
     /// Timestamp when WhatsApp was first linked
     pub first_linked_at: Option<DateTime<Utc>>,
 }
 
-impl AccountMetadata {
-    /// Create new metadata for a fresh account
-    pub fn new(id: AccountId, phone_number: &str, display_name: Option<String>) -> Self {
+impl InstanceMetadata {
+    /// Create new metadata for a fresh instance
+    pub fn new(id: InstanceId, phone_number: &str, display_name: Option<String>) -> Self {
         Self {
             id,
             phone_number: phone_number.to_string(),
@@ -438,24 +440,25 @@ pub struct ProfileInfo {
 
 // === API Request/Response Types ===
 
-/// Request to create a new account
+/// Request to create a new instance
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateAccountRequest {
+pub struct CreateInstanceRequest {
     /// Phone number in E.164 format (e.g., "+1234567890")
     pub phone_number: String,
     /// Optional display name
     pub display_name: Option<String>,
     /// Browser configuration overrides
-    pub browser: Option<AccountBrowserConfig>,
+    pub browser: Option<BrowserOverrides>,
     /// Auto-start browser on server startup
     pub auto_start: Option<bool>,
 }
 
-/// Response after creating an account
+/// Response after creating an instance
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateAccountResponse {
-    /// Unique account identifier (UUID)
-    pub id: AccountId,
+pub struct CreateInstanceResponse {
+    /// Unique instance identifier (UUID)
+    #[schema(value_type = String, format = "uuid")]
+    pub id: InstanceId,
     /// Phone number in E.164 format
     pub phone_number: String,
     pub status: String,
@@ -463,27 +466,28 @@ pub struct CreateAccountResponse {
     pub created_at: String,
 }
 
-/// Request to update account display name
+/// Request to update instance display name
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateAccountRequest {
+pub struct UpdateInstanceRequest {
     pub display_name: Option<String>,
 }
 
-/// Account list response
+/// Instance list response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AccountListResponse {
-    pub accounts: Vec<AccountInfo>,
+pub struct InstanceListResponse {
+    pub instances: Vec<InstanceInfo>,
     pub total: usize,
 }
 
-/// WhatsApp account status response (for /api/v1/account/{account_id}/status)
+/// WhatsApp instance status response (for /api/v1/instance/{instance_id}/status)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WhatsAppStatusResponse {
-    /// Unique account identifier (UUID)
-    pub account_id: AccountId,
+    /// Unique instance identifier (UUID)
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
     /// Phone number in E.164 format
     pub phone_number: String,
-    /// Account status (stopped, starting, running, error)
+    /// Instance status (stopped, starting, running, error)
     pub status: String,
     /// Whether WhatsApp Web is authorized
     pub authorized: bool,
@@ -573,12 +577,12 @@ pub struct UpdatePrivacyGroupsRequest {
 
 // === API Query/Response Types ===
 
-/// Query parameters for list_accounts
+/// Query parameters for list_instances
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ListAccountsQuery {
+pub struct ListInstancesQuery {
     /// Filter by status
     pub status: Option<String>,
-    /// Include stopped accounts
+    /// Include stopped instances
     #[serde(default = "default_true")]
     pub include_stopped: bool,
 }
@@ -589,25 +593,27 @@ fn default_true() -> bool {
 
 /// Response for delete operation
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct DeleteAccountResponse {
+pub struct DeleteInstanceResponse {
     pub message: String,
-    pub account_id: AccountId,
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
     pub data_deleted: bool,
 }
 
 /// Query parameters for delete
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct DeleteAccountQuery {
-    /// Delete all account data (browser profile, database, etc.)
+pub struct DeleteInstanceQuery {
+    /// Delete all instance data (browser profile, database, etc.)
     #[serde(default)]
     pub delete_data: bool,
 }
 
-/// Generic success response for account operations
+/// Generic success response for instance operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AccountActionResponse {
+pub struct InstanceActionResponse {
     pub message: String,
-    pub account_id: AccountId,
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
 }
 
 /// Request to link via phone number
