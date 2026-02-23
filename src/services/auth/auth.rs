@@ -3,7 +3,7 @@
 //! Handles WhatsApp Web authentication including QR code and phone number methods.
 
 use crate::{
-    browser::{BrowserService, Locators},
+    browser::{country_codes, BrowserService, Locators},
     config::AppConfig,
 };
 use anyhow::Result;
@@ -128,8 +128,8 @@ impl AuthService {
     }
 
     /// Wait for element with timeout
-    async fn wait_for_element(&self, page: &Page, selector: &str, timeout_ms: u64) -> Result<bool> {
-        Locators::wait_for_element(page, selector, timeout_ms).await
+    async fn wait_for_element(&self, page: &Page, selector: &str, timeout_ms: u64) -> bool {
+        Locators::wait_for(page, selector, timeout_ms).await
     }
 
     /// Extract QR code from canvas
@@ -248,7 +248,7 @@ impl AuthServiceTrait for AuthService {
                 
                 // Check for phone number entry
                 const phoneEntry = document.body.innerText.includes('Enter phone number')
-                    || document.querySelector('input[aria-label="Type your phone number."]') !== null;
+                    || document.querySelector('input[aria-label="Type your phone number to log in to WhatsApp"]') !== null;
                 
                 // Check for pairing code entry
                 const codeEntry = document.body.innerText.includes('Enter code on phone')
@@ -338,34 +338,28 @@ impl AuthServiceTrait for AuthService {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
-        // Check if we need to switch to QR code mode
-        if page.find_element("text='Enter phone number'").await.is_ok()
-            || page
-                .find_element("text='Enter code on phone'")
-                .await
-                .is_ok()
+        // Check if we need to switch to QR code mode (currently on phone login screen)
+        if Locators::exists(&page, Locators::phone_number_label()).await
+            || Locators::exists(&page, "text:Enter code on phone").await
         {
             debug!("Switching to QR code login");
-            if let Ok(qr_link) = page.find_element("text='Log in with QR code'").await {
-                qr_link.click().await?;
-            }
+            Locators::click(&page, Locators::qr_auth_link()).await?;
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
 
         // Wait for QR code to be visible
         if !self
             .wait_for_element(&page, Locators::qr_code_canvas(), 20000)
-            .await?
+            .await
         {
             // Check if we need to reload the QR code
-            if let Ok(reload) = page.find_element("text='Click to reload QR code'").await {
-                reload.click().await?;
-            }
+            let _ = Locators::click(&page, Locators::config().auth.qr_reload_button.as_str()).await;
         }
 
         // Wait again after potential reload
         if !self
             .wait_for_element(&page, Locators::qr_code_canvas(), 15000)
-            .await?
+            .await
         {
             return Err(anyhow::anyhow!("QR code not available"));
         }
@@ -386,68 +380,75 @@ impl AuthServiceTrait for AuthService {
         // Wait for page to load
         tokio::time::sleep(Duration::from_millis(3000)).await;
 
-        // Check current screen state
-        let has_qr_login = page
-            .find_element("text='Log into WhatsApp Web'")
-            .await
-            .is_ok();
+        // Check current screen state — detect QR code / initial landing screen
+        let on_qr_screen = Locators::exists(&page, Locators::login_label()).await
+            || Locators::exists(&page, Locators::qr_code_canvas()).await;
 
         // Switch to phone number login if on QR screen
-        if has_qr_login {
+        if on_qr_screen {
             debug!("Switching to phone number login");
-            if let Ok(phone_link) = page.find_element("text='Log in with phone number'").await {
-                phone_link.click().await?;
-
+            if Locators::click(&page, Locators::phone_auth_link()).await? {
                 // Wait for phone input screen
-                tokio::time::timeout(self.timeouts.element_wait, async {
-                    while page
-                        .find_element("text='Enter phone number'")
-                        .await
-                        .is_err()
-                    {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                    }
-                })
-                .await
-                .map_err(|_| anyhow::anyhow!("Timeout waiting for phone input screen"))?;
+                if !Locators::wait_for(&page, Locators::phone_number_label(), self.timeouts.element_wait.as_millis() as u64).await {
+                    return Err(anyhow::anyhow!("Timeout waiting for phone input screen"));
+                }
             }
         }
 
         // Enter phone number
-        if page.find_element("text='Enter phone number'").await.is_ok() {
-            debug!("Entering phone number: {}", formatted_phone);
+        if Locators::exists(&page, Locators::phone_number_label()).await {
+            let (country, national_number) = country_codes::parse_phone(&formatted_phone);
+            debug!(
+                "Phone parsed: country={} (+{}), national_number={}",
+                country.name, country.dial_code, national_number
+            );
 
-            let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
-                loop {
-                    if let Ok(input) = page.find_element(Locators::phone_input()).await {
-                        return Ok::<_, anyhow::Error>(input);
-                    }
-                    if let Ok(input) = page.find_element("input[type='tel']").await {
-                        return Ok(input);
-                    }
-                    tokio::time::sleep(Duration::from_millis(200)).await;
+            // Select the correct country from the dropdown
+            if !country.dial_code.is_empty() {
+                if Locators::select_country_by_code(&page, country).await? {
+                    debug!("Selected country {} (+{})", country.name, country.dial_code);
+                } else {
+                    debug!("Could not select country {} (+{}), proceeding with default", country.name, country.dial_code);
                 }
-            })
-            .await
-            .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
 
-            phone_input.click().await?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            // Enter the national number into the phone input
+            if !Locators::set_phone_input_value(&page, Locators::phone_input(), &national_number)
+                .await?
+            {
+                // Fallback: find input element directly and type
+                debug!("JS input setter failed, falling back to element typing");
+                let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
+                    loop {
+                        if let Ok(input) = page.find_element(Locators::phone_input()).await {
+                            return Ok::<_, anyhow::Error>(input);
+                        }
+                        if let Ok(input) = page.find_element("input[type='text']").await {
+                            return Ok(input);
+                        }
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                })
+                .await
+                .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
 
-            // Clear and type
-            let _ = phone_input.press_key("Control+A").await;
-            let _ = phone_input.press_key("Delete").await;
-            phone_input.type_str(&formatted_phone).await?;
+                phone_input.click().await?;
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                let _ = phone_input.press_key("Meta+A").await;
+                let _ = phone_input.press_key("Delete").await;
+                phone_input.type_str(&national_number).await?;
+            }
 
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Click Next button
-            if let Ok(next_btn) = page.find_element("text='Next'").await {
-                next_btn.click().await?;
-            } else if let Ok(submit) = page.find_element("button[type='submit']").await {
-                submit.click().await?;
-            } else {
-                return Err(anyhow::anyhow!("Could not find Next button"));
+            if !Locators::click(&page, Locators::phone_submit_button()).await? {
+                if let Ok(submit) = page.find_element("button[type='submit']").await {
+                    submit.click().await?;
+                } else {
+                    return Err(anyhow::anyhow!("Could not find Next button"));
+                }
             }
         }
 
