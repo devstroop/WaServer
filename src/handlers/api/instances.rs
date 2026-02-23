@@ -286,11 +286,19 @@ pub async fn stop_instance(
 )]
 pub async fn discover_instances(State(manager): State<Arc<InstanceManager>>) -> impl IntoResponse {
     match manager.discover_instances().await {
-        Ok(discovered) => Json(json!({
-            "message": format!("Discovered {} instances", discovered.len()),
-            "discovered": discovered,
-        }))
-        .into_response(),
+        Ok((newly_discovered, already_loaded)) => {
+            let total = newly_discovered.len() + already_loaded.len();
+            Json(json!({
+                "total": total,
+                "newly_discovered": newly_discovered,
+                "already_loaded": already_loaded,
+                "message": format!(
+                    "Found {} instance(s) on disk ({} new, {} already loaded)",
+                    total, newly_discovered.len(), already_loaded.len()
+                ),
+            }))
+            .into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({

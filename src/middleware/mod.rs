@@ -122,7 +122,7 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
     // Also allow cdn.jsdelivr.net for Scalar API docs
     headers.insert(
         "content-security-policy",
-        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
+        "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
             .parse()
             .unwrap(),
     );
