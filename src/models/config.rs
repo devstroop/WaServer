@@ -7,7 +7,6 @@ use super::environment::EnvironmentConfig;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub server: ServerConfig,
-    pub browser: BrowserConfig,
     pub auth: AuthConfig,
     pub logging: LoggingConfig,
     pub cache: CacheConfig,
@@ -20,27 +19,27 @@ pub struct AppConfig {
     pub mcp: McpConfig,
     #[serde(default)]
     pub webhooks: WebhookConfig,
-    /// Multi-account configuration
+    /// Multi-instance configuration
     #[serde(default)]
-    pub accounts: Option<AccountsConfig>,
+    pub instances: Option<InstancesConfig>,
 }
 
-/// Multi-account configuration
+/// Multi-instance configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AccountsConfig {
-    /// Base directory for all account data (default: ~/.was/accounts)
+pub struct InstancesConfig {
+    /// Base directory for all instance data (default: ~/.was/instances)
     pub base_directory: Option<PathBuf>,
-    /// Default browser settings for new accounts
+    /// Default browser settings for new instances
     #[serde(default)]
-    pub defaults: AccountDefaultsConfig,
+    pub defaults: InstanceDefaultsConfig,
 }
 
-/// Default settings for new accounts
+/// Default settings for new instances
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct AccountDefaultsConfig {
+pub struct InstanceDefaultsConfig {
     /// Default headless mode
     pub headless: Option<bool>,
-    /// Auto-start accounts on server startup
+    /// Auto-start instances on server startup
     pub auto_start: bool,
 }
 
@@ -90,10 +89,6 @@ pub struct McpConfig {
     pub enabled: bool,
     /// MCP endpoint path
     pub endpoint: String,
-    /// Enable SSE transport
-    pub sse_enabled: bool,
-    /// SSE heartbeat interval in seconds
-    pub heartbeat_interval_secs: u64,
 }
 
 impl Default for McpConfig {
@@ -101,8 +96,6 @@ impl Default for McpConfig {
         Self {
             enabled: true,
             endpoint: "/mcp".to_string(),
-            sse_enabled: true,
-            heartbeat_interval_secs: 30,
         }
     }
 }
@@ -140,14 +133,6 @@ impl Default for SwaggerConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-}
-
-/// Browser configuration for Playwright
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BrowserConfig {
-    pub headless: bool,
-    pub timeout_ms: u64,
-    pub args: Vec<String>,
 }
 
 /// Authentication configuration
@@ -193,20 +178,6 @@ impl Default for AppConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
             },
-            browser: BrowserConfig {
-                headless: false,
-                timeout_ms: 30000,
-                args: vec![
-                    "--disable-blink-features=AutomationControlled".to_string(),
-                    "--no-sandbox".to_string(),
-                    "--disable-setuid-sandbox".to_string(),
-                    "--disable-dev-shm-usage".to_string(),
-                    "--disable-extensions".to_string(),
-                    "--disable-popup-blocking".to_string(),
-                    "--disable-gpu".to_string(),
-                    "--disable-software-rasterizer".to_string(),
-                ],
-            },
             auth: AuthConfig {
                 secret_key: "change-this-secret-key-in-production".to_string(),
             },
@@ -236,7 +207,7 @@ impl Default for AppConfig {
             swagger: SwaggerConfig::default(),
             mcp: McpConfig::default(),
             webhooks: WebhookConfig::default(),
-            accounts: None,
+            instances: None,
         }
     }
 }
@@ -262,6 +233,11 @@ impl AppConfig {
         // Override with environment config
         app_config.environment = env_config;
 
+        // Support WHATSAPP_SECRET shorthand env var
+        if let Ok(secret) = std::env::var("WHATSAPP_SECRET") {
+            app_config.auth.secret_key = secret;
+        }
+
         Ok(app_config)
     }
 
@@ -278,10 +254,6 @@ impl AppConfig {
 
         if self.auth.secret_key.len() < 16 {
             return Err("secret_key must be at least 16 characters long".to_string());
-        }
-
-        if self.browser.timeout_ms == 0 {
-            return Err("Browser timeout cannot be 0".to_string());
         }
 
         if self.limits.max_concurrent_requests == 0 {
