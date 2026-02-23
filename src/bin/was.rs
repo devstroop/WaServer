@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Discover existing instances from filesystem
     match instance_manager.discover_instances().await {
-        Ok(discovered) => {
+        Ok((discovered, _)) => {
             if !discovered.is_empty() {
                 info!("📂 Discovered {} existing instance(s)", discovered.len());
             }

@@ -258,13 +258,17 @@ impl InstanceManager {
     }
 
     /// Discover existing instances from filesystem
-    pub async fn discover_instances(&self) -> Result<Vec<InstanceId>> {
-        let mut discovered = Vec::new();
+    ///
+    /// Returns `(newly_loaded, already_loaded)` — instances just loaded from disk
+    /// and instances that were already in memory.
+    pub async fn discover_instances(&self) -> Result<(Vec<InstanceId>, Vec<InstanceId>)> {
+        let mut newly_loaded = Vec::new();
+        let mut already_loaded = Vec::new();
 
         // Ensure base directory exists
         if !self.base_dir.exists() {
             tokio::fs::create_dir_all(&self.base_dir).await?;
-            return Ok(discovered);
+            return Ok((newly_loaded, already_loaded));
         }
 
         let mut entries = tokio::fs::read_dir(&self.base_dir).await?;
@@ -308,6 +312,7 @@ impl InstanceManager {
 
             // Skip if already loaded
             if self.instances.read().await.contains_key(&instance_id) {
+                already_loaded.push(instance_id);
                 continue;
             }
 
@@ -317,7 +322,7 @@ impl InstanceManager {
                 .await
             {
                 Ok(()) => {
-                    discovered.push(instance_id);
+                    newly_loaded.push(instance_id);
                 }
                 Err(e) => {
                     error!("Failed to load instance from '{}': {}", dir_name, e);
@@ -325,11 +330,11 @@ impl InstanceManager {
             }
         }
 
-        if !discovered.is_empty() {
-            info!("Discovered {} existing instances", discovered.len());
+        if !newly_loaded.is_empty() {
+            info!("Discovered {} new instances", newly_loaded.len());
         }
 
-        Ok(discovered)
+        Ok((newly_loaded, already_loaded))
     }
 
     /// Load an instance from its data directory
