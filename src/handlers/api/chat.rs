@@ -1,6 +1,6 @@
 //! Chat Handlers - Uses path parameter {instance_id}
 //!
-//! All chat and message routes use path parameter /api/v1/modules/whatsapp/{instance_id}/... to identify which WhatsApp account to use.
+//! All chat and message routes use path parameter /api/v1/instances/{instance_id}/... to identify which WhatsApp account to use.
 
 use std::sync::Arc;
 
@@ -63,9 +63,9 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
 /// - Unread count
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/chats",
+    path = "/api/v1/instances/{instance_id}/chats",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "List of chats", body = ChatListResponse),
@@ -77,7 +77,7 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsApp"
+    tag = "Messaging"
 )]
 pub async fn list_chats(
     State(manager): State<Arc<AccountManager>>,
@@ -149,9 +149,9 @@ pub async fn list_chats(
 /// - `load_more`: Scroll up to load older messages (default: false)
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/chats/{chat_id}",
+    path = "/api/v1/instances/{instance_id}/chats/{chat_id}",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
         ("chat_id" = String, Path, description = "Phone number, contact name, or chat ID"),
         ("limit" = Option<u32>, Query, description = "Maximum messages to retrieve"),
         ("load_more" = Option<bool>, Query, description = "Load older messages")
@@ -166,7 +166,7 @@ pub async fn list_chats(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsApp"
+    tag = "Messaging"
 )]
 pub async fn get_chat_messages(
     State(manager): State<Arc<AccountManager>>,
@@ -255,9 +255,9 @@ pub async fn get_chat_messages(
 /// Useful for polling new messages without navigating to each chat.
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/chats/events",
+    path = "/api/v1/instances/{instance_id}/chats/events",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "New incoming messages", body = Vec<crate::models::chat::MessageInfo>),
@@ -269,7 +269,7 @@ pub async fn get_chat_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsApp"
+    tag = "Messaging"
 )]
 pub async fn watch_messages(
     State(manager): State<Arc<AccountManager>>,
@@ -336,9 +336,9 @@ pub async fn watch_messages(
 /// **Note:** At least one of `text` or `file` must be provided.
 #[utoipa::path(
     post,
-    path = "/api/v1/modules/whatsapp/{instance_id}/messages",
+    path = "/api/v1/instances/{instance_id}/messages",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Message sent successfully", body = SendMessageResponse),
@@ -350,7 +350,7 @@ pub async fn watch_messages(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsApp"
+    tag = "Messaging"
 )]
 pub async fn send_message(
     State(manager): State<Arc<AccountManager>>,
@@ -588,9 +588,9 @@ pub async fn send_message(
 /// Returns full message details including status
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/messages/{message_id}",
+    path = "/api/v1/instances/{instance_id}/messages/{message_id}",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
         ("message_id" = String, Path, description = "Message ID to retrieve")
     ),
     responses(
@@ -601,7 +601,7 @@ pub async fn send_message(
     security(
         ("bearer_auth" = [])
     ),
-    tag = "WhatsApp"
+    tag = "Messaging"
 )]
 pub async fn get_message(
     State(manager): State<Arc<AccountManager>>,

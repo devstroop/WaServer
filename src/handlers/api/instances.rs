@@ -268,28 +268,28 @@ pub async fn stop_instance(
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn discover_instances(
-    State(manager): State<Arc<AccountManager>>,
-) -> impl IntoResponse {
+pub async fn discover_instances(State(manager): State<Arc<AccountManager>>) -> impl IntoResponse {
     match manager.discover_accounts().await {
         Ok(discovered) => Json(json!({
             "message": format!("Discovered {} instances", discovered.len()),
             "discovered": discovered,
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "error": "discover_failed",
                 "message": e.to_string()
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
 /// Get live screenshot of instance's browser
 #[utoipa::path(
     get,
-    path = "/api/v1/instances/{instance_id}/live",
+    path = "/api/v1/instances/{instance_id}/screenshot",
     tag = "Instances",
     params(
         ("instance_id" = String, Path, description = "Instance ID (UUID or phone number)")
@@ -301,19 +301,22 @@ pub async fn discover_instances(
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn live_screenshot(
+pub async fn screenshot(
     State(manager): State<Arc<AccountManager>>,
     Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
     let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
-        None => return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": format!("Instance '{}' not found", instance_id)
-            })),
-        ).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response()
+        }
     };
 
     if !account.browser_service().is_running().await {

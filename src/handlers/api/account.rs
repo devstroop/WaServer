@@ -30,10 +30,10 @@ use crate::{
 /// Returns the authentication status and bound phone number for the account.
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/status",
+    path = "/api/v1/instances/{instance_id}/status",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Account status", body = WhatsAppStatusResponse),
@@ -85,10 +85,10 @@ pub async fn get_account_status(
 /// Returns a QR code image (base64) for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/link/qr",
+    path = "/api/v1/instances/{instance_id}/link/qr",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "QR code"),
@@ -150,10 +150,10 @@ pub async fn get_qr_code(
 /// Initiates phone number linking flow.
 #[utoipa::path(
     post,
-    path = "/api/v1/modules/whatsapp/{instance_id}/link/phone",
+    path = "/api/v1/instances/{instance_id}/link/phone",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = PhoneLinkRequest,
     responses(
@@ -262,10 +262,10 @@ pub async fn link_phone(
 /// Disconnects the WhatsApp Web session for this account.
 #[utoipa::path(
     delete,
-    path = "/api/v1/modules/whatsapp/{instance_id}/unlink",
+    path = "/api/v1/instances/{instance_id}/unlink",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Unlinked"),
@@ -320,10 +320,10 @@ pub async fn unlink(
 /// Returns the WhatsApp profile information (name, about, picture).
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/profile",
+    path = "/api/v1/instances/{instance_id}/profile",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Profile info", body = ProfileInfo),
@@ -378,10 +378,10 @@ pub async fn get_profile(
 /// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/modules/whatsapp/{instance_id}/profile",
+    path = "/api/v1/instances/{instance_id}/profile",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = UpdateProfileRequest,
     responses(
@@ -450,10 +450,10 @@ pub async fn update_profile(
 /// Get privacy settings
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/whatsapp/{instance_id}/profile/privacy",
+    path = "/api/v1/instances/{instance_id}/privacy",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Privacy settings", body = PrivacySettings),
@@ -490,10 +490,10 @@ pub async fn get_privacy(
 /// Updates WhatsApp privacy settings. All fields are optional - only provided fields are updated.
 #[utoipa::path(
     put,
-    path = "/api/v1/modules/whatsapp/{instance_id}/profile/privacy",
+    path = "/api/v1/instances/{instance_id}/privacy",
     tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Instance ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     request_body = UpdatePrivacyRequest,
     responses(
