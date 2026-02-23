@@ -9,19 +9,20 @@ popup = "div[data-animate-modal-popup='true']"
 body = "div[data-animate-modal-body='true']"
 
 [auth]
-# Login method selection
-login_with_phone_link = "span[role='button']"
-login_with_qr_link = "span[role='button']"
-login_label = "text='Log into WhatsApp Web'"
+# Login method selection — chain syntax: scope >> text finds text within scope.
+# The scope constrains to role=button elements; text match uses TreeWalker.
+login_with_phone_link = "[role='button'] >> text:Log in with phone number"
+login_with_qr_link = "[role='button'] >> text:Log in with QR code"
+login_label = "text:Log into WhatsApp Web"
 
 # Phone number input
-phone_number_label = "text='Enter phone number'"
-phone_number_input = "[aria-label='Type your phone number.']"
-phone_submit_button = "div[role='button']"
+phone_number_label = "text:Enter phone number"
+phone_number_input = "[aria-label='Type your phone number to log in to WhatsApp']"
+phone_submit_button = "[role='button'] >> text:Next"
 invalid_phone_dialog = "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']"
 
 # Phone verification code
-code_on_phone_label = "text='Enter code on phone'"
+code_on_phone_label = "Enter code on phone"
 code_on_phone_value = "[aria-details='link-device-phone-number-code-screen-instructions']"
 link_code_element = "[aria-details='link-device-phone-number-code-screen-instructions']"
 link_code_digits = "[data-link-code]"

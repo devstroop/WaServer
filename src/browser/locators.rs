@@ -3,6 +3,13 @@
 //! Locators are loaded from `config/locators.toml` at runtime.
 //! Update the TOML file when WhatsApp Web UI changes - no recompilation needed.
 //! Falls back to built-in defaults if config file is missing.
+//!
+//! Selectors support extended prefixes (see selector.rs):
+//!   text:   — exact text match (walks up to clickable ancestor)
+//!   text*:  — partial text match
+//!   role:   — ARIA role + optional name (role:button[Next])
+//!   xpath:  — XPath
+//!   (none)  — CSS selector (default)
 
 use anyhow::{Context, Result};
 use chromiumoxide::page::Page;
@@ -10,6 +17,10 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::sync::OnceLock;
+
+use super::country_codes::CountryInfo;
+use super::selector::{parse_selector, selector_click_js, selector_exists_js};
+use tracing::debug;
 
 // ============================================================================
 // Timeout Constants
@@ -170,12 +181,12 @@ impl LocatorConfig {
                 body: "div[data-animate-modal-body='true']".into(),
             },
             auth: AuthLocators {
-                login_with_phone_link: "span[role='button']".into(),
-                login_with_qr_link: "span[role='button']".into(),
-                login_label: "text='Log into WhatsApp Web'".into(),
-                phone_number_label: "text='Enter phone number'".into(),
-                phone_number_input: "[aria-label='Type your phone number.']".into(),
-                phone_submit_button: "div[role='button']".into(),
+                login_with_phone_link: "[role='button'] >> text:Log in with phone number".into(),
+                login_with_qr_link: "[role='button'] >> text:Log in with QR code".into(),
+                login_label: "text:Log into WhatsApp Web".into(),
+                phone_number_label: "text:Enter phone number".into(),
+                phone_number_input: "[aria-label='Type your phone number to log in to WhatsApp']".into(),
+                phone_submit_button: "[role='button'] >> text:Next".into(),
                 invalid_phone_dialog:
                     "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']"
                         .into(),
@@ -248,6 +259,22 @@ impl Locators {
 
     pub fn phone_auth_link() -> &'static str {
         &Self::config().auth.login_with_phone_link
+    }
+
+    pub fn qr_auth_link() -> &'static str {
+        &Self::config().auth.login_with_qr_link
+    }
+
+    pub fn login_label() -> &'static str {
+        &Self::config().auth.login_label
+    }
+
+    pub fn phone_number_label() -> &'static str {
+        &Self::config().auth.phone_number_label
+    }
+
+    pub fn phone_submit_button() -> &'static str {
+        &Self::config().auth.phone_submit_button
     }
 
     pub fn phone_input() -> &'static str {
@@ -347,7 +374,7 @@ impl Locators {
     }
 
     // ========================================
-    // Helper Methods
+    // Helper Methods (unified selector support)
     // ========================================
 
     /// Get QR code as base64 PNG
@@ -372,50 +399,207 @@ impl Locators {
         }
     }
 
-    /// Check if element exists
-    pub async fn element_exists(page: &Page, selector: &str) -> bool {
-        let script = format!(
-            "document.querySelector('{}') !== null",
-            selector.replace('\'', "\\'")
-        );
+    /// Check if element/text exists on page.
+    /// Supports all selector prefixes: text:, text*:, role:, xpath:, CSS.
+    pub async fn exists(page: &Page, selector: &str) -> bool {
+        let parsed = parse_selector(selector);
 
-        page.evaluate(script.as_str())
+        // CSS selectors: use native chromiumoxide for speed
+        if let Some(css) = parsed.as_css() {
+            return page.find_element(css).await.is_ok();
+        }
+
+        // Extended selectors: use JS
+        let js = selector_exists_js(&parsed);
+        page.evaluate(js.as_str())
             .await
             .ok()
             .and_then(|r| r.into_value::<bool>().ok())
             .unwrap_or(false)
     }
 
-    /// Wait for element with timeout
-    pub async fn wait_for_element(page: &Page, selector: &str, timeout_ms: u64) -> Result<bool> {
+    /// Click an element by any selector type.
+    /// For CSS: native chromiumoxide click. For text/role/xpath: JS click with scrollIntoView.
+    pub async fn click(page: &Page, selector: &str) -> Result<bool> {
+        let parsed = parse_selector(selector);
+
+        // CSS selectors: use native chromiumoxide
+        if let Some(css) = parsed.as_css() {
+            return match page.find_element(css).await {
+                Ok(el) => {
+                    el.click().await.ok();
+                    Ok(true)
+                }
+                Err(_) => Ok(false),
+            };
+        }
+
+        // Extended selectors: JS click
+        let js = selector_click_js(&parsed);
+        let result = page.evaluate(js.as_str()).await?;
+        Ok(result.into_value::<bool>().unwrap_or(false))
+    }
+
+    /// Wait for an element/text to appear, with timeout.
+    /// Supports all selector prefixes.
+    pub async fn wait_for(page: &Page, selector: &str, timeout_ms: u64) -> bool {
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_millis(timeout_ms);
 
         loop {
             if start.elapsed() > timeout {
-                return Ok(false);
+                return false;
             }
-
-            if Self::element_exists(page, selector).await {
-                return Ok(true);
+            if Self::exists(page, selector).await {
+                return true;
             }
-
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
     }
 
-    /// Click element using JavaScript
-    pub async fn click_element(page: &Page, selector: &str) -> Result<bool> {
-        let script = format!(
+    // ========================================
+    // Country & Phone Input Helpers
+    // ========================================
+
+    /// Select a country from WhatsApp's country dropdown by country info.
+    /// Searches by country name for reliability, falls back to dial code scan.
+    pub async fn select_country_by_code(page: &Page, country: &CountryInfo) -> Result<bool> {
+        let digits = country.dial_code;
+        debug!("select_country: starting for {} (+{})", country.name, digits);
+
+        // Step 1: Click the country dropdown button (identified by chevron icon)
+        let click_js = r#"(function() {
+            var chevron = document.querySelector('[data-icon="chevron"]');
+            if (!chevron) return 'no_chevron';
+            var btn = chevron.closest('button') || chevron.parentElement;
+            if (!btn) return 'no_button';
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            btn.click();
+            return 'clicked';
+        })()"#;
+
+        let click_result = page.evaluate(click_js).await?
+            .into_value::<String>().unwrap_or_else(|_| "error".into());
+        debug!("select_country: step1 chevron click = {}", click_result);
+        if click_result != "clicked" {
+            return Ok(false);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+        // Step 2: Check if popover appeared, find and focus its search field
+        let focus_js = r#"(function() {
+            var popover = document.querySelector('#wa-popovers-bucket');
+            if (!popover) return 'no_popover';
+            var children = popover.children.length;
+            var el = popover.querySelector('div[contenteditable="true"]')
+                || popover.querySelector('div[role="textbox"]')
+                || popover.querySelector('input[type="text"]')
+                || popover.querySelector('input');
+            if (!el) return 'no_search_field (children=' + children + ')';
+            el.focus();
+            el.click();
+            return 'focused:' + el.tagName + '.' + (el.className || '').substring(0, 30);
+        })()"#;
+
+        let focus_result = page.evaluate(focus_js).await?
+            .into_value::<String>().unwrap_or_else(|_| "error".into());
+        debug!("select_country: step2 focus = {}", focus_result);
+
+        let mut searched = false;
+        if focus_result.starts_with("focused") {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            // Type country name for reliable filtering (e.g., "India" instead of "91")
+            match page.find_element(":focus").await {
+                Ok(el) => {
+                    match el.type_str(country.name).await {
+                        Ok(_) => {
+                            searched = true;
+                            debug!("select_country: step2 typed '{}'", country.name);
+                            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                        }
+                        Err(e) => debug!("select_country: step2 type_str failed: {}", e),
+                    }
+                }
+                Err(e) => debug!("select_country: step2 find :focus failed: {}", e),
+            }
+        }
+
+        // Step 3: Click the button with exact dial code match (works on filtered or full list)
+        let select_js = format!(
             r#"(function() {{
-                var el = document.querySelector('{}');
-                if (el) {{ el.click(); return true; }}
-                return false;
-            }})();"#,
-            selector.replace('\'', "\\'")
+                var popover = document.querySelector('#wa-popovers-bucket');
+                if (!popover) return 'no_popover';
+                var buttons = popover.querySelectorAll('button');
+                if (buttons.length === 0) return 'no_buttons';
+                var re = new RegExp('\\+{}(?!\\d)');
+                for (var i = 0; i < buttons.length; i++) {{
+                    var txt = buttons[i].textContent || '';
+                    if (re.test(txt)) {{
+                        buttons[i].scrollIntoView({{block: 'center'}});
+                        buttons[i].click();
+                        return 'selected:' + txt.trim().substring(0, 40);
+                    }}
+                }}
+                return 'no_match (checked ' + buttons.length + ' buttons, search={})';
+            }})()
+            "#,
+            digits,
+            if searched { country.name } else { "none" },
         );
 
-        let result = page.evaluate(script.as_str()).await?;
+        let select_result = page.evaluate(select_js.as_str()).await?
+            .into_value::<String>().unwrap_or_else(|_| "error".into());
+        debug!("select_country: step3 select = {}", select_result);
+
+        let selected = select_result.starts_with("selected");
+
+        if selected {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        } else {
+            Self::close_popover(page).await;
+        }
+
+        Ok(selected)
+    }
+
+    /// Close any open popover by pressing Escape
+    async fn close_popover(page: &Page) {
+        let _ = page.evaluate(
+            r#"(function() {
+                var e = new KeyboardEvent('keydown', {key:'Escape', code:'Escape', bubbles:true});
+                document.dispatchEvent(e);
+                document.activeElement && document.activeElement.blur();
+            })()"#
+        ).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+
+    /// Set phone number input value via JavaScript (reliable with React inputs on any OS).
+    /// Clears existing value first, then sets the new value.
+    pub async fn set_phone_input_value(page: &Page, selector: &str, number: &str) -> Result<bool> {
+        let js = format!(
+            r#"(function() {{
+                var input = document.querySelector("{selector}")
+                    || document.querySelector("input[type='text']");
+                if (!input) return false;
+                input.focus();
+                input.click();
+                var setter = Object.getOwnPropertyDescriptor(
+                    HTMLInputElement.prototype, 'value'
+                ).set;
+                setter.call(input, '');
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                setter.call(input, '{number}');
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                return true;
+            }})()
+            "#,
+            selector = selector.replace('"', "\\\""),
+            number = number,
+        );
+
+        let result = page.evaluate(js.as_str()).await?;
         Ok(result.into_value::<bool>().unwrap_or(false))
     }
 }
