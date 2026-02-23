@@ -35,6 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     print_banner();
 
+    // Initialize health check uptime counter
+    was::handlers::api::health::init();
+
     info!("Starting WAS (WhatsApp Server) v{}", VERSION);
 
     // Validate configuration
