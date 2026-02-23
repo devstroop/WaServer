@@ -5,9 +5,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - WHATSAPP_HOST=0.0.0.0
-      - WHATSAPP_PORT=3000
-      - WHATSAPP_SECRET=${WHATSAPP_SECRET:-your-secure-secret}
+      - WAS_HOST=0.0.0.0
+      - WAS_PORT=3000
+      - WAS__AUTH__SECRET_KEY=${WAS__AUTH__SECRET_KEY:-your-secure-secret}
       - RUST_LOG=info
     volumes:
       # Persist browser session data

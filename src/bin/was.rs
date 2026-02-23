@@ -9,10 +9,7 @@
 //! was
 //!
 //! # With environment variable for secret key
-//! WHATSAPP_SECRET=mysecret was
-//!
-//! # Or using the full config prefix
-//! WHATSAPP__AUTH__SECRET_KEY=mysecret was
+//! WAS__AUTH__SECRET_KEY=mysecret was
 //! ```
 
 use std::sync::Arc;

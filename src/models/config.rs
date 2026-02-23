@@ -220,7 +220,7 @@ impl AppConfig {
 
         let mut builder = config::Config::builder()
             .add_source(config::File::with_name("config/app").required(false))
-            .add_source(config::Environment::with_prefix("WHATSAPP").separator("__"));
+            .add_source(config::Environment::with_prefix("WAS").separator("__"));
 
         // Try to load from current directory if config/app doesn't exist
         if std::fs::metadata("config/app.toml").is_err() {
@@ -232,11 +232,6 @@ impl AppConfig {
 
         // Override with environment config
         app_config.environment = env_config;
-
-        // Support WHATSAPP_SECRET shorthand env var
-        if let Ok(secret) = std::env::var("WHATSAPP_SECRET") {
-            app_config.auth.secret_key = secret;
-        }
 
         Ok(app_config)
     }

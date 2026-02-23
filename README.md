@@ -209,9 +209,9 @@ secret = "hmac-secret"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WHATSAPP_HOST` | Server host | `0.0.0.0` |
-| `WHATSAPP_PORT` | Server port | `3000` |
-| `WHATSAPP_SECRET` | Static secret token | - |
+| `WAS_HOST` | Server host | `0.0.0.0` |
+| `WAS_PORT` | Server port | `3000` |
+| `WAS__AUTH__SECRET_KEY` | Secret key | - |
 | `RUST_LOG` | Log level | `info` |
 
 ## Webhooks
