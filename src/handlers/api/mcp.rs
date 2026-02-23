@@ -107,7 +107,10 @@ impl McpState {
 
     /// Get a running account for MCP operations
     /// Priority: 1) Session account_id, 2) First running account
-    pub async fn get_account(&self, session_account_id: Option<&str>) -> Option<Arc<WhatsAppAccount>> {
+    pub async fn get_account(
+        &self,
+        session_account_id: Option<&str>,
+    ) -> Option<Arc<WhatsAppAccount>> {
         // If session has a specific account, use that
         if let Some(account_id) = session_account_id {
             if let Some(account) = self.account_manager.get_account(account_id).await {
@@ -140,7 +143,8 @@ fn get_available_tools() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "whatsapp_get_auth_status".to_string(),
-            description: "Check if WhatsApp Web is currently authenticated and get sender ID".to_string(),
+            description: "Check if WhatsApp Web is currently authenticated and get sender ID"
+                .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -149,7 +153,9 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_get_qr_code".to_string(),
-            description: "Get QR code for WhatsApp Web authentication. Returns base64-encoded QR code image.".to_string(),
+            description:
+                "Get QR code for WhatsApp Web authentication. Returns base64-encoded QR code image."
+                    .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -158,7 +164,9 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_login_with_phone".to_string(),
-            description: "Initiate phone number authentication for WhatsApp Web. Returns a linking code.".to_string(),
+            description:
+                "Initiate phone number authentication for WhatsApp Web. Returns a linking code."
+                    .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -181,7 +189,8 @@ fn get_available_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "whatsapp_send_message".to_string(),
-            description: "Send a text message, file, or both to a WhatsApp contact or group".to_string(),
+            description: "Send a text message, file, or both to a WhatsApp contact or group"
+                .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -249,7 +258,11 @@ async fn execute_tool(
             let running_account = state.get_account(session_account_id).await;
             let (is_busy, auth_ok) = if let Some(account) = running_account {
                 let busy = account.is_busy().await;
-                let auth = account.auth_service().is_authorized().await.unwrap_or(false);
+                let auth = account
+                    .auth_service()
+                    .is_authorized()
+                    .await
+                    .unwrap_or(false);
                 (busy, auth)
             } else {
                 (false, false)
@@ -280,7 +293,8 @@ async fn execute_tool(
             return McpToolResult {
                 content: vec![McpContent {
                     content_type: "text".to_string(),
-                    text: "No WhatsApp instance available. Create one via POST /api/v1/instances".to_string(),
+                    text: "No WhatsApp instance available. Create one via POST /api/v1/instances"
+                        .to_string(),
                 }],
                 is_error: Some(true),
             };
@@ -288,7 +302,10 @@ async fn execute_tool(
     };
 
     // Check if account browser is running for most operations
-    let needs_browser = !matches!(tool_name, "whatsapp_list_accounts" | "whatsapp_health_check");
+    let needs_browser = !matches!(
+        tool_name,
+        "whatsapp_list_accounts" | "whatsapp_health_check"
+    );
     if needs_browser && !account.browser_service().is_running().await {
         return McpToolResult {
             content: vec![McpContent {
@@ -303,61 +320,57 @@ async fn execute_tool(
     }
 
     match tool_name {
-        "whatsapp_get_auth_status" => {
-            match account.auth_service().is_authorized().await {
-                Ok(authorized) => {
-                    let sender_id = if authorized {
-                        account.auth_service().get_sender_id().await.ok().flatten()
-                    } else {
-                        None
-                    };
+        "whatsapp_get_auth_status" => match account.auth_service().is_authorized().await {
+            Ok(authorized) => {
+                let sender_id = if authorized {
+                    account.auth_service().get_sender_id().await.ok().flatten()
+                } else {
+                    None
+                };
 
-                    McpToolResult {
-                        content: vec![McpContent {
-                            content_type: "text".to_string(),
-                            text: json!({
-                                "account_id": account.id,
-                                "authorized": authorized,
-                                "sender_id": sender_id
-                            })
-                            .to_string(),
-                        }],
-                        is_error: None,
-                    }
-                }
-                Err(e) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: format!("Error checking auth status: {}", e),
-                    }],
-                    is_error: Some(true),
-                },
-            }
-        }
-
-        "whatsapp_get_qr_code" => {
-            match account.auth_service().get_auth_qr_code().await {
-                Ok(qr_code) => McpToolResult {
+                McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
                         text: json!({
                             "account_id": account.id,
-                            "qr_code": qr_code,
-                            "instructions": "Scan this QR code with WhatsApp mobile app to authenticate"
+                            "authorized": authorized,
+                            "sender_id": sender_id
                         })
                         .to_string(),
                     }],
                     is_error: None,
-                },
-                Err(e) => McpToolResult {
-                    content: vec![McpContent {
-                        content_type: "text".to_string(),
-                        text: format!("Error getting QR code: {}", e),
-                    }],
-                    is_error: Some(true),
-                },
+                }
             }
-        }
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error checking auth status: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
+
+        "whatsapp_get_qr_code" => match account.auth_service().get_auth_qr_code().await {
+            Ok(qr_code) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: json!({
+                        "account_id": account.id,
+                        "qr_code": qr_code,
+                        "instructions": "Scan this QR code with WhatsApp mobile app to authenticate"
+                    })
+                    .to_string(),
+                }],
+                is_error: None,
+            },
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error getting QR code: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
 
         "whatsapp_login_with_phone" => {
             let phone_number = arguments
@@ -398,34 +411,35 @@ async fn execute_tool(
             }
         }
 
-        "whatsapp_logout" => {
-            match account.auth_service().logout().await {
-                Ok(_) => {
-                    account.invalidate_auth_cache().await;
-                    McpToolResult {
-                        content: vec![McpContent {
-                            content_type: "text".to_string(),
-                            text: json!({
-                                "account_id": account.id,
-                                "message": "Successfully logged out from WhatsApp Web"
-                            })
-                            .to_string(),
-                        }],
-                        is_error: None,
-                    }
-                }
-                Err(e) => McpToolResult {
+        "whatsapp_logout" => match account.auth_service().logout().await {
+            Ok(_) => {
+                account.invalidate_auth_cache().await;
+                McpToolResult {
                     content: vec![McpContent {
                         content_type: "text".to_string(),
-                        text: format!("Error logging out: {}", e),
+                        text: json!({
+                            "account_id": account.id,
+                            "message": "Successfully logged out from WhatsApp Web"
+                        })
+                        .to_string(),
                     }],
-                    is_error: Some(true),
-                },
+                    is_error: None,
+                }
             }
-        }
+            Err(e) => McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!("Error logging out: {}", e),
+                }],
+                is_error: Some(true),
+            },
+        },
 
         "whatsapp_send_message" => {
-            let phone = arguments.get("phone").and_then(|v| v.as_str()).unwrap_or("");
+            let phone = arguments
+                .get("phone")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let message = arguments.get("message").and_then(|v| v.as_str());
             let file_path = arguments.get("file_path").and_then(|v| v.as_str());
 
@@ -624,11 +638,16 @@ pub async fn mcp_sse_handler(
     State(state): State<McpState>,
     Query(query): Query<SseQuery>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let session_id = query.session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let session_id = query
+        .session_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let account_id = query.account_id;
     let (tx, mut rx) = mpsc::channel::<McpResponse>(100);
 
-    info!("MCP SSE: New connection - session_id: {}, account_id: {:?}", session_id, account_id);
+    info!(
+        "MCP SSE: New connection - session_id: {}, account_id: {:?}",
+        session_id, account_id
+    );
 
     // Store session
     {

@@ -176,10 +176,14 @@ impl LocatorConfig {
                 phone_number_label: "text='Enter phone number'".into(),
                 phone_number_input: "[aria-label='Type your phone number.']".into(),
                 phone_submit_button: "div[role='button']".into(),
-                invalid_phone_dialog: "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']".into(),
+                invalid_phone_dialog:
+                    "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']"
+                        .into(),
                 code_on_phone_label: "text='Enter code on phone'".into(),
-                code_on_phone_value: "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
-                link_code_element: "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
+                code_on_phone_value:
+                    "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
+                link_code_element:
+                    "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
                 link_code_digits: "[data-link-code]".into(),
                 qr_loading: "svg[role='status']".into(),
                 qr_canvas: "canvas[aria-label='Scan this QR code to link a device!']".into(),
@@ -199,7 +203,8 @@ impl LocatorConfig {
             },
             chat: ChatLocators {
                 message_input: "#app #main footer div[aria-placeholder='Type a message']".into(),
-                message_contenteditable: "div[contenteditable='true'][aria-placeholder='Type a message']".into(),
+                message_contenteditable:
+                    "div[contenteditable='true'][aria-placeholder='Type a message']".into(),
                 send_button: "span[data-icon='send']".into(),
                 send_button_parent: "button span[data-icon='send']".into(),
             },
@@ -207,7 +212,8 @@ impl LocatorConfig {
                 button: "button[title='Attach']".into(),
                 plus_icon: "[data-icon='plus']".into(),
                 menu_plus_icon: "[data-icon='attach-menu-plus']".into(),
-                photo_video_input: "input[accept='image/*,video/mp4,video/3gpp,video/quicktime']".into(),
+                photo_video_input: "input[accept='image/*,video/mp4,video/3gpp,video/quicktime']"
+                    .into(),
                 caption_input: "#app div[aria-placeholder='Add a caption']".into(),
                 document_input: "input[accept='*']".into(),
                 send_button: "#app div[aria-label='Send']".into(),
@@ -346,7 +352,10 @@ impl Locators {
 
     /// Get QR code as base64 PNG
     pub async fn get_qr_code_base64(page: &Page) -> Result<Option<String>> {
-        match page.evaluate(Self::config().scripts.qr_code_base64.as_str()).await {
+        match page
+            .evaluate(Self::config().scripts.qr_code_base64.as_str())
+            .await
+        {
             Ok(result) => Ok(result.into_value::<Option<String>>().unwrap_or(None)),
             Err(_) => Ok(None),
         }

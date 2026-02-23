@@ -1,7 +1,7 @@
 //! WhatsApp Service Module
 //!
 //! Core WhatsApp automation services: account management and chat handling.
-//! WhatsAppService has been removed - use AccountManager with WhatsAppAccount instead.
+//! Use AccountManager to create and manage WhatsAppAccount instances.
 
 pub mod account;
 pub mod account_manager;

@@ -191,4 +191,3 @@ impl From<tokio::sync::AcquireError> for WhatsAppError {
         WhatsAppError::Internal(format!("Semaphore acquire error: {}", err))
     }
 }
-

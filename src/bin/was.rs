@@ -15,11 +15,7 @@
 use std::sync::Arc;
 use tracing::info;
 
-use was::{
-    config::AppConfig,
-    services::AccountManager,
-    utils::logging,
-};
+use was::{config::AppConfig, services::AccountManager, utils::logging};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -89,12 +85,12 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, instances, chat, health},
+        api::{account, chat, health, instances},
         middleware::{
-            auth_middleware, correlation_id_middleware,
-            request_metrics_middleware, security_headers_middleware, AuthState,
+            auth_middleware, correlation_id_middleware, request_metrics_middleware,
+            security_headers_middleware, AuthState,
         },
-        models::{auth::*, chat::*, account::*},
+        models::{account::*, auth::*, chat::*},
     };
 
     // CORS

@@ -150,9 +150,7 @@ pub async fn liveness_check() -> Result<(), StatusCode> {
     ),
     tag = "Health"
 )]
-pub async fn get_metrics(
-    State(manager): State<Arc<AccountManager>>,
-) -> Json<MetricsResponse> {
+pub async fn get_metrics(State(manager): State<Arc<AccountManager>>) -> Json<MetricsResponse> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -179,7 +177,7 @@ pub async fn get_metrics(
                 crate::models::account::AccountStatus::Running => "running",
                 crate::models::account::AccountStatus::Error(_) => "error",
             };
-            
+
             account_metrics.push(AccountMetrics {
                 id: info.id.to_string(),
                 status: status_str.to_string(),

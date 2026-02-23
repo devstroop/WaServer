@@ -122,7 +122,11 @@ impl BrowserService {
             browser_config = browser_config.arg(arg);
         }
 
-        let user_data_dir = self.browser_config.user_data_dir.to_string_lossy().to_string();
+        let user_data_dir = self
+            .browser_config
+            .user_data_dir
+            .to_string_lossy()
+            .to_string();
 
         // Ensure the directory exists
         std::fs::create_dir_all(&user_data_dir)
@@ -356,7 +360,7 @@ impl BrowserService {
     const PAGE_HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
     /// Get the persistent WhatsApp Web page
-    /// 
+    ///
     /// Includes timeout protection to avoid hanging when browser is unresponsive.
     pub async fn get_whatsapp_page(&self) -> Result<Page> {
         // First, try to reuse existing page with timeout-protected check
@@ -365,7 +369,7 @@ impl BrowserService {
             if let Some(ref page) = *page_guard {
                 // Use timeout to check if page is still responsive
                 let page_check = async { page.url().await };
-                
+
                 match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, page_check).await {
                     Ok(Ok(_)) => {
                         debug!("Reusing existing WhatsApp Web page");
@@ -431,7 +435,7 @@ impl BrowserService {
     }
 
     /// Check if browser is actually responsive (with timeout)
-    /// 
+    ///
     /// This does a real check that the browser can respond to commands.
     /// Use this for health checks rather than `is_running()`.
     pub async fn is_responsive(&self) -> bool {
@@ -440,16 +444,10 @@ impl BrowserService {
         }
 
         // Try to get the page with timeout
-        match tokio::time::timeout(
-            Self::PAGE_HEALTH_TIMEOUT,
-            self.get_whatsapp_page()
-        ).await {
+        match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, self.get_whatsapp_page()).await {
             Ok(Ok(page)) => {
                 // Try a simple evaluation to verify responsiveness
-                match tokio::time::timeout(
-                    Self::PAGE_HEALTH_TIMEOUT,
-                    page.evaluate("true")
-                ).await {
+                match tokio::time::timeout(Self::PAGE_HEALTH_TIMEOUT, page.evaluate("true")).await {
                     Ok(Ok(_)) => true,
                     _ => {
                         tracing::warn!("Browser page not responding to commands");
@@ -465,7 +463,7 @@ impl BrowserService {
     }
 
     /// Force reset the browser state when it's unresponsive
-    /// 
+    ///
     /// This clears the browser handle so the next operation will attempt
     /// to reinitialize. Useful when the browser process has died.
     pub async fn force_reset(&self) {
@@ -499,13 +497,13 @@ impl BrowserService {
     }
 
     /// Take a screenshot of the current page
-    /// 
+    ///
     /// Returns PNG image data as bytes. Useful for live feed/monitoring.
     pub async fn screenshot(&self) -> Result<Vec<u8>> {
         let page = self.get_whatsapp_page().await?;
-        
+
         use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
-        
+
         let screenshot = page
             .screenshot(
                 chromiumoxide::page::ScreenshotParams::builder()
@@ -514,7 +512,7 @@ impl BrowserService {
                     .build(),
             )
             .await?;
-        
+
         Ok(screenshot)
     }
 }

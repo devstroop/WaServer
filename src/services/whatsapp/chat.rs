@@ -322,12 +322,12 @@ impl ChatService {
 
         let result = page.evaluate(listener_script).await?;
         let status: serde_json::Value = result.into_value().unwrap_or_default();
-        
+
         let status_str = status
             .get("status")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        
+
         match status_str {
             "installed" => info!("Message listener installed successfully"),
             "already_active" => debug!("Message listener already active"),
@@ -1433,7 +1433,7 @@ impl ChatServiceTrait for ChatService {
     }
 
     /// Watch for new incoming messages (returns new messages since last check)
-    /// 
+    ///
     /// This uses an event-driven approach with MutationObserver and Notification API
     /// interception instead of polling the DOM. Much more efficient for real-time
     /// message detection.

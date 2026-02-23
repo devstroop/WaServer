@@ -89,8 +89,8 @@ impl EnvironmentConfig {
     }
 
     pub fn is_debug(&self) -> bool {
-        matches!(self.log_level.as_str(), "debug" | "trace") 
-            || self.log_level.contains("debug") 
+        matches!(self.log_level.as_str(), "debug" | "trace")
+            || self.log_level.contains("debug")
             || self.log_level.contains("trace")
     }
 

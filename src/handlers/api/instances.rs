@@ -16,8 +16,8 @@ use serde_json::json;
 
 use crate::{
     models::account::{
-        CreateAccountRequest, ListAccountsQuery, DeleteAccountResponse,
-        DeleteAccountQuery, AccountActionResponse, UpdateInstanceConfigRequest,
+        AccountActionResponse, CreateAccountRequest, DeleteAccountQuery, DeleteAccountResponse,
+        ListAccountsQuery, UpdateInstanceConfigRequest,
     },
     services::AccountManager,
 };
@@ -111,7 +111,8 @@ pub async fn get_instance(
                 "error": "not_found",
                 "message": format!("Instance '{}' not found", instance_id)
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -135,25 +136,28 @@ pub async fn delete_instance(
     Path(instance_id): Path<String>,
     Query(query): Query<DeleteAccountQuery>,
 ) -> impl IntoResponse {
-    match manager.delete_account(&instance_id, query.delete_data).await {
-        Ok(account_id) => {
-            Json(json!(DeleteAccountResponse {
-                message: if query.delete_data {
-                    "Instance and all data deleted".to_string()
-                } else {
-                    "Instance deleted, data preserved".to_string()
-                },
-                account_id,
-                data_deleted: query.delete_data,
-            })).into_response()
-        }
+    match manager
+        .delete_account(&instance_id, query.delete_data)
+        .await
+    {
+        Ok(account_id) => Json(json!(DeleteAccountResponse {
+            message: if query.delete_data {
+                "Instance and all data deleted".to_string()
+            } else {
+                "Instance deleted, data preserved".to_string()
+            },
+            account_id,
+            data_deleted: query.delete_data,
+        }))
+        .into_response(),
         Err(e) => (
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": "delete_failed",
                 "message": e.to_string()
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -178,13 +182,16 @@ pub async fn start_instance(
 ) -> impl IntoResponse {
     let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
-        None => return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": format!("Instance '{}' not found", instance_id)
-            })),
-        ).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response()
+        }
     };
 
     let account_id = account.id;
@@ -193,10 +200,13 @@ pub async fn start_instance(
         Ok(()) => Json(json!(AccountActionResponse {
             message: "Instance started successfully".to_string(),
             account_id,
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => {
             let error_msg = e.to_string();
-            let status = if error_msg.contains("already running") || error_msg.contains("already starting") {
+            let status = if error_msg.contains("already running")
+                || error_msg.contains("already starting")
+            {
                 StatusCode::CONFLICT
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -207,7 +217,8 @@ pub async fn start_instance(
                     "error": "start_failed",
                     "message": error_msg
                 })),
-            ).into_response()
+            )
+                .into_response()
         }
     }
 }
@@ -232,13 +243,16 @@ pub async fn stop_instance(
 ) -> impl IntoResponse {
     let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
-        None => return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": format!("Instance '{}' not found", instance_id)
-            })),
-        ).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response()
+        }
     };
 
     let account_id = account.id;
@@ -247,14 +261,16 @@ pub async fn stop_instance(
         Ok(()) => Json(json!(AccountActionResponse {
             message: "Instance stopped successfully".to_string(),
             account_id,
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "error": "stop_failed",
                 "message": e.to_string()
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -334,14 +350,16 @@ pub async fn screenshot(
             StatusCode::OK,
             [(header::CONTENT_TYPE, "image/png")],
             png_data,
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "error": "screenshot_failed",
                 "message": e.to_string()
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -365,13 +383,16 @@ pub async fn get_instance_config(
 ) -> impl IntoResponse {
     let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
-        None => return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": format!("Instance '{}' not found", instance_id)
-            })),
-        ).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response()
+        }
     };
 
     let config = account.get_config().await;
@@ -401,13 +422,16 @@ pub async fn update_instance_config(
 ) -> impl IntoResponse {
     let account = match manager.get_account(&instance_id).await {
         Some(acc) => acc,
-        None => return (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": format!("Instance '{}' not found", instance_id)
-            })),
-        ).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
+                })),
+            )
+                .into_response()
+        }
     };
 
     match account.update_config(request).await {
@@ -415,13 +439,15 @@ pub async fn update_instance_config(
             "message": "Configuration updated successfully",
             "config": config,
             "restart_required": true
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "config_update_failed",
                 "message": e.to_string()
             })),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }

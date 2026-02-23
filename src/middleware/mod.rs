@@ -5,12 +5,7 @@
 pub mod account;
 pub mod auth;
 
-use axum::{
-    extract::Request,
-    http::HeaderMap,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::HeaderMap, middleware::Next, response::Response};
 use std::time::SystemTime;
 use tracing::Instrument;
 

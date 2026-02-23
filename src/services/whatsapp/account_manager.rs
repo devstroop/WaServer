@@ -3,14 +3,14 @@
 //! Manages multiple WhatsApp accounts with create/get/list/delete operations.
 //! Account IDs are UUIDs, phone numbers are unique per account.
 
+use super::account::WhatsAppAccount;
 use crate::{
     config::AppConfig,
     models::account::{
-        validate_phone_number, phone_to_dir_name, AccountConfig, AccountId, AccountListResponse,
+        phone_to_dir_name, validate_phone_number, AccountConfig, AccountId, AccountListResponse,
         AccountMetadata, CreateAccountRequest, CreateAccountResponse,
     },
 };
-use super::account::WhatsAppAccount;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use std::collections::HashMap;
@@ -48,9 +48,7 @@ impl AccountManager {
                 let home = std::env::var("HOME")
                     .or_else(|_| std::env::var("USERPROFILE"))
                     .unwrap_or_else(|_| "/tmp".to_string());
-                PathBuf::from(home)
-                    .join(".was")
-                    .join("accounts")
+                PathBuf::from(home).join(".was").join("accounts")
             });
 
         info!("AccountManager initialized with base_dir: {:?}", base_dir);
@@ -69,7 +67,10 @@ impl AccountManager {
     }
 
     /// Create a new account
-    pub async fn create_account(&self, request: CreateAccountRequest) -> Result<CreateAccountResponse> {
+    pub async fn create_account(
+        &self,
+        request: CreateAccountRequest,
+    ) -> Result<CreateAccountResponse> {
         // Validate and normalize phone number
         let phone_number = validate_phone_number(&request.phone_number)
             .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
@@ -78,14 +79,17 @@ impl AccountManager {
         {
             let phone_map = self.phone_to_id.read().await;
             if phone_map.contains_key(&phone_number) {
-                return Err(anyhow!("Account for phone '{}' already exists", phone_number));
+                return Err(anyhow!(
+                    "Account for phone '{}' already exists",
+                    phone_number
+                ));
             }
         }
 
         // Use phone digits as directory name
         let dir_name = phone_to_dir_name(&phone_number);
         let account_dir = self.base_dir.join(&dir_name);
-        
+
         // Check if directory already exists (account was previously created)
         if account_dir.exists() {
             // Check for metadata file
@@ -124,7 +128,10 @@ impl AccountManager {
             phone_map.insert(phone_number.clone(), account_id);
         }
 
-        info!("Created account '{}' for phone '{}'", account_id, phone_number);
+        info!(
+            "Created account '{}' for phone '{}'",
+            account_id, phone_number
+        );
 
         Ok(CreateAccountResponse {
             id: account_id,
@@ -141,16 +148,15 @@ impl AccountManager {
         if let Ok(uuid) = Uuid::parse_str(id) {
             return self.accounts.read().await.get(&uuid).cloned();
         }
-        
+
         // Try to look up by phone number
-        let phone = validate_phone_number(id)
-            .unwrap_or_else(|_| id.to_string());
-        
+        let phone = validate_phone_number(id).unwrap_or_else(|_| id.to_string());
+
         let phone_map = self.phone_to_id.read().await;
         if let Some(uuid) = phone_map.get(&phone) {
             return self.accounts.read().await.get(uuid).cloned();
         }
-        
+
         None
     }
 
@@ -161,9 +167,8 @@ impl AccountManager {
 
     /// Get an account by phone number
     pub async fn get_account_by_phone(&self, phone: &str) -> Option<Arc<WhatsAppAccount>> {
-        let phone = validate_phone_number(phone)
-            .unwrap_or_else(|_| phone.to_string());
-        
+        let phone = validate_phone_number(phone).unwrap_or_else(|_| phone.to_string());
+
         let phone_map = self.phone_to_id.read().await;
         if let Some(uuid) = phone_map.get(&phone) {
             return self.accounts.read().await.get(uuid).cloned();
@@ -199,12 +204,14 @@ impl AccountManager {
     /// Delete an account
     pub async fn delete_account(&self, id: &str, delete_data: bool) -> Result<AccountId> {
         // Find the account (by UUID or phone)
-        let account = self.get_account(id).await
+        let account = self
+            .get_account(id)
+            .await
             .ok_or_else(|| anyhow!("Account '{}' not found", id))?;
-        
+
         let account_id = account.id;
         let phone_number = account.phone_number.clone();
-            
+
         // Remove from both maps
         {
             let mut accounts = self.accounts.write().await;
@@ -217,7 +224,10 @@ impl AccountManager {
 
         // Stop the account first
         if let Err(e) = account.stop().await {
-            warn!("Error stopping account '{}' during deletion: {}", account_id, e);
+            warn!(
+                "Error stopping account '{}' during deletion: {}",
+                account_id, e
+            );
         }
 
         if delete_data {
@@ -225,10 +235,16 @@ impl AccountManager {
             let account_dir = self.base_dir.join(&dir_name);
             if account_dir.exists() {
                 tokio::fs::remove_dir_all(&account_dir).await?;
-                info!("Deleted account '{}' (phone: {}) and all data", account_id, phone_number);
+                info!(
+                    "Deleted account '{}' (phone: {}) and all data",
+                    account_id, phone_number
+                );
             }
         } else {
-            info!("Deleted account '{}' (phone: {}) (data preserved)", account_id, phone_number);
+            info!(
+                "Deleted account '{}' (phone: {}) (data preserved)",
+                account_id, phone_number
+            );
         }
 
         Ok(account_id)
@@ -283,7 +299,7 @@ impl AccountManager {
                     continue;
                 }
             };
-            
+
             let metadata: AccountMetadata = match serde_json::from_str(&content) {
                 Ok(m) => m,
                 Err(e) => {
@@ -301,7 +317,10 @@ impl AccountManager {
             }
 
             // Load the account
-            match self.load_account_from_dir(account_id, &phone_number, &path, &metadata).await {
+            match self
+                .load_account_from_dir(account_id, &phone_number, &path, &metadata)
+                .await
+            {
                 Ok(()) => {
                     discovered.push(account_id);
                 }
@@ -349,7 +368,10 @@ impl AccountManager {
             phone_map.insert(phone_number.to_string(), account_id);
         }
 
-        info!("Loaded account '{}' (phone: {}) from {:?}", account_id, phone_number, data_dir);
+        info!(
+            "Loaded account '{}' (phone: {}) from {:?}",
+            account_id, phone_number, data_dir
+        );
         Ok(())
     }
 
@@ -404,7 +426,7 @@ mod tests {
         assert!(validate_phone_number("+1234567890").is_ok());
         assert!(validate_phone_number("1234567890").is_ok());
         assert!(validate_phone_number("+919876543210").is_ok());
-        
+
         // Invalid phone numbers
         assert!(validate_phone_number("").is_err());
         assert!(validate_phone_number("123456").is_err()); // Too short

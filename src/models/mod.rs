@@ -16,11 +16,23 @@ pub use auth::AuthenticatedUser;
 
 // Re-export account types
 pub use account::{
-    AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
-    CreateAccountRequest, CreateAccountResponse, AccountListResponse,
-    WhatsAppStatusResponse, ProfileInfo, PrivacySettings, 
-    validate_phone_number, phone_to_dir_name,
+    phone_to_dir_name,
+    validate_phone_number,
+    AccountActionResponse,
+    AccountConfig,
+    AccountId,
+    AccountInfo,
+    AccountListResponse,
+    AccountMetadata,
+    AccountStatus,
+    CreateAccountRequest,
+    CreateAccountResponse,
+    DeleteAccountQuery,
+    DeleteAccountResponse,
     // API query/response types
-    ListAccountsQuery, DeleteAccountResponse, DeleteAccountQuery, 
-    AccountActionResponse, PhoneLinkRequest,
+    ListAccountsQuery,
+    PhoneLinkRequest,
+    PrivacySettings,
+    ProfileInfo,
+    WhatsAppStatusResponse,
 };

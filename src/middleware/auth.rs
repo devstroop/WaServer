@@ -10,10 +10,7 @@ use axum::{
     response::Response,
 };
 
-use crate::{
-    models::auth::AuthenticatedUser,
-    utils::logging::CorrelationId,
-};
+use crate::{models::auth::AuthenticatedUser, utils::logging::CorrelationId};
 
 /// Authentication state for middleware
 #[derive(Clone)]

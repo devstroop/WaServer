@@ -4,12 +4,13 @@
 //! Each account has its own browser profile, database, and session data.
 //! Account ID is a UUID, phone_number is the E.164 identifier.
 
+use super::chat::{ChatService, ChatServiceTrait};
 use crate::{
     browser::{BrowserService, BrowserServiceConfig},
     config::AppConfig,
     models::account::{
         AccountConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
-        InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, InstanceRateLimits,
+        InstanceBrowserConfig, InstanceConfig, InstanceRateLimits, InstanceWebhookConfig,
         UpdateInstanceConfigRequest,
     },
     models::auth::AuthStatusResponse,
@@ -20,7 +21,6 @@ use crate::{
     },
     utils::metrics::{MetricsSnapshot, ServiceMetrics},
 };
-use super::chat::{ChatService, ChatServiceTrait};
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use std::path::PathBuf;
@@ -88,7 +88,10 @@ impl WhatsAppAccount {
     pub async fn new(config: AccountConfig, app_config: Arc<AppConfig>) -> Result<Self> {
         let data_dir = config.data_dir.clone();
 
-        info!("Creating account '{}' (phone: {}) at {:?}", config.id, config.phone_number, data_dir);
+        info!(
+            "Creating account '{}' (phone: {}) at {:?}",
+            config.id, config.phone_number, data_dir
+        );
 
         // Ensure account directories exist
         tokio::fs::create_dir_all(&data_dir).await?;
@@ -103,13 +106,16 @@ impl WhatsAppAccount {
         let instance_config = Self::load_or_create_instance_config(&data_dir, &config).await?;
 
         // Create browser service with account-specific profile
-        let headless = config.browser.headless.unwrap_or(app_config.browser.headless);
-        let browser_config = BrowserServiceConfig::for_account(
-            &data_dir,
-            headless,
-            app_config.browser.timeout_ms,
-        );
-        let browser_service = Arc::new(BrowserService::with_config(app_config.clone(), browser_config));
+        let headless = config
+            .browser
+            .headless
+            .unwrap_or(app_config.browser.headless);
+        let browser_config =
+            BrowserServiceConfig::for_account(&data_dir, headless, app_config.browser.timeout_ms);
+        let browser_service = Arc::new(BrowserService::with_config(
+            app_config.clone(),
+            browser_config,
+        ));
 
         // Create database in account directory
         let database = Arc::new(
@@ -121,7 +127,10 @@ impl WhatsAppAccount {
         let webhook_service = WebhookService::new(app_config.webhooks.clone()).start_worker();
 
         // Create auth and chat services
-        let auth_service = Arc::new(AuthService::new(app_config.clone(), browser_service.clone()));
+        let auth_service = Arc::new(AuthService::new(
+            app_config.clone(),
+            browser_service.clone(),
+        ));
         let chat_service = Arc::new(ChatService::with_database(
             app_config.clone(),
             browser_service.clone(),
@@ -163,7 +172,8 @@ impl WhatsAppAccount {
             debug!("Loaded metadata for account '{}'", config.id);
             Ok(metadata)
         } else {
-            let metadata = AccountMetadata::new(config.id, &config.phone_number, config.display_name.clone());
+            let metadata =
+                AccountMetadata::new(config.id, &config.phone_number, config.display_name.clone());
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
             info!("Created new metadata for account '{}'", config.id);
             Ok(metadata)
@@ -232,7 +242,10 @@ impl WhatsAppAccount {
     }
 
     /// Update instance configuration with partial updates
-    pub async fn update_config(&self, update: UpdateInstanceConfigRequest) -> Result<InstanceConfig> {
+    pub async fn update_config(
+        &self,
+        update: UpdateInstanceConfigRequest,
+    ) -> Result<InstanceConfig> {
         let mut config = self.instance_config.write().await;
 
         // Apply partial updates
@@ -457,7 +470,7 @@ impl WhatsAppAccount {
     const DEFAULT_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Execute an operation with exclusive access and timeout protection
-    /// 
+    ///
     /// This ensures the API layer never hangs indefinitely waiting for browser operations.
     /// If the operation takes longer than the timeout, it returns an error immediately.
     pub async fn execute_with_busy_flag<F, T>(&self, operation: F) -> Result<T>
@@ -465,7 +478,8 @@ impl WhatsAppAccount {
         F: std::future::Future<Output = Result<T>> + Send,
         T: Send,
     {
-        self.execute_with_timeout(operation, Self::DEFAULT_OPERATION_TIMEOUT).await
+        self.execute_with_timeout(operation, Self::DEFAULT_OPERATION_TIMEOUT)
+            .await
     }
 
     /// Execute an operation with custom timeout
@@ -484,8 +498,11 @@ impl WhatsAppAccount {
             }
         };
 
-        debug!("Account '{}' - operation started (timeout: {:?})", self.id, timeout);
-        
+        debug!(
+            "Account '{}' - operation started (timeout: {:?})",
+            self.id, timeout
+        );
+
         // Wrap the operation with a timeout to prevent indefinite hangs
         let result = match tokio::time::timeout(timeout, operation).await {
             Ok(result) => result,
@@ -500,7 +517,7 @@ impl WhatsAppAccount {
                 ))
             }
         };
-        
+
         drop(permit);
         debug!("Account '{}' - operation completed", self.id);
 
@@ -508,7 +525,7 @@ impl WhatsAppAccount {
     }
 
     /// Quick browser health check with short timeout (2 seconds)
-    /// 
+    ///
     /// This is used to verify the browser is responsive before starting operations.
     /// Returns false if browser is dead/unresponsive, allowing fast failure.
     pub async fn is_browser_responsive(&self) -> bool {
@@ -633,7 +650,11 @@ impl WhatsAppAccount {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.metrics.increment_error_count();
-                Err(anyhow!("Browser unhealthy for account '{}': {}", self.id, e))
+                Err(anyhow!(
+                    "Browser unhealthy for account '{}': {}",
+                    self.id,
+                    e
+                ))
             }
         }
     }
@@ -721,10 +742,7 @@ impl WhatsAppAccount {
             );
 
             if let Err(e) = self.database.mark_processing(&item.id) {
-                error!(
-                    "Account '{}' - failed to mark processing: {}",
-                    self.id, e
-                );
+                error!("Account '{}' - failed to mark processing: {}", self.id, e);
                 continue;
             }
 
@@ -758,10 +776,7 @@ impl WhatsAppAccount {
                     );
 
                     if let Err(db_err) = self.database.mark_failed(&item.id, &error_msg) {
-                        error!(
-                            "Account '{}' - failed to mark failed: {}",
-                            self.id, db_err
-                        );
+                        error!("Account '{}' - failed to mark failed: {}", self.id, db_err);
                     }
                     self.track_error();
 

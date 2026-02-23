@@ -16,9 +16,8 @@ use serde_json::json;
 
 use crate::{
     models::account::{
-        PrivacySettings, PhoneLinkRequest,
-        ProfileInfo, WhatsAppStatusResponse,
-        UpdateProfileRequest, UpdatePrivacyRequest,
+        PhoneLinkRequest, PrivacySettings, ProfileInfo, UpdatePrivacyRequest, UpdateProfileRequest,
+        WhatsAppStatusResponse,
     },
     services::AccountManager,
 };
@@ -200,11 +199,11 @@ pub async fn link_phone(
     // Validate that the phone number matches the account
     let account_phone = account.phone_number();
     let normalized_request = crate::models::account::validate_phone_number(&request.phone_number);
-    
+
     if let Ok(req_phone) = normalized_request {
         let normalized_account = crate::models::account::validate_phone_number(account_phone)
             .unwrap_or_else(|_| account_phone.to_string());
-        
+
         if req_phone != normalized_account {
             return (
                 StatusCode::BAD_REQUEST,
@@ -229,7 +228,10 @@ pub async fn link_phone(
             // If we got a linking code, it was successful
             let success = linking_code.is_some();
             if success {
-                if let Err(e) = account.on_whatsapp_authenticated(&request.phone_number).await {
+                if let Err(e) = account
+                    .on_whatsapp_authenticated(&request.phone_number)
+                    .await
+                {
                     return (
                         StatusCode::FORBIDDEN,
                         Json(json!({

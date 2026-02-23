@@ -47,23 +47,23 @@ pub struct InstanceConfig {
     /// Instance identifier (read-only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instance_id: Option<AccountId>,
-    
+
     /// Display name for this instance
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    
+
     /// Auto-start browser on server startup
     #[serde(default)]
     pub auto_start: bool,
-    
+
     /// Browser configuration
     #[serde(default)]
     pub browser: InstanceBrowserConfig,
-    
+
     /// Webhook configuration for this instance
     #[serde(default)]
     pub webhooks: InstanceWebhookConfig,
-    
+
     /// Rate limiting configuration
     #[serde(default)]
     pub rate_limits: InstanceRateLimits,
@@ -88,11 +88,11 @@ pub struct InstanceBrowserConfig {
     /// Run browser in headless mode
     #[serde(default = "default_true")]
     pub headless: bool,
-    
+
     /// Browser operation timeout in milliseconds
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
-    
+
     /// Additional browser arguments
     #[serde(default)]
     pub extra_args: Vec<String>,
@@ -118,15 +118,15 @@ pub struct InstanceWebhookConfig {
     /// Enable webhooks for this instance
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Webhook endpoints
     #[serde(default)]
     pub endpoints: Vec<WebhookEndpoint>,
-    
+
     /// Request timeout in milliseconds
     #[serde(default = "default_webhook_timeout")]
     pub timeout_ms: u64,
-    
+
     /// Number of retry attempts on failure
     #[serde(default = "default_retry_count")]
     pub retry_count: u32,
@@ -156,15 +156,15 @@ fn default_retry_count() -> u32 {
 pub struct WebhookEndpoint {
     /// Webhook URL
     pub url: String,
-    
+
     /// Secret for HMAC signature verification
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret: Option<String>,
-    
+
     /// Events to subscribe to (e.g., ["message.received", "message.sent"])
     #[serde(default)]
     pub events: Vec<String>,
-    
+
     /// Custom headers to include
     #[serde(default)]
     pub headers: std::collections::HashMap<String, String>,
@@ -176,11 +176,11 @@ pub struct InstanceRateLimits {
     /// Maximum messages per minute
     #[serde(default = "default_messages_per_minute")]
     pub messages_per_minute: u32,
-    
+
     /// Maximum API requests per minute  
     #[serde(default = "default_requests_per_minute")]
     pub requests_per_minute: u32,
-    
+
     /// Cooldown between messages in milliseconds
     #[serde(default = "default_message_cooldown")]
     pub message_cooldown_ms: u64,
@@ -214,11 +214,11 @@ pub struct UpdateBrowserConfig {
     /// Run browser in headless mode
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headless: Option<bool>,
-    
+
     /// Browser operation timeout in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
-    
+
     /// Additional browser arguments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_args: Option<Vec<String>>,
@@ -230,15 +230,15 @@ pub struct UpdateWebhookConfig {
     /// Enable webhooks for this instance
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    
+
     /// Webhook endpoints
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoints: Option<Vec<WebhookEndpoint>>,
-    
+
     /// Request timeout in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
-    
+
     /// Number of retry attempts on failure
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_count: Option<u32>,
@@ -250,11 +250,11 @@ pub struct UpdateRateLimits {
     /// Maximum messages per minute
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_per_minute: Option<u32>,
-    
+
     /// Maximum API requests per minute
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requests_per_minute: Option<u32>,
-    
+
     /// Cooldown between messages in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_cooldown_ms: Option<u64>,
@@ -266,19 +266,19 @@ pub struct UpdateInstanceConfigRequest {
     /// Display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    
+
     /// Auto-start on server startup
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_start: Option<bool>,
-    
+
     /// Browser configuration updates
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<UpdateBrowserConfig>,
-    
+
     /// Webhook configuration updates
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhooks: Option<UpdateWebhookConfig>,
-    
+
     /// Rate limits updates
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_limits: Option<UpdateRateLimits>,
@@ -621,11 +621,11 @@ pub struct PhoneLinkRequest {
 /// Returns normalized phone number WITHOUT + prefix (digits only)
 pub fn validate_phone_number(phone: &str) -> Result<String, String> {
     let phone = phone.trim();
-    
+
     if phone.is_empty() {
         return Err("Phone number cannot be empty".to_string());
     }
-    
+
     // Strip leading + for validation and normalization
     let digits_only: String = phone
         .strip_prefix('+')
@@ -633,7 +633,7 @@ pub fn validate_phone_number(phone: &str) -> Result<String, String> {
         .chars()
         .filter(|c| c.is_ascii_digit())
         .collect();
-    
+
     // Must have between 7 and 15 digits (E.164 standard)
     if digits_only.len() < 7 {
         return Err("Phone number too short (minimum 7 digits)".to_string());
@@ -641,7 +641,7 @@ pub fn validate_phone_number(phone: &str) -> Result<String, String> {
     if digits_only.len() > 15 {
         return Err("Phone number too long (maximum 15 digits)".to_string());
     }
-    
+
     // Return digits only (no + prefix)
     Ok(digits_only)
 }
@@ -649,10 +649,7 @@ pub fn validate_phone_number(phone: &str) -> Result<String, String> {
 /// Convert phone number to safe directory name
 /// E.g., "+1234567890" -> "1234567890" or "1234567890" -> "1234567890"
 pub fn phone_to_dir_name(phone: &str) -> String {
-    phone
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect()
+    phone.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
 #[cfg(test)]
@@ -664,15 +661,21 @@ mod tests {
         // Valid phone numbers - all return digits only
         assert_eq!(validate_phone_number("+1234567890").unwrap(), "1234567890");
         assert_eq!(validate_phone_number("1234567890").unwrap(), "1234567890");
-        assert_eq!(validate_phone_number("+44 20 7123 4567").unwrap(), "442071234567");
-        assert_eq!(validate_phone_number("919876543210").unwrap(), "919876543210");
+        assert_eq!(
+            validate_phone_number("+44 20 7123 4567").unwrap(),
+            "442071234567"
+        );
+        assert_eq!(
+            validate_phone_number("919876543210").unwrap(),
+            "919876543210"
+        );
 
         // Invalid phone numbers
         assert!(validate_phone_number("").is_err());
         assert!(validate_phone_number("123456").is_err()); // Too short
         assert!(validate_phone_number("+1234567890123456").is_err()); // Too long
     }
-    
+
     #[test]
     fn test_phone_to_dir_name() {
         assert_eq!(phone_to_dir_name("+1234567890"), "1234567890");
