@@ -8,14 +8,17 @@
 //! # Run with defaults
 //! was
 //!
-//! # With environment variables
-//! WHATSAPP_PORT=8080 WHATSAPP_SECRET=mysecret was
+//! # With environment variable for secret key
+//! WHATSAPP_SECRET=mysecret was
+//!
+//! # Or using the full config prefix
+//! WHATSAPP__AUTH__SECRET_KEY=mysecret was
 //! ```
 
 use std::sync::Arc;
 use tracing::info;
 
-use was::{config::AppConfig, services::AccountManager, utils::logging};
+use was::{config::AppConfig, services::InstanceManager, utils::logging};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -36,6 +39,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_banner();
 
     info!("Starting WAS (WhatsApp Server) v{}", VERSION);
+
+    // Validate configuration
+    if let Err(e) = config.validate() {
+        if config.environment.is_development() {
+            tracing::warn!("⚠️  Config validation: {} (continuing in development mode)", e);
+        } else {
+            eprintln!("Configuration error: {}", e);
+            std::process::exit(1);
+        }
+    }
+
     info!(
         "Server listening on {}:{}",
         config.server.host, config.server.port
@@ -43,30 +57,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Arc::new(config);
 
-    // Initialize AccountManager for multi-account support
-    let account_manager = Arc::new(AccountManager::new(config.clone()));
+    // Initialize InstanceManager for multi-instance support
+    let instance_manager = Arc::new(InstanceManager::new(config.clone()));
 
-    // Discover existing accounts from filesystem
-    match account_manager.discover_accounts().await {
+    // Discover existing instances from filesystem
+    match instance_manager.discover_instances().await {
         Ok(discovered) => {
             if !discovered.is_empty() {
-                info!("📂 Discovered {} existing account(s)", discovered.len());
+                info!("📂 Discovered {} existing instance(s)", discovered.len());
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to discover existing accounts: {}", e);
+            tracing::warn!("Failed to discover existing instances: {}", e);
         }
     }
 
-    info!("🔑 Multi-account support enabled (v{})", VERSION);
+    info!("🔑 Multi-instance support enabled (v{})", VERSION);
 
     // Run server
-    run_server(config, account_manager).await
+    run_server(config, instance_manager).await
 }
 
 async fn run_server(
     config: Arc<AppConfig>,
-    account_manager: Arc<AccountManager>,
+    instance_manager: Arc<InstanceManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use axum::{
         extract::DefaultBodyLimit,
@@ -85,12 +99,12 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{account, chat, health, instances},
+        api::{whatsapp, chat, health, instances},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
         },
-        models::{account::*, auth::*, chat::*},
+        models::{instance::*, auth::*, chat::*},
     };
 
     // CORS
@@ -123,14 +137,14 @@ async fn run_server(
             instances::get_instance_config,
             instances::update_instance_config,
             // WhatsApp operations (uses path param)
-            account::get_account_status,
-            account::get_qr_code,
-            account::link_phone,
-            account::unlink,
-            account::get_profile,
-            account::update_profile,
-            account::get_privacy,
-            account::update_privacy,
+            whatsapp::get_instance_status,
+            whatsapp::get_qr_code,
+            whatsapp::link_phone,
+            whatsapp::unlink,
+            whatsapp::get_profile,
+            whatsapp::update_profile,
+            whatsapp::get_privacy,
+            whatsapp::update_privacy,
             // Chat
             chat::list_chats,
             chat::get_chat_messages,
@@ -146,13 +160,13 @@ async fn run_server(
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
                 // Chat
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
-                // Account management
-                CreateAccountRequest, CreateAccountResponse, AccountListResponse, AccountInfo, AccountStatus,
-                DeleteAccountResponse, DeleteAccountQuery, AccountActionResponse, ListAccountsQuery,
+                // Instance management
+                CreateInstanceRequest, CreateInstanceResponse, InstanceListResponse, InstanceInfo, InstanceStatus,
+                DeleteInstanceResponse, DeleteInstanceQuery, InstanceActionResponse, ListInstancesQuery,
                 // Instance configuration
                 InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, WebhookEndpoint, InstanceRateLimits,
                 UpdateInstanceConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,
-                // Account operations
+                // Instance operations
                 WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo, PrivacySettings,
                 UpdateProfileRequest, UpdatePrivacyRequest,
                 PrivacyVisibility, OnlineVisibility, GroupAddPermission,
@@ -168,7 +182,7 @@ async fn run_server(
         info(
             title = "WhatsApp Server - API",
             version = "0.3.0",
-            description = "REST API for WhatsApp Web automation with multi-account support.",
+            description = "REST API for WhatsApp Web automation with multi-instance support.",
         )
     )]
     struct ApiDoc;
@@ -198,7 +212,7 @@ async fn run_server(
         info!("🤖 MCP enabled at {}", config.mcp.endpoint);
         app = app.nest(
             &config.mcp.endpoint,
-            mcp::mcp_routes(account_manager.clone()),
+            mcp::mcp_routes(instance_manager.clone()),
         );
     }
 
@@ -216,7 +230,7 @@ async fn run_server(
         .route("/ready", get(health::readiness_check))
         .route("/live", get(health::liveness_check))
         .route("/metrics", get(health::get_metrics))
-        .with_state(account_manager.clone());
+        .with_state(instance_manager.clone());
 
     // All instance routes (management + WhatsApp ops) under one namespace
     let instances_routes = Router::new()
@@ -236,18 +250,18 @@ async fn run_server(
             put(instances::update_instance_config),
         )
         // WhatsApp auth & linking
-        .route("/:instance_id/status", get(account::get_account_status))
-        .route("/:instance_id/link/qr", get(account::get_qr_code))
-        .route("/:instance_id/link/phone", post(account::link_phone))
-        .route("/:instance_id/unlink", delete(account::unlink))
+        .route("/:instance_id/status", get(whatsapp::get_instance_status))
+        .route("/:instance_id/link/qr", get(whatsapp::get_qr_code))
+        .route("/:instance_id/link/phone", post(whatsapp::link_phone))
+        .route("/:instance_id/unlink", delete(whatsapp::unlink))
         // Profile & privacy
         .route(
             "/:instance_id/profile",
-            get(account::get_profile).put(account::update_profile),
+            get(whatsapp::get_profile).put(whatsapp::update_profile),
         )
         .route(
             "/:instance_id/privacy",
-            get(account::get_privacy).put(account::update_privacy),
+            get(whatsapp::get_privacy).put(whatsapp::update_privacy),
         )
         // Chats & messages
         .route("/:instance_id/chats", get(chat::list_chats))
@@ -259,7 +273,7 @@ async fn run_server(
             auth_state.clone(),
             auth_middleware,
         ))
-        .with_state(account_manager.clone());
+        .with_state(instance_manager.clone());
 
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
