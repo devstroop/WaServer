@@ -217,6 +217,11 @@ impl AuthServiceTrait for AuthService {
         let page = self.get_page().await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
 
+        // Ensure we're on WhatsApp Web, not some redirect
+        if !Locators::ensure_whatsapp_page(&page).await {
+            return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
+        }
+
         let check_js = r##"
             (() => {
                 // Check if we're still loading (progress bar visible)
@@ -377,48 +382,72 @@ impl AuthServiceTrait for AuthService {
         let formatted_phone = self.format_phone_number(phone_number);
         info!("Starting phone authentication for: {}", formatted_phone);
 
-        // Wait for page to load
-        tokio::time::sleep(Duration::from_millis(3000)).await;
+        // Ensure we're on WhatsApp Web (not a download/redirect page)
+        if !Locators::ensure_whatsapp_page(&page).await {
+            return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
+        }
+
+        // // Wait for page to load
+        // tokio::time::sleep(Duration::from_millis(3000)).await;
+
+        // // Diagnose page state for debugging
+        // let diag = Locators::diagnose_page(&page).await;
+        // info!("Page state before login: {}", diag);
 
         // Check current screen state — detect QR code / initial landing screen
         let on_qr_screen = Locators::exists(&page, Locators::login_label()).await
             || Locators::exists(&page, Locators::qr_code_canvas()).await;
 
+        if !on_qr_screen {
+            let diag = Locators::diagnose_page(&page).await;
+            info!("Not on QR/login screen, diagnosing: {}", diag);
+        }
+
         // Switch to phone number login if on QR screen
         if on_qr_screen {
-            debug!("Switching to phone number login");
-            if Locators::click(&page, Locators::phone_auth_link()).await? {
+            info!("Switching to phone number login");
+            if Locators::click(&page, "[role='button'] >> text:Log in with phone number").await? {
                 // Wait for phone input screen
-                if !Locators::wait_for(&page, Locators::phone_number_label(), self.timeouts.element_wait.as_millis() as u64).await {
-                    return Err(anyhow::anyhow!("Timeout waiting for phone input screen"));
+                if !Locators::wait_for(&page, "text:Enter phone number", self.timeouts.element_wait.as_millis() as u64).await {
+                    let diag = Locators::diagnose_page(&page).await;
+                    return Err(anyhow::anyhow!("Timeout waiting for phone input screen. Page state: {}", diag));
                 }
             }
         }
 
-        // Enter phone number
-        if Locators::exists(&page, Locators::phone_number_label()).await {
-            let (country, national_number) = country_codes::parse_phone(&formatted_phone);
-            debug!(
-                "Phone parsed: country={} (+{}), national_number={}",
-                country.name, country.dial_code, national_number
-            );
+        // Enter phone number — fill the phone number w/o country code (e.g. "9501005734") into the input.
+        // WhatsApp auto-detects the country from the number, no dropdown manipulation needed.
+        if Locators::exists(&page, "text:Enter phone number").await {
+            // Read the currently selected country code from the phone input's value.
+            // When India is selected, input value = "+91"; US = "+1", etc.
+            let selected_code = page.evaluate(
+                r#"(function() {
+                    var input = document.querySelector("[aria-label*='phone number']")
+                        || document.querySelector("input[type='text']");
+                    if (!input || !input.value) return '';
+                    var m = input.value.match(/^\+(\d+)/);
+                    return m ? m[1] : '';
+                })()"#
+            ).await.ok().and_then(|v| v.into_value::<String>().ok()).unwrap_or_default();
 
-            // Select the correct country from the dropdown
-            if !country.dial_code.is_empty() {
-                if Locators::select_country_by_code(&page, country).await? {
-                    debug!("Selected country {} (+{})", country.name, country.dial_code);
-                } else {
-                    debug!("Could not select country {} (+{}), proceeding with default", country.name, country.dial_code);
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
+            let (phone_country, national_number) = country_codes::parse_phone(&formatted_phone);
 
-            // Enter the national number into the phone input
-            if !Locators::set_phone_input_value(&page, Locators::phone_input(), &national_number)
+            // If the dropdown already shows the same country code, enter just the national number.
+            // Otherwise, enter the full number with + prefix so WhatsApp auto-switches country.
+            let value_to_enter = if !selected_code.is_empty() && selected_code == phone_country.dial_code {
+                info!("Dropdown already shows +{}, entering national number: {}", selected_code, national_number);
+                national_number.clone()
+            } else {
+                info!("Dropdown shows +{}, phone needs +{}, entering full number: {}", selected_code, phone_country.dial_code, formatted_phone);
+                formatted_phone.clone()
+            };
+
+            // Set the phone number value
+            if !Locators::set_phone_input_value(&page, Locators::phone_input(), &value_to_enter)
                 .await?
             {
                 // Fallback: find input element directly and type
-                debug!("JS input setter failed, falling back to element typing");
+                info!("JS input setter failed, falling back to element typing");
                 let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
                     loop {
                         if let Ok(input) = page.find_element(Locators::phone_input()).await {
@@ -437,19 +466,34 @@ impl AuthServiceTrait for AuthService {
                 tokio::time::sleep(Duration::from_millis(300)).await;
                 let _ = phone_input.press_key("Meta+A").await;
                 let _ = phone_input.press_key("Delete").await;
-                phone_input.type_str(&national_number).await?;
+                phone_input.type_str(&value_to_enter).await?;
             }
 
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Click Next button
-            if !Locators::click(&page, Locators::phone_submit_button()).await? {
-                if let Ok(submit) = page.find_element("button[type='submit']").await {
-                    submit.click().await?;
-                } else {
-                    return Err(anyhow::anyhow!("Could not find Next button"));
+            let next_clicked = Locators::click(&page, Locators::phone_submit_button()).await?;
+            if !next_clicked {
+                // Fallback: try clicking any button containing "Next" text
+                let next_js = r#"(function() {
+                    var els = document.querySelectorAll('button, [role="button"]');
+                    for (var i = 0; i < els.length; i++) {
+                        if ((els[i].textContent || '').trim() === 'Next') {
+                            els[i].scrollIntoView({block:'center'});
+                            els[i].click();
+                            return true;
+                        }
+                    }
+                    return false;
+                })()"#;
+                let fb = page.evaluate(next_js).await
+                    .ok().and_then(|v| v.into_value::<bool>().ok()).unwrap_or(false);
+                if !fb {
+                    let diag = Locators::diagnose_page(&page).await;
+                    return Err(anyhow::anyhow!("Could not find Next button. Page: {}", diag));
                 }
             }
+            info!("Clicked Next, waiting for verification code...");
         }
 
         // Wait for code screen
