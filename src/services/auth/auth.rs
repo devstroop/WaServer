@@ -367,7 +367,7 @@ impl AuthServiceTrait for AuthService {
 
         // Wait again after potential reload
         if !self
-            .wait_for_element(&page, Locators::qr_code_canvas(), 15000)
+            .wait_for_element(&page, Locators::qr_code_canvas(), 10000)
             .await
         {
             return Err(anyhow::anyhow!("QR code not available"));
@@ -422,28 +422,6 @@ impl AuthServiceTrait for AuthService {
                 }
             }
         }
-
-        // // Select the correct country code via the dropdown
-        // if Locators::exists(&page, Locators::country_dropdown()).await {
-        //     if let Ok(dropdown) = page.find_element(Locators::country_dropdown()).await {
-        //         dropdown.click().await?;
-        //         tokio::time::sleep(Duration::from_millis(500)).await;
-
-        //         if let Ok(search) = page.find_element(Locators::country_search_input()).await {
-        //             search.type_str(&country.name).await?;
-        //             tokio::time::sleep(Duration::from_millis(500)).await;
-
-        //             let country_selector = format!("li[role='option'] >> text:{} ({})", country.name, country_code);
-        //             if !Locators::click(&page, &country_selector).await? {
-        //                 let fallback_selector = format!("li[role='option'] >> text:{}", country.name);
-        //                 if !Locators::click(&page, &fallback_selector).await? {
-        //                     info!("Could not select country from dropdown: '{}' or '{}'", country_selector, fallback_selector);
-        //                 }
-        //             }
-        //         }
-        //         tokio::time::sleep(Duration::from_millis(300)).await;
-        //     }
-        // }
 
         // Wait for phone input to be visible
         if Locators::exists(&page, Locators::phone_number_label()).await {
