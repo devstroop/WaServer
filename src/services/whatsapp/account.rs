@@ -1,7 +1,7 @@
 //! WhatsApp Account Service
 //!
 //! Self-contained WhatsApp account with isolated resources.
-//! Each account has its own browser profile, database, and session data.
+//! Each account has its own browser profile and session data.
 //! Account ID is a UUID, phone_number is the E.164 identifier.
 
 use super::chat::{ChatService, ChatServiceTrait};
@@ -16,7 +16,6 @@ use crate::{
     models::auth::AuthStatusResponse,
     services::{
         auth::{AuthService, AuthServiceTrait},
-        database::DatabaseService,
         webhook::{WebhookEvent, WebhookMessageData, WebhookService},
     },
     utils::metrics::{MetricsSnapshot, ServiceMetrics},
@@ -65,8 +64,6 @@ pub struct WhatsAppAccount {
     auth_service: Arc<dyn AuthServiceTrait>,
     /// Chat service
     chat_service: Arc<dyn ChatServiceTrait>,
-    /// Database service
-    database: Arc<DatabaseService>,
     /// Webhook service
     webhook_service: Arc<WebhookService>,
     /// Current account status
@@ -112,12 +109,6 @@ impl WhatsAppAccount {
         );
         let browser_service = Arc::new(BrowserService::new(browser_config));
 
-        // Create database in account directory
-        let database = Arc::new(
-            DatabaseService::new(data_dir.to_str().unwrap())
-                .map_err(|e| anyhow!("Failed to create database: {}", e))?,
-        );
-
         // Create webhook service
         let webhook_service = WebhookService::new(app_config.webhooks.clone()).start_worker();
 
@@ -126,10 +117,9 @@ impl WhatsAppAccount {
             app_config.clone(),
             browser_service.clone(),
         ));
-        let chat_service = Arc::new(ChatService::with_database(
+        let chat_service = Arc::new(ChatService::new(
             app_config.clone(),
             browser_service.clone(),
-            database.clone(),
         ));
 
         Ok(Self {
@@ -142,7 +132,6 @@ impl WhatsAppAccount {
             browser_service,
             auth_service: auth_service as Arc<dyn AuthServiceTrait>,
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
-            database,
             webhook_service,
             status: Arc::new(RwLock::new(AccountStatus::Stopped)),
             operation_semaphore: Arc::new(Semaphore::new(1)),
@@ -429,11 +418,6 @@ impl WhatsAppAccount {
         &self.chat_service
     }
 
-    /// Get reference to database
-    pub fn database(&self) -> &Arc<DatabaseService> {
-        &self.database
-    }
-
     /// Get reference to webhook service
     pub fn webhook_service(&self) -> &Arc<WebhookService> {
         &self.webhook_service
@@ -703,91 +687,6 @@ impl WhatsAppAccount {
         .await
         .map_err(|_| anyhow!("Timeout waiting for loading to complete"))?;
 
-        Ok(())
-    }
-
-    /// Process pending messages from the queue
-    pub async fn process_queue(&self) -> u32 {
-        let mut processed_count = 0;
-
-        loop {
-            if self.is_busy().await {
-                debug!("Account '{}' - busy, pausing queue", self.id);
-                break;
-            }
-
-            let item = match self.database.dequeue_next() {
-                Ok(Some(item)) => item,
-                Ok(None) => {
-                    debug!("Account '{}' - queue empty", self.id);
-                    break;
-                }
-                Err(e) => {
-                    error!("Account '{}' - error dequeuing: {}", self.id, e);
-                    break;
-                }
-            };
-
-            info!(
-                "Account '{}' - processing message {} to {}",
-                self.id, item.id, item.recipient
-            );
-
-            if let Err(e) = self.database.mark_processing(&item.id) {
-                error!("Account '{}' - failed to mark processing: {}", self.id, e);
-                continue;
-            }
-
-            let result = self
-                .execute_with_busy_flag(async {
-                    self.chat_service
-                        .send_message(
-                            &item.recipient,
-                            item.text.as_deref(),
-                            item.media_path.as_deref(),
-                            None,
-                        )
-                        .await
-                })
-                .await;
-
-            match result {
-                Ok(_) => {
-                    if let Err(e) = self.database.mark_sent(&item.id) {
-                        error!("Account '{}' - failed to mark sent: {}", self.id, e);
-                    }
-                    processed_count += 1;
-                    self.track_message_sent();
-                    info!("Account '{}' - message {} sent", self.id, item.id);
-                }
-                Err(e) => {
-                    let error_msg = e.to_string();
-                    error!(
-                        "Account '{}' - failed to send {}: {}",
-                        self.id, item.id, error_msg
-                    );
-
-                    if let Err(db_err) = self.database.mark_failed(&item.id, &error_msg) {
-                        error!("Account '{}' - failed to mark failed: {}", self.id, db_err);
-                    }
-                    self.track_error();
-
-                    if error_msg.contains("Not authorized") {
-                        warn!("Account '{}' - stopping queue due to auth error", self.id);
-                        break;
-                    }
-                }
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-
-        processed_count
-    }
-
-    /// Reset stuck messages
-    pub fn reset_stuck_messages(&self) -> Result<()> {
-        self.database.reset_stuck_processing()?;
         Ok(())
     }
 }

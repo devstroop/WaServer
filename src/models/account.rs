@@ -382,6 +382,11 @@ pub struct ProfileInfo {
 /// Request to create a new account
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateAccountRequest {
+    /// Phone number in E.164 format (unique, mandatory)
+    pub phone_number: String,
+    /// Display name for this account (defaults to "unknown")
+    #[serde(default = "default_display_name")]
+    pub display_name: String,
     /// Browser configuration overrides
     #[serde(default)]
     pub browser: Option<BrowserOverrides>,
@@ -390,12 +395,20 @@ pub struct CreateAccountRequest {
     pub auto_start: Option<bool>,
 }
 
+fn default_display_name() -> String {
+    "unknown".to_string()
+}
+
 /// Response after creating an account
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateAccountResponse {
     /// Unique account identifier (UUID)
     #[schema(value_type = String, format = "uuid")]
     pub id: AccountId,
+    /// Phone number
+    pub phone_number: String,
+    /// Display name
+    pub display_name: String,
     pub status: String,
     pub data_directory: String,
     pub created_at: String,
@@ -482,12 +495,6 @@ pub struct AccountActionResponse {
     pub message: String,
     #[schema(value_type = String, format = "uuid")]
     pub account_id: AccountId,
-}
-
-/// Request to link via phone number
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct PhoneLinkRequest {
-    pub phone_number: String,
 }
 
 /// Validate phone number format

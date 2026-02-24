@@ -169,13 +169,6 @@ impl From<serde_json::Error> for WhatsAppError {
     }
 }
 
-/// Convert from rusqlite errors
-impl From<rusqlite::Error> for WhatsAppError {
-    fn from(err: rusqlite::Error) -> Self {
-        WhatsAppError::Internal(format!("Database error: {}", err))
-    }
-}
-
 /// Convert from std::io errors
 impl From<std::io::Error> for WhatsAppError {
     fn from(err: std::io::Error) -> Self {

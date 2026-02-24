@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     models::chat::{
-        ChatListResponse, ErrorResponse, Message, MessageListResponse, MessageQueryParams,
+        ChatListResponse, ErrorResponse, MessageListResponse, MessageQueryParams,
         SendMessageResponse,
     },
     services::AccountManager,
@@ -582,64 +582,6 @@ pub async fn send_message(
 
             let (status, msg) = categorize_error(&error_msg);
             Err((status, Json(ErrorResponse::new(msg))))
-        }
-    }
-}
-
-// ============================================================================
-// Message by ID Endpoint
-// ============================================================================
-
-/// Get a specific message by ID
-///
-/// Returns full message details including status
-#[utoipa::path(
-    get,
-    path = "/api/v1/accounts/{account_id}/messages/{message_id}",
-    params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
-        ("message_id" = String, Path, description = "Message ID to retrieve")
-    ),
-    responses(
-        (status = 200, description = "Message details", body = Message),
-        (status = 404, description = "Account or message not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    security(
-        ("bearer_auth" = [])
-    ),
-    tag = "Messaging"
-)]
-pub async fn get_message(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, message_id)): Path<(String, String)>,
-) -> Result<Json<Message>, (StatusCode, Json<ErrorResponse>)> {
-    let account = match manager.get_account(&account_id).await {
-        Some(acc) => acc,
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new(format!(
-                    "Account '{}' not found",
-                    account_id
-                ))),
-            ));
-        }
-    };
-    let db = account.database();
-
-    match db.get_message(&message_id) {
-        Ok(Some(msg)) => Ok(Json(Message::from(msg))),
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("Message not found".to_string())),
-        )),
-        Err(e) => {
-            error!("Account {} - Failed to get message: {}", account.id, e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new(format!("Failed to get message: {}", e))),
-            ))
         }
     }
 }

@@ -15,7 +15,7 @@
 use std::sync::Arc;
 use tracing::info;
 
-use was::{config::AppConfig, services::AccountManager, utils::logging};
+use was::{config::AppConfig, services::{AccountManager, Database}, utils::logging};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -57,8 +57,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Arc::new(config);
 
+    // Initialize embedded SurrealDB
+    let db_data_dir = config
+        .accounts
+        .as_ref()
+        .and_then(|ac| ac.base_directory.clone())
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| "/tmp".to_string());
+            std::path::PathBuf::from(home).join(".was")
+        });
+    let db = Database::open(&db_data_dir).await.unwrap_or_else(|e| {
+        eprintln!("Failed to open database: {}", e);
+        std::process::exit(1);
+    });
+
     // Initialize AccountManager for multi-account support
-    let account_manager = Arc::new(AccountManager::new(config.clone()));
+    let account_manager = Arc::new(AccountManager::new(config.clone(), db));
 
     // Discover existing accounts from filesystem
     match account_manager.discover_accounts().await {

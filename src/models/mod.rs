@@ -31,7 +31,6 @@ pub use account::{
     DeleteAccountResponse,
     // API query/response types
     ListAccountsQuery,
-    PhoneLinkRequest,
     ProfileInfo,
     WhatsAppStatusResponse,
 };

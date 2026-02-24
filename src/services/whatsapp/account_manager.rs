@@ -8,8 +8,9 @@ use crate::{
     config::AppConfig,
     models::account::{
         validate_phone_number, AccountSetupConfig, AccountId, AccountListResponse,
-        AccountMetadata, CreateAccountRequest, CreateAccountResponse,
+        CreateAccountRequest, CreateAccountResponse,
     },
+    services::database::Database,
 };
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -19,9 +20,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-
-/// Account metadata filename
-const METADATA_FILE: &str = "account.json";
 
 /// Manages multiple WhatsApp accounts
 pub struct AccountManager {
@@ -33,11 +31,13 @@ pub struct AccountManager {
     base_dir: PathBuf,
     /// App configuration
     config: Arc<AppConfig>,
+    /// Persistent database (SurrealDB)
+    db: Database,
 }
 
 impl AccountManager {
     /// Create a new AccountManager
-    pub fn new(config: Arc<AppConfig>) -> Self {
+    pub fn new(config: Arc<AppConfig>, db: Database) -> Self {
         // Use configured base directory or default to ~/.was/accounts
         let base_dir = config
             .accounts
@@ -58,6 +58,7 @@ impl AccountManager {
             phone_to_id: Arc::new(RwLock::new(HashMap::new())),
             base_dir,
             config,
+            db,
         }
     }
 
@@ -71,20 +72,42 @@ impl AccountManager {
         &self,
         request: CreateAccountRequest,
     ) -> Result<CreateAccountResponse> {
+        // Validate and normalize phone number
+        let phone_number = validate_phone_number(&request.phone_number)
+            .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
+
+        // Check phone uniqueness via database
+        if let Some(_) = self.db.get_account_by_phone(&phone_number).await? {
+            return Err(anyhow!("Phone number '{}' already exists", phone_number));
+        }
+
         // Generate new UUID for this account
         let account_id = Uuid::new_v4();
 
         // Use UUID as directory name
         let account_dir = self.base_dir.join(account_id.to_string());
+        let display_name = request.display_name.clone();
+        let auto_start = request.auto_start.unwrap_or(false);
 
-        // Create account config (phone_number and display_name are None at creation)
+        // Persist to database first
+        self.db
+            .create_account(
+                &account_id.to_string(),
+                &phone_number,
+                &display_name,
+                &account_dir.to_string_lossy(),
+                auto_start,
+            )
+            .await?;
+
+        // Create account config
         let setup_config = AccountSetupConfig {
             id: account_id,
-            phone_number: None,
-            display_name: None,
+            phone_number: Some(phone_number.clone()),
+            display_name: Some(display_name.clone()),
             data_dir: account_dir.clone(),
             browser: request.browser.clone().unwrap_or_default(),
-            auto_start: request.auto_start.unwrap_or(false),
+            auto_start,
         };
 
         // Create the account
@@ -95,11 +118,17 @@ impl AccountManager {
             let mut accounts = self.accounts.write().await;
             accounts.insert(account_id, account);
         }
+        {
+            let mut phone_map = self.phone_to_id.write().await;
+            phone_map.insert(phone_number.clone(), account_id);
+        }
 
-        info!("Created account '{}'", account_id);
+        info!("Created account '{}' (phone: {})", account_id, phone_number);
 
         Ok(CreateAccountResponse {
             id: account_id,
+            phone_number,
+            display_name,
             status: "created".to_string(),
             data_directory: account_dir.to_string_lossy().to_string(),
             created_at: Utc::now().to_rfc3339(),
@@ -206,6 +235,9 @@ impl AccountManager {
         let account_id = account.id;
         let phone_number = account.phone_number().map(|s| s.to_string());
 
+        // Remove from database
+        self.db.delete_account(&account_id.to_string()).await?;
+
         // Remove from accounts map
         {
             let mut accounts = self.accounts.write().await;
@@ -268,47 +300,24 @@ impl AccountManager {
         // Ensure base directory exists
         if !self.base_dir.exists() {
             tokio::fs::create_dir_all(&self.base_dir).await?;
-            return Ok((newly_loaded, already_loaded));
         }
 
-        let mut entries = tokio::fs::read_dir(&self.base_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
+        let records = self.db.list_accounts().await?;
 
-            let dir_name = match path.file_name().and_then(|n| n.to_str()) {
-                Some(name) => name.to_string(),
+        for record in records {
+            // Extract account UUID from the SurrealDB Thing id
+            let id_str = match &record.id {
+                Some(thing) => thing.id.to_raw(),
                 None => continue,
             };
 
-            // Check for metadata file
-            let metadata_path = path.join(METADATA_FILE);
-            if !metadata_path.exists() {
-                debug!("Skipping directory '{}' - no metadata file", dir_name);
-                continue;
-            }
-
-            // Load metadata to get account ID and phone number
-            let content = match tokio::fs::read_to_string(&metadata_path).await {
-                Ok(c) => c,
+            let account_id: AccountId = match Uuid::parse_str(&id_str) {
+                Ok(uuid) => uuid,
                 Err(e) => {
-                    error!("Failed to read metadata in '{}': {}", dir_name, e);
+                    error!("Invalid UUID '{}' in database: {}", id_str, e);
                     continue;
                 }
             };
-
-            let metadata: AccountMetadata = match serde_json::from_str(&content) {
-                Ok(m) => m,
-                Err(e) => {
-                    error!("Failed to parse metadata in '{}': {}", dir_name, e);
-                    continue;
-                }
-            };
-
-            let account_id = metadata.id;
-            let phone_number = metadata.phone_number.clone();
 
             // Skip if already loaded
             if self.accounts.read().await.contains_key(&account_id) {
@@ -316,64 +325,45 @@ impl AccountManager {
                 continue;
             }
 
-            // Load the account
-            match self
-                .load_account_from_dir(account_id, phone_number.as_deref(), &path, &metadata)
-                .await
-            {
-                Ok(()) => {
+            let data_dir = PathBuf::from(&record.data_dir);
+
+            let setup_config = AccountSetupConfig {
+                id: account_id,
+                phone_number: Some(record.phone_number.clone()),
+                display_name: Some(record.display_name.clone()),
+                data_dir: data_dir.clone(),
+                browser: Default::default(),
+                auto_start: record.auto_start,
+            };
+
+            match WhatsAppAccount::new(setup_config, self.config.clone()).await {
+                Ok(account) => {
+                    let account = Arc::new(account);
+                    {
+                        let mut accounts = self.accounts.write().await;
+                        accounts.insert(account_id, account);
+                    }
+                    {
+                        let mut phone_map = self.phone_to_id.write().await;
+                        phone_map.insert(record.phone_number.clone(), account_id);
+                    }
                     newly_loaded.push(account_id);
+                    info!(
+                        "Loaded account '{}' (phone: {}) from database",
+                        account_id, record.phone_number
+                    );
                 }
                 Err(e) => {
-                    error!("Failed to load account from '{}': {}", dir_name, e);
+                    error!("Failed to load account '{}': {}", account_id, e);
                 }
             }
         }
 
         if !newly_loaded.is_empty() {
-            info!("Discovered {} new accounts", newly_loaded.len());
+            info!("Discovered {} new accounts from database", newly_loaded.len());
         }
 
         Ok((newly_loaded, already_loaded))
-    }
-
-    /// Load an account from its data directory
-    async fn load_account_from_dir(
-        &self,
-        account_id: AccountId,
-        phone_number: Option<&str>,
-        data_dir: &PathBuf,
-        metadata: &AccountMetadata,
-    ) -> Result<()> {
-        // Create config from metadata
-        let setup_config = AccountSetupConfig {
-            id: account_id,
-            phone_number: phone_number.map(|s| s.to_string()),
-            display_name: metadata.display_name.clone(),
-            data_dir: data_dir.clone(),
-            browser: Default::default(),
-            auto_start: false,
-        };
-
-        // Create account
-        let account = Arc::new(WhatsAppAccount::new(setup_config, self.config.clone()).await?);
-
-        // Store in accounts map
-        {
-            let mut accounts = self.accounts.write().await;
-            accounts.insert(account_id, account);
-        }
-        // Store in phone map if phone is known
-        if let Some(phone) = phone_number {
-            let mut phone_map = self.phone_to_id.write().await;
-            phone_map.insert(phone.to_string(), account_id);
-        }
-
-        info!(
-            "Loaded account '{}' (phone: {:?}) from {:?}",
-            account_id, phone_number, data_dir
-        );
-        Ok(())
     }
 
     /// Get account count
