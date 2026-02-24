@@ -505,20 +505,108 @@ impl AuthServiceTrait for AuthService {
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
-        debug!("Logging out");
+        debug!("Logging out of WhatsApp Web");
 
-        // Click menu
-        if let Ok(menu) = page.find_element(Locators::menu_button()).await {
-            menu.click().await?;
+        // Step 1: Open the settings/menu dropdown.
+        // Try the three-dot menu button via multiple strategies.
+        let menu_opened = Locators::click(&page, Locators::menu_button()).await.unwrap_or(false)
+            || Locators::click(&page, "[data-icon='menu']").await.unwrap_or(false)
+            || {
+                // JS fallback: find the settings cog / three-dot icon in the header
+                let js = r#"(function() {
+                    // Look for the menu/settings button in the sidebar header
+                    var icons = document.querySelectorAll('header span[data-icon]');
+                    for (var i = 0; i < icons.length; i++) {
+                        var icon = icons[i].getAttribute('data-icon');
+                        if (icon === 'menu' || icon === 'settings') {
+                            var btn = icons[i].closest('button') || icons[i].closest('[role="button"]') || icons[i].parentElement;
+                            if (btn) { btn.click(); return true; }
+                        }
+                    }
+                    // Fallback: click the last button in the top-right area of the sidebar header
+                    var headers = document.querySelectorAll('#app header header');
+                    for (var h = 0; h < headers.length; h++) {
+                        var btns = headers[h].querySelectorAll('button');
+                        if (btns.length > 0) {
+                            btns[btns.length - 1].click();
+                            return true;
+                        }
+                    }
+                    return false;
+                })()"#;
+                page.evaluate(js).await
+                    .ok()
+                    .and_then(|r| r.into_value::<bool>().ok())
+                    .unwrap_or(false)
+            };
+
+        if !menu_opened {
+            return Err(anyhow::anyhow!("Failed to open menu"));
         }
 
-        // Click logout
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Ok(logout) = page.find_element(Locators::logout_button()).await {
-            logout.click().await?;
+        // Step 2: Wait for dropdown to appear, then click "Log out"
+        tokio::time::sleep(Duration::from_millis(600)).await;
+
+        let logout_clicked = Locators::click(&page, "text:Log out").await.unwrap_or(false)
+            || Locators::click(&page, Locators::logout_button()).await.unwrap_or(false);
+
+        if !logout_clicked {
+            return Err(anyhow::anyhow!("Failed to find 'Log out' in menu"));
         }
 
-        info!("Logout completed");
+        // Step 3: Wait for confirmation dialog and click confirmation button
+        tokio::time::sleep(Duration::from_millis(600)).await;
+
+        // The confirmation dialog has a "Log out" button — it's typically the last
+        // or second button in the dialog. We look for it specifically.
+        let confirm_js = r#"(function() {
+            // Find the confirmation dialog
+            var dialog = document.querySelector('[role="dialog"]')
+                || document.querySelector('[data-animate-modal-popup="true"]');
+            if (!dialog) return false;
+            // Find buttons inside
+            var buttons = dialog.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var text = (buttons[i].textContent || '').trim();
+                if (text === 'Log out') {
+                    buttons[i].click();
+                    return true;
+                }
+            }
+            // Fallback: click the last button (usually the confirm action)
+            if (buttons.length > 0) {
+                buttons[buttons.length - 1].click();
+                return true;
+            }
+            return false;
+        })()"#;
+
+        let confirmed = page.evaluate(confirm_js).await
+            .ok()
+            .and_then(|r| r.into_value::<bool>().ok())
+            .unwrap_or(false);
+
+        if !confirmed {
+            return Err(anyhow::anyhow!("Failed to confirm logout dialog"));
+        }
+
+        // Step 4: Wait for logout to complete (login screen should appear)
+        let logged_out = Locators::wait_for(
+            &page,
+            Locators::qr_code_canvas(),
+            10_000,
+        ).await || Locators::wait_for(
+            &page,
+            "text:Log into WhatsApp Web",
+            5_000,
+        ).await;
+
+        if logged_out {
+            info!("Logout completed — login screen visible");
+        } else {
+            info!("Logout actions performed — login screen not yet confirmed");
+        }
+
         Ok(())
     }
 }
