@@ -91,6 +91,10 @@ pub struct AuthLocators {
     pub code_on_phone_value: String,
     pub link_code_element: String,
     pub link_code_digits: String,
+    #[serde(default = "AuthLocators::default_country_dropdown")]
+    pub country_dropdown: String,
+    #[serde(default = "AuthLocators::default_country_search_input")]
+    pub country_search_input: String,
     pub qr_loading: String,
     pub qr_canvas: String,
     pub qr_reload_button: String,
@@ -148,6 +152,15 @@ fn default_qr_script() -> String {
         .to_string()
 }
 
+impl AuthLocators {
+    fn default_country_dropdown() -> String {
+        "button[style*='width: 100%']".into()
+    }
+    fn default_country_search_input() -> String {
+        "input[type='text']".into()
+    }
+}
+
 impl LocatorConfig {
     /// Load locators from TOML file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -196,6 +209,8 @@ impl LocatorConfig {
                 link_code_element:
                     "[aria-details='link-device-phone-number-code-screen-instructions']".into(),
                 link_code_digits: "[data-link-code]".into(),
+                country_dropdown: "button[style*='width: 100%']".into(),
+                country_search_input: "input[type='text']".into(),
                 qr_loading: "svg[role='status']".into(),
                 qr_canvas: "canvas[aria-label='Scan this QR code to link a device!']".into(),
                 qr_reload_button: "[data-icon='refresh-large']".into(),
@@ -279,6 +294,14 @@ impl Locators {
 
     pub fn phone_input() -> &'static str {
         &Self::config().auth.phone_number_input
+    }
+
+    pub fn country_dropdown() -> &'static str {
+        &Self::config().auth.country_dropdown
+    }
+
+    pub fn country_search_input() -> &'static str {
+        &Self::config().auth.country_search_input
     }
 
     pub fn phone_code() -> &'static str {

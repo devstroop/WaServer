@@ -18,8 +18,12 @@ login_label = "text:Log into WhatsApp Web"
 # Phone number input
 phone_number_label = "text:Enter phone number"
 phone_number_input = "[aria-label='Type your phone number to log in to WhatsApp']"
-phone_submit_button = "[role='button'] >> text:Next"
+phone_submit_button = "button >> text:Next"
 invalid_phone_dialog = "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']"
+
+# Country code selector
+country_dropdown = "button[style*='width: 100%']"
+country_search_input = "input[type='text']"
 
 # Phone verification code
 code_on_phone_label = "Enter code on phone"

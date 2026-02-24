@@ -203,7 +203,11 @@ impl AuthService {
         if let Ok(value) = result.into_value::<serde_json::Value>() {
             if let Some(code_str) = value.as_str() {
                 if !code_str.is_empty() && code_str != "null" && code_str.len() >= 4 {
-                    return Ok(Some(code_str.replace(" ", "")));
+                    let raw: String = code_str.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+                    if raw.len() >= 8 {
+                        return Ok(Some(format!("{}-{}", &raw[..4], &raw[4..8])));
+                    }
+                    return Ok(Some(raw));
                 }
             }
         }
@@ -389,9 +393,13 @@ impl AuthServiceTrait for AuthService {
             return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
         }
 
-        // // Diagnose page state for debugging
-        // let diag = Locators::diagnose_page(&page).await;
-        // info!("Page state before login: {}", diag);
+        // If already on "Enter code on phone" screen from a previous attempt, navigate back
+        if Locators::exists(&page, "text:Enter code on phone").await {
+            info!("Already 'Enter code on phone' screen, navigating back");
+            // Click the back/QR code link to return to the login screen
+            let _ = Locators::click(&page, Locators::qr_auth_link()).await;
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+        }
 
         // Check current screen state — detect QR code / initial landing screen
         let on_qr_screen = Locators::exists(&page, Locators::login_label()).await
@@ -408,99 +416,79 @@ impl AuthServiceTrait for AuthService {
             info!("Switching to phone number login");
             if Locators::click(&page, "[role='button'] >> text:Log in with phone number").await? {
                 // Wait for phone input screen
-                if !Locators::wait_for(&page, "text:Enter phone number", self.timeouts.element_wait.as_millis() as u64).await {
+                if !Locators::wait_for(&page, Locators::phone_number_label(), self.timeouts.element_wait.as_millis() as u64).await {
                     let diag = Locators::diagnose_page(&page).await;
                     return Err(anyhow::anyhow!("Timeout waiting for phone input screen. Page state: {}", diag));
                 }
             }
         }
 
-        // WhatsApp auto-detects the country from the number, no dropdown manipulation needed.
-        if Locators::exists(&page, "text:Enter phone number").await {
-            // Wait for the phone input to be fully initialized with the default country code
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        // // Select the correct country code via the dropdown
+        // if Locators::exists(&page, Locators::country_dropdown()).await {
+        //     if let Ok(dropdown) = page.find_element(Locators::country_dropdown()).await {
+        //         dropdown.click().await?;
+        //         tokio::time::sleep(Duration::from_millis(500)).await;
 
-            // Read the currently selected country code from the phone input's value.
-            // When India is selected, input value = "+91"; US = "+1", etc.
-            let selected_code = page.evaluate(
-                r#"(function() {
-                    var input = document.querySelector("[aria-label*='phone number']")
-                        || document.querySelector("input[type='text']");
-                    if (!input || !input.value) return '';
-                    var m = input.value.match(/^\+(\d+)/);
-                    return m ? m[1] : '';
-                })()"#
-            ).await.ok()
-                .and_then(|v| v.into_value::<serde_json::Value>().ok())
-                .and_then(|v| match v {
-                    serde_json::Value::String(s) => Some(s),
-                    other => {
-                        debug!("Unexpected selected_code value type: {:?}", other);
-                        other.as_str().map(|s| s.to_string())
+        //         if let Ok(search) = page.find_element(Locators::country_search_input()).await {
+        //             search.type_str(&country.name).await?;
+        //             tokio::time::sleep(Duration::from_millis(500)).await;
+
+        //             let country_selector = format!("li[role='option'] >> text:{} ({})", country.name, country_code);
+        //             if !Locators::click(&page, &country_selector).await? {
+        //                 let fallback_selector = format!("li[role='option'] >> text:{}", country.name);
+        //                 if !Locators::click(&page, &fallback_selector).await? {
+        //                     info!("Could not select country from dropdown: '{}' or '{}'", country_selector, fallback_selector);
+        //                 }
+        //             }
+        //         }
+        //         tokio::time::sleep(Duration::from_millis(300)).await;
+        //     }
+        // }
+
+        // Wait for phone input to be visible
+        if Locators::exists(&page, Locators::phone_number_label()).await {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            // Find the phone input, click it, clear it, type the full international number.
+            // WhatsApp's own handler parses the country from what's typed.
+            let input = tokio::time::timeout(self.timeouts.element_wait, async {
+                loop {
+                    if let Ok(el) = page.find_element(Locators::phone_input()).await {
+                        return Ok::<_, anyhow::Error>(el);
                     }
-                })
-                .unwrap_or_default();
-
-            info!("Detected selected {}", selected_code);
-
-            let (phone_country, _national_number) = country_codes::parse_phone(&formatted_phone);
-
-            // Always enter the full number with + prefix.
-            // Entering just the national number causes WhatsApp's auto-detect to
-            // misidentify the country (e.g. "9501005734" is read as +95 Myanmar).
-            let value_to_enter = formatted_phone.clone();
-            info!("Entering full number: {} (detected dropdown +{}, phone needs +{})", value_to_enter, selected_code, phone_country.dial_code);
-
-            // Set the phone number value
-            if !Locators::set_phone_input_value(&page, Locators::phone_input(), &value_to_enter)
-                .await?
-            {
-                // Fallback: find input element directly and type
-                info!("JS input setter failed, falling back to element typing");
-                let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
-                    loop {
-                        if let Ok(input) = page.find_element(Locators::phone_input()).await {
-                            return Ok::<_, anyhow::Error>(input);
-                        }
-                        if let Ok(input) = page.find_element("input[type='text']").await {
-                            return Ok(input);
-                        }
-                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    if let Ok(el) = page.find_element("input[type='text']").await {
+                        return Ok(el);
                     }
-                })
-                .await
-                .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
 
-                phone_input.click().await?;
-                tokio::time::sleep(Duration::from_millis(300)).await;
-                let _ = phone_input.press_key("Meta+A").await;
-                let _ = phone_input.press_key("Delete").await;
-                phone_input.type_str(&value_to_enter).await?;
-            }
+            // Clear the input using JS to bypass React's state management
+            let clear_js = r#"
+                (function() {
+                    const el = document.querySelector('input[aria-label="Type your phone number to log in to WhatsApp"]')
+                        || document.querySelector('input[type="text"]');
+                    if (!el) return false;
+                    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    setter.call(el, '');
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    return true;
+                })()
+            "#;
+            let _ = page.evaluate(clear_js).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
+
+            input.click().await?;
+            input.type_str(&formatted_phone).await?;
+            info!("Typed phone number: {}", formatted_phone);
 
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            // Click Next button
-            let next_clicked = Locators::click(&page, Locators::phone_submit_button()).await?;
-            if !next_clicked {
-                // Fallback: try clicking any button containing "Next" text
-                let next_js = r#"(function() {
-                    var els = document.querySelectorAll('button, [role="button"]');
-                    for (var i = 0; i < els.length; i++) {
-                        if ((els[i].textContent || '').trim() === 'Next') {
-                            els[i].scrollIntoView({block:'center'});
-                            els[i].click();
-                            return true;
-                        }
-                    }
-                    return false;
-                })()"#;
-                let fb = page.evaluate(next_js).await
-                    .ok().and_then(|v| v.into_value::<bool>().ok()).unwrap_or(false);
-                if !fb {
-                    let diag = Locators::diagnose_page(&page).await;
-                    return Err(anyhow::anyhow!("Could not find Next button. Page: {}", diag));
-                }
+            // Click Next
+            if !Locators::click(&page, Locators::phone_submit_button()).await? {
+                return Err(anyhow::anyhow!("Could not find Next button"));
             }
             info!("Clicked Next, waiting for verification code...");
         }

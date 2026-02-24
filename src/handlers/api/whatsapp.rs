@@ -194,37 +194,19 @@ pub async fn link_phone(
     }
 
     // Validate phone number from request
-    let req_phone = match crate::models::account::validate_phone_number(&request.phone_number) {
-        Ok(p) => p,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "invalid_phone",
-                    "message": e
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    // If account already has a phone bound, it must match
-    if let Some(existing_phone) = account.phone_number() {
-        if existing_phone != req_phone {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "phone_mismatch",
-                    "message": format!(
-                        "Account is already bound to phone {}. Cannot link to {}.",
-                        existing_phone, req_phone
-                    )
-                })),
-            )
-                .into_response();
-        }
+    if let Err(e) = crate::models::account::validate_phone_number(&request.phone_number) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "invalid_phone",
+                "message": e
+            })),
+        )
+            .into_response();
     }
 
+    // Phone linking only initiates authentication (returns a linking code).
+    // The phone is NOT bound to the account until auth actually completes.
     match account
         .auth_service()
         .login_with_phone_number(&request.phone_number)
@@ -232,25 +214,6 @@ pub async fn link_phone(
     {
         Ok(linking_code) => {
             let success = linking_code.is_some();
-            if success {
-                if let Err(e) = account
-                    .on_whatsapp_authenticated(&request.phone_number)
-                    .await
-                {
-                    return (
-                        StatusCode::FORBIDDEN,
-                        Json(json!({
-                            "error": "binding_failed",
-                            "message": e.to_string()
-                        })),
-                    )
-                        .into_response();
-                }
-                // Register phone in manager's lookup map
-                if let Err(e) = manager.register_phone(account.id, &req_phone).await {
-                    tracing::warn!("Failed to register phone in manager: {}", e);
-                }
-            }
             Json(json!({
                 "success": success,
                 "linking_code": linking_code,
