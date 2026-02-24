@@ -217,10 +217,10 @@ impl LocatorConfig {
                 authorized_pane: "#pane-side".into(),
             },
             menu: MenuLocators {
-                button: "button[title='Menu']".into(),
+                button: "span[data-icon='menu']".into(),
                 dropdown: "[aria-label='Menu']".into(),
-                logout: "[aria-label='Log out']".into(),
-                logout_confirm: "[aria-label='Log out?']".into(),
+                logout: "text:Log out".into(),
+                logout_confirm: "[role='dialog'] button".into(),
             },
             loading: LoadingLocators {
                 progress: "progress[max='100']".into(),

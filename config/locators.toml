@@ -40,10 +40,10 @@ qr_reload_button = "[data-icon='refresh-large']"
 authorized_pane = "#pane-side"
 
 [menu]
-button = "button[title='Menu']"
+button = "span[data-icon='menu']"
 dropdown = "[aria-label='Menu']"
-logout = "[aria-label='Log out']"
-logout_confirm = "[aria-label='Log out?']"
+logout = "text:Log out"
+logout_confirm = "[role='dialog'] button"
 
 [loading]
 progress = "progress[max='100']"
