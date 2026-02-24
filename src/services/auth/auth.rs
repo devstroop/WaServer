@@ -302,28 +302,23 @@ impl AuthServiceTrait for AuthService {
         }
 
         let sender_result = page.evaluate(
-            "window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';"
+            "window.localStorage.getItem('last-wid') ?? window.localStorage.getItem('last-wid-md')"
         ).await?;
 
-        let sender_string = match sender_result.into_value()? {
-            serde_json::Value::String(s) => s,
-            _ => String::new(),
-        }
-        .trim_matches('"')
-        .to_string();
+        let raw: Option<String> = match sender_result.into_value()? {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        };
 
-        if sender_string.is_empty() {
-            return Ok(None);
-        }
-
-        let cleaned_id = sender_string
-            .split('@')
-            .next()
-            .and_then(|part| part.split(':').next())
+        let sender_id = raw.as_deref()
+            .map(|s| s.trim_matches('"'))
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.split('@').next())
+            .and_then(|s| s.split(':').next())
             .map(|s| s.to_string());
 
-        debug!("Sender ID: {:?}", cleaned_id);
-        Ok(cleaned_id)
+        debug!("Sender ID: {:?}", sender_id);
+        Ok(sender_id)
     }
 
     async fn get_auth_qr_code(&self) -> Result<String> {
