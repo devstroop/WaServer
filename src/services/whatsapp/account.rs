@@ -122,6 +122,9 @@ impl WhatsAppAccount {
             browser_service.clone(),
         ));
 
+        // Register auth observer script — runs automatically after every WhatsApp page load
+        browser_service.register_page_script(Self::AUTH_OBSERVER_JS).await;
+
         Ok(Self {
             id: config.id,
             _config: config,
@@ -310,7 +313,29 @@ impl WhatsAppAccount {
                 *status = AccountStatus::Running;
                 let mut initialized = self.initialized.lock().await;
                 *initialized = true;
+                drop(initialized);
+                drop(status);
                 info!("Account '{}' started successfully", self.id);
+
+                // Start continuous phone watcher in background
+                let account_id = self.id;
+                let phone_number = self._config.phone_number.clone();
+                let browser_service = self.browser_service.clone();
+                let auth_service = self.auth_service.clone();
+                let auth_cache = self.auth_cache.clone();
+                let account_status = self.status.clone();
+                tokio::spawn(async move {
+                    Self::auth_watcher_loop(
+                        account_id,
+                        phone_number,
+                        browser_service,
+                        auth_service,
+                        auth_cache,
+                        account_status,
+                    )
+                    .await;
+                });
+
                 Ok(())
             }
             Err(e) => {
@@ -338,6 +363,246 @@ impl WhatsAppAccount {
 
         info!("Account '{}' stopped", self.id);
         Ok(())
+    }
+
+    // ========================================================================
+    // DOM Auth Observer + Continuous Phone Watcher
+    // ========================================================================
+
+    /// JavaScript that installs a MutationObserver on the DOM to detect when
+    /// WhatsApp transitions to the authenticated state (chat list appears).
+    /// When detected, it reads the sender ID from localStorage and writes
+    /// a timestamped event to `__was_auth_event` so the Rust watcher can pick it up.
+    const AUTH_OBSERVER_JS: &'static str = r##"
+        (function() {
+            if (window.__was_auth_observer) return 'already_injected';
+
+            // Helper: extract phone from WID
+            function extractPhone() {
+                try {
+                    var wid = localStorage.getItem('last-wid') ?? localStorage.getItem('last-wid-md');
+                    if (!wid) return null;
+                    return wid.replace(/"/g, '').split('@')[0].split(':')[0];
+                } catch(e) { return null; }
+            }
+
+            // Record an auth event
+            function recordAuthEvent() {
+                var phone = extractPhone();
+                var evt = JSON.stringify({ ts: Date.now(), phone: phone || null });
+                localStorage.setItem('__was_auth_event', evt);
+            }
+
+            // Check immediately if already authorized
+            if (document.querySelector('#pane-side')
+                || document.querySelector('[data-testid="chat-list"]')
+                || document.querySelector('div[aria-label="Chat list"]')) {
+                recordAuthEvent();
+            }
+
+            // Watch for future auth transitions
+            var observer = new MutationObserver(function() {
+                if (document.querySelector('#pane-side')
+                    || document.querySelector('[data-testid="chat-list"]')
+                    || document.querySelector('div[aria-label="Chat list"]')) {
+                    recordAuthEvent();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            window.__was_auth_observer = observer;
+            return 'injected';
+        })()
+    "##;
+
+    /// Inject the DOM auth observer into the WhatsApp Web page.
+    async fn inject_auth_observer(
+        account_id: AccountId,
+        browser_service: &Arc<BrowserService>,
+    ) -> bool {
+        let page = match browser_service.get_whatsapp_page().await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("Account '{}' — failed to get page for auth observer injection: {}", account_id, e);
+                return false;
+            }
+        };
+
+        match page.evaluate(Self::AUTH_OBSERVER_JS).await {
+            Ok(result) => {
+                let status = result
+                    .into_value::<serde_json::Value>()
+                    .ok()
+                    .and_then(|v| v.as_str().map(String::from))
+                    .unwrap_or_default();
+                info!("Account '{}' — auth observer: {}", account_id, status);
+                true
+            }
+            Err(e) => {
+                warn!("Account '{}' — failed to inject auth observer: {}", account_id, e);
+                false
+            }
+        }
+    }
+
+    /// Read and consume the `__was_auth_event` from localStorage.
+    /// Returns the phone number from the event, if any.
+    async fn consume_auth_event(
+        account_id: AccountId,
+        browser_service: &Arc<BrowserService>,
+    ) -> Option<Option<String>> {
+        let page = match browser_service.get_whatsapp_page().await {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+
+        let js = r#"
+            (function() {
+                var raw = localStorage.getItem('__was_auth_event');
+                if (!raw) return null;
+                localStorage.removeItem('__was_auth_event');
+                try { return JSON.parse(raw); } catch(e) { return null; }
+            })()
+        "#;
+
+        let result = match page.evaluate(js).await {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("Account '{}' — failed to read auth event: {}", account_id, e);
+                return None;
+            }
+        };
+
+        let value: serde_json::Value = match result.into_value() {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+
+        if value.is_null() {
+            return None;
+        }
+
+        // Event found — extract phone (may be null in the JSON)
+        let phone = value
+            .get("phone")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        Some(phone)
+    }
+
+    /// Continuous background watcher that polls for auth events and verifies the phone number.
+    /// The DOM observer is already injected by `start()` — this just consumes events.
+    /// Runs until the account is stopped.
+    async fn auth_watcher_loop(
+        account_id: AccountId,
+        phone_number: Option<String>,
+        browser_service: Arc<BrowserService>,
+        auth_service: Arc<dyn AuthServiceTrait>,
+        auth_cache: Arc<Mutex<Option<CachedAuthStatus>>>,
+        status: Arc<RwLock<AccountStatus>>,
+    ) {
+        let expected_phone = match phone_number {
+            Some(p) => p,
+            None => {
+                info!("Account '{}' — no phone configured, auth watcher not needed", account_id);
+                return;
+            }
+        };
+
+        info!(
+            "Account '{}' — auth watcher started (expected phone: {})",
+            account_id, expected_phone
+        );
+
+        // Poll loop: check for auth events every 3 seconds
+        let poll_interval = Duration::from_secs(3);
+
+        loop {
+            tokio::time::sleep(poll_interval).await;
+
+            // Stop if account is no longer running
+            if !Self::is_running_status(&status).await {
+                info!("Account '{}' — auth watcher exiting (account stopped)", account_id);
+                return;
+            }
+
+            // Check for auth event from the DOM observer
+            let event = Self::consume_auth_event(account_id, &browser_service).await;
+
+            let browser_phone = match event {
+                None => continue, // no event yet
+                Some(phone_opt) => {
+                    match phone_opt {
+                        Some(phone) if !phone.is_empty() => phone,
+                        _ => {
+                            // Event fired but couldn't read phone from localStorage yet.
+                            // Fall back to fetching via auth_service.
+                            debug!(
+                                "Account '{}' — auth event with no phone, fetching sender ID...",
+                                account_id
+                            );
+                            match auth_service.get_sender_id().await {
+                                Ok(Some(p)) => p,
+                                Ok(None) => {
+                                    warn!(
+                                        "Account '{}' — auth event but sender ID still null",
+                                        account_id
+                                    );
+                                    continue;
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Account '{}' — auth event but get_sender_id failed: {}",
+                                        account_id, e
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            info!(
+                "Account '{}' — auth event detected, browser phone: {}",
+                account_id, browser_phone
+            );
+
+            if browser_phone == expected_phone {
+                info!(
+                    "Account '{}' — phone verified: {}",
+                    account_id, expected_phone
+                );
+                // Keep watching — user could log out and re-auth with wrong phone later
+                continue;
+            }
+
+            warn!(
+                "Account '{}' — phone mismatch: expected {}, found {}. Triggering logout.",
+                account_id, expected_phone, browser_phone
+            );
+
+            if let Err(e) = auth_service.logout().await {
+                error!("Account '{}' — auto-logout failed: {}", account_id, e);
+            }
+            // Invalidate auth cache
+            let mut cache = auth_cache.lock().await;
+            *cache = None;
+            drop(cache);
+
+            // After logout the page reloads — re-inject observer once it settles
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            if Self::is_running_status(&status).await {
+                // Re-inject by touching the page (triggers run_page_scripts if page was recreated,
+                // otherwise inject manually since the in-memory page may have reloaded)
+                Self::inject_auth_observer(account_id, &browser_service).await;
+            }
+        }
+    }
+
+    /// Check if the account status is Running
+    async fn is_running_status(status: &Arc<RwLock<AccountStatus>>) -> bool {
+        matches!(&*status.read().await, AccountStatus::Running)
     }
 
     /// Reset the account — stop browser and wipe all session data (chrome profile, sessions, media).
@@ -605,6 +870,39 @@ impl WhatsAppAccount {
                 } else {
                     None
                 };
+
+                // Phone mismatch guard: if the account has a configured phone number
+                // and the browser is authorized with a different number, auto-logout.
+                if auth_result.authorized {
+                    if let Some(ref browser_phone) = phone_number {
+                        if let Some(ref expected_phone) = self._config.phone_number {
+                            if browser_phone != expected_phone {
+                                warn!(
+                                    "Account '{}' — phone mismatch: expected {}, got {}. Auto-logging out.",
+                                    self.id, expected_phone, browser_phone
+                                );
+                                // Trigger logout in the background — don't block the status response
+                                let auth_svc = self.auth_service.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = auth_svc.logout().await {
+                                        tracing::error!("Auto-logout failed: {}", e);
+                                    }
+                                });
+                                self.invalidate_auth_cache().await;
+
+                                let status = AuthStatusResponse {
+                                    authenticated: false,
+                                    status: format!(
+                                        "Phone mismatch — expected {}, got {}. Session terminated.",
+                                        expected_phone, browser_phone
+                                    ),
+                                    phone_number: Some(browser_phone.clone()),
+                                };
+                                return Ok(status);
+                            }
+                        }
+                    }
+                }
 
                 let status = AuthStatusResponse {
                     authenticated: auth_result.authorized,
