@@ -602,6 +602,64 @@ impl Locators {
         let result = page.evaluate(js.as_str()).await?;
         Ok(result.into_value::<bool>().unwrap_or(false))
     }
+
+    // ========================================
+    // Diagnostics
+    // ========================================
+
+    /// Capture page diagnostic info for debugging.
+    /// Returns a summary string with URL, title, and visible content hints.
+    pub async fn diagnose_page(page: &Page) -> String {
+        let url = page.url().await.ok().flatten().unwrap_or_default();
+        let diag_js = r#"(function() {
+            var title = document.title || '';
+            var body = (document.body && document.body.innerText || '').substring(0, 500);
+            var inputs = document.querySelectorAll('input').length;
+            var buttons = document.querySelectorAll('button').length;
+            var canvas = document.querySelectorAll('canvas').length;
+            var hasQr = document.querySelector("canvas[aria-label*='QR']") !== null
+                || document.querySelector("canvas[aria-label*='Scan']") !== null;
+            var hasPaneSide = document.querySelector('#pane-side') !== null;
+            var hasProgress = document.querySelector('progress') !== null;
+            return JSON.stringify({
+                title: title,
+                body_preview: body.replace(/\n+/g, ' ').substring(0, 300),
+                inputs: inputs,
+                buttons: buttons,
+                canvas: canvas,
+                has_qr: hasQr,
+                has_pane_side: hasPaneSide,
+                has_progress: hasProgress
+            });
+        })()"#;
+
+        let diag = page.evaluate(diag_js).await
+            .ok()
+            .and_then(|v| v.into_value::<String>().ok())
+            .unwrap_or_else(|| "failed to evaluate".into());
+
+        format!("url={} | {}", url, diag)
+    }
+
+    /// Ensure page is on web.whatsapp.com. If not, navigate there.
+    /// Returns false if navigation failed.
+    pub async fn ensure_whatsapp_page(page: &Page) -> bool {
+        let url = page.url().await.ok().flatten().unwrap_or_default();
+        if url.contains("web.whatsapp.com") {
+            return true;
+        }
+        tracing::warn!("Page not on WhatsApp Web (url={}), navigating...", url);
+        match page.goto("https://web.whatsapp.com").await {
+            Ok(_) => {
+                tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+                true
+            }
+            Err(e) => {
+                tracing::error!("Failed to navigate to WhatsApp Web: {}", e);
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]
