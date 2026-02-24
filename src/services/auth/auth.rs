@@ -82,19 +82,15 @@ pub trait AuthServiceTrait: Send + Sync {
 /// Timeout configuration for authentication operations
 #[derive(Debug, Clone)]
 pub struct AuthTimeouts {
-    pub navigation: Duration,
     pub element_wait: Duration,
     pub code_detection: Duration,
-    pub total_operation: Duration,
 }
 
 impl Default for AuthTimeouts {
     fn default() -> Self {
         Self {
-            navigation: Duration::from_secs(15),
             element_wait: Duration::from_secs(10),
             code_detection: Duration::from_secs(30),
-            total_operation: Duration::from_secs(60),
         }
     }
 }
@@ -147,16 +143,12 @@ impl AuthService {
             _ => return Err(anyhow::anyhow!("Failed to get QR code canvas data")),
         };
 
-        if canvas_string.is_empty() {
-            return Err(anyhow::anyhow!("Failed to get QR code canvas"));
-        }
+        let (_, base64_data) = canvas_string
+            .split_once(',')
+            .filter(|(_, data)| !data.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Invalid QR code data format"))?;
 
-        let parts: Vec<&str> = canvas_string.split(',').collect();
-        if parts.len() < 2 || parts[1].is_empty() {
-            return Err(anyhow::anyhow!("Invalid QR code data format"));
-        }
-
-        Ok(parts[1].to_string())
+        Ok(base64_data.to_string())
     }
 
     /// Format phone number for WhatsApp
@@ -290,16 +282,10 @@ impl AuthServiceTrait for AuthService {
             authorized, reason
         );
 
-        // Map the reason to a user-friendly status
-        let status = match (authorized, reason) {
-            (true, _) => "authenticated",
-            (false, "login") | (false, "phone") | (false, "code") => "not_authenticated",
-            (false, "unclear") | (false, _) => "checking",
-        };
-
-        Ok(AuthCheckResult {
-            authorized,
-            status: status.to_string(),
+        Ok(match (authorized, reason) {
+            (true, _) => AuthCheckResult::authenticated(),
+            (false, "login") | (false, "phone") | (false, "code") => AuthCheckResult::not_authenticated(),
+            _ => AuthCheckResult::checking(),
         })
     }
 
