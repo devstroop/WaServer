@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 
 use super::country_codes::CountryInfo;
 use super::selector::{parse_selector, selector_click_js, selector_exists_js};
-use tracing::debug;
+use tracing::info;
 
 // ============================================================================
 // Timeout Constants
@@ -465,7 +465,24 @@ impl Locators {
     /// Searches by country name for reliability, falls back to dial code scan.
     pub async fn select_country_by_code(page: &Page, country: &CountryInfo) -> Result<bool> {
         let digits = country.dial_code;
-        debug!("select_country: starting for {} (+{})", country.name, digits);
+        info!("select_country: starting for {} (+{})", country.name, digits);
+
+        // Step 0: Check if the correct country is already selected
+        let check_js = r#"(function() {
+            var chevron = document.querySelector('[data-icon="chevron"]');
+            if (!chevron) return '';
+            var container = chevron.closest('[role="button"]') || chevron.closest('button') || chevron.parentElement;
+            if (!container) return '';
+            return (container.textContent || '').trim();
+        })()"#;
+        let current = page.evaluate(check_js).await?
+            .into_value::<String>().unwrap_or_default();
+        let code_pattern = format!("+{}", digits);
+        if current.contains(&code_pattern) {
+            info!("select_country: already correct (showing '{}')", current);
+            return Ok(true);
+        }
+        info!("select_country: current='{}', need +{}", current, digits);
 
         // Step 1: Click the country dropdown button (identified by chevron icon)
         let click_js = r#"(function() {
@@ -480,14 +497,12 @@ impl Locators {
 
         let click_result = page.evaluate(click_js).await?
             .into_value::<String>().unwrap_or_else(|_| "error".into());
-        debug!("select_country: step1 chevron click = {}", click_result);
+        info!("select_country: step1 chevron click = {}", click_result);
         if click_result != "clicked" {
             return Ok(false);
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-
-        // Step 2: Check if popover appeared, find and focus its search field
+        // Step 2: Poll for popover content (up to 3 seconds)
         let focus_js = r#"(function() {
             var popover = document.querySelector('#wa-popovers-bucket');
             if (!popover) return 'no_popover';
@@ -502,9 +517,19 @@ impl Locators {
             return 'focused:' + el.tagName + '.' + (el.className || '').substring(0, 30);
         })()"#;
 
-        let focus_result = page.evaluate(focus_js).await?
-            .into_value::<String>().unwrap_or_else(|_| "error".into());
-        debug!("select_country: step2 focus = {}", focus_result);
+        let mut focus_result = String::new();
+        for attempt in 0..6 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            focus_result = page.evaluate(focus_js).await?
+                .into_value::<String>().unwrap_or_else(|_| "error".into());
+            if focus_result.starts_with("focused") {
+                break;
+            }
+            if attempt < 5 {
+                info!("select_country: step2 attempt {}, waiting: {}", attempt + 1, focus_result);
+            }
+        }
+        info!("select_country: step2 focus = {}", focus_result);
 
         let mut searched = false;
         if focus_result.starts_with("focused") {
@@ -515,13 +540,13 @@ impl Locators {
                     match el.type_str(country.name).await {
                         Ok(_) => {
                             searched = true;
-                            debug!("select_country: step2 typed '{}'", country.name);
+                            info!("select_country: step2 typed '{}'", country.name);
                             tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                         }
-                        Err(e) => debug!("select_country: step2 type_str failed: {}", e),
+                        Err(e) => info!("select_country: step2 type_str failed: {}", e),
                     }
                 }
-                Err(e) => debug!("select_country: step2 find :focus failed: {}", e),
+                Err(e) => info!("select_country: step2 find :focus failed: {}", e),
             }
         }
 
@@ -550,7 +575,7 @@ impl Locators {
 
         let select_result = page.evaluate(select_js.as_str()).await?
             .into_value::<String>().unwrap_or_else(|_| "error".into());
-        debug!("select_country: step3 select = {}", select_result);
+        info!("select_country: step3 select = {}", select_result);
 
         let selected = select_result.starts_with("selected");
 
