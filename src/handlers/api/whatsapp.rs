@@ -8,14 +8,15 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, StatusCode},
     response::IntoResponse,
     Json,
 };
+use base64::Engine;
 use serde_json::json;
 
 use crate::{
-    models::account::{PhoneLinkRequest, ProfileInfo, UpdateProfileRequest, WhatsAppStatusResponse},
+    models::account::{ProfileInfo, UpdateProfileRequest, WhatsAppStatusResponse},
     services::AccountManager,
 };
 
@@ -78,7 +79,7 @@ pub async fn get_account_status(
 
 /// Get QR code for WhatsApp Web linking
 ///
-/// Returns a QR code image (base64) for linking WhatsApp on mobile device.
+/// Returns a QR code as a PNG image for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
     path = "/api/v1/accounts/{account_id}/link/qr",
@@ -87,7 +88,7 @@ pub async fn get_account_status(
         ("account_id" = String, Path, description = "Account ID (UUID)")
     ),
     responses(
-        (status = 200, description = "QR code"),
+        (status = 200, description = "QR code PNG image", content_type = "image/png"),
         (status = 404, description = "Account not found"),
         (status = 503, description = "Browser not running"),
     ),
@@ -126,10 +127,24 @@ pub async fn get_qr_code(
     }
 
     match account.auth_service().get_auth_qr_code().await {
-        Ok(qr_code) => Json(json!({
-            "qr_code": qr_code,
-        }))
-        .into_response(),
+        Ok(qr_base64) => {
+            match base64::engine::general_purpose::STANDARD.decode(&qr_base64) {
+                Ok(png_bytes) => (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "image/png")],
+                    png_bytes,
+                )
+                    .into_response(),
+                Err(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "qr_decode_failed",
+                        "message": "Failed to decode QR code image data"
+                    })),
+                )
+                    .into_response(),
+            }
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
@@ -143,7 +158,7 @@ pub async fn get_qr_code(
 
 /// Link via phone number
 ///
-/// Initiates phone number linking flow.
+/// Initiates phone number linking flow using the account's stored phone number.
 #[utoipa::path(
     post,
     path = "/api/v1/accounts/{account_id}/link/phone",
@@ -151,12 +166,10 @@ pub async fn get_qr_code(
     params(
         ("account_id" = String, Path, description = "Account ID (UUID)")
     ),
-    request_body = PhoneLinkRequest,
     responses(
         (status = 200, description = "Phone linking initiated"),
-        (status = 400, description = "Invalid request"),
-        (status = 403, description = "Account bound to different phone"),
         (status = 404, description = "Account not found"),
+        (status = 503, description = "Browser not running"),
     ),
     security(
         ("bearer_auth" = [])
@@ -165,7 +178,6 @@ pub async fn get_qr_code(
 pub async fn link_phone(
     State(manager): State<Arc<AccountManager>>,
     Path(account_id): Path<String>,
-    Json(request): Json<PhoneLinkRequest>,
 ) -> impl IntoResponse {
     let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
@@ -193,29 +205,31 @@ pub async fn link_phone(
             .into_response();
     }
 
-    // Validate phone number from request
-    if let Err(e) = crate::models::account::validate_phone_number(&request.phone_number) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "invalid_phone",
-                "message": e
-            })),
-        )
-            .into_response();
-    }
+    // Use the phone number stored on the account (set during creation)
+    let phone_number = match account.phone_number() {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "no_phone_number",
+                    "message": "Account has no phone number configured"
+                })),
+            )
+                .into_response();
+        }
+    };
 
-    // Phone linking only initiates authentication (returns a linking code).
-    // The phone is NOT bound to the account until auth actually completes.
     match account
         .auth_service()
-        .login_with_phone_number(&request.phone_number)
+        .login_with_phone_number(&phone_number)
         .await
     {
         Ok(linking_code) => {
             let success = linking_code.is_some();
             Json(json!({
                 "success": success,
+                "phone_number": phone_number,
                 "linking_code": linking_code,
             }))
             .into_response()
