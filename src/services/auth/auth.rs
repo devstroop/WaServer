@@ -380,15 +380,14 @@ impl AuthServiceTrait for AuthService {
         }
 
         let formatted_phone = self.format_phone_number(phone_number);
-        info!("Starting phone authentication for: {}", formatted_phone);
+        let (country, phone) = country_codes::parse_phone(&formatted_phone);
+        let country_code = format!("+{}", country.dial_code);
+        info!("Starting phone authentication for: {} ({}) {}", country.name, country_code, phone);
 
         // Ensure we're on WhatsApp Web (not a download/redirect page)
         if !Locators::ensure_whatsapp_page(&page).await {
             return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
         }
-
-        // // Wait for page to load
-        // tokio::time::sleep(Duration::from_millis(3000)).await;
 
         // // Diagnose page state for debugging
         // let diag = Locators::diagnose_page(&page).await;
@@ -396,7 +395,8 @@ impl AuthServiceTrait for AuthService {
 
         // Check current screen state — detect QR code / initial landing screen
         let on_qr_screen = Locators::exists(&page, Locators::login_label()).await
-            || Locators::exists(&page, Locators::qr_code_canvas()).await;
+            || Locators::exists(&page, Locators::qr_code_canvas()).await
+            || Locators::exists(&page, "text:Log in with phone number").await;
 
         if !on_qr_screen {
             let diag = Locators::diagnose_page(&page).await;
@@ -415,9 +415,11 @@ impl AuthServiceTrait for AuthService {
             }
         }
 
-        // Enter phone number — fill the phone number w/o country code (e.g. "9501005734") into the input.
         // WhatsApp auto-detects the country from the number, no dropdown manipulation needed.
         if Locators::exists(&page, "text:Enter phone number").await {
+            // Wait for the phone input to be fully initialized with the default country code
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
             // Read the currently selected country code from the phone input's value.
             // When India is selected, input value = "+91"; US = "+1", etc.
             let selected_code = page.evaluate(
@@ -428,19 +430,26 @@ impl AuthServiceTrait for AuthService {
                     var m = input.value.match(/^\+(\d+)/);
                     return m ? m[1] : '';
                 })()"#
-            ).await.ok().and_then(|v| v.into_value::<String>().ok()).unwrap_or_default();
+            ).await.ok()
+                .and_then(|v| v.into_value::<serde_json::Value>().ok())
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s),
+                    other => {
+                        debug!("Unexpected selected_code value type: {:?}", other);
+                        other.as_str().map(|s| s.to_string())
+                    }
+                })
+                .unwrap_or_default();
 
-            let (phone_country, national_number) = country_codes::parse_phone(&formatted_phone);
+            info!("Detected selected {}", selected_code);
 
-            // If the dropdown already shows the same country code, enter just the national number.
-            // Otherwise, enter the full number with + prefix so WhatsApp auto-switches country.
-            let value_to_enter = if !selected_code.is_empty() && selected_code == phone_country.dial_code {
-                info!("Dropdown already shows +{}, entering national number: {}", selected_code, national_number);
-                national_number.clone()
-            } else {
-                info!("Dropdown shows +{}, phone needs +{}, entering full number: {}", selected_code, phone_country.dial_code, formatted_phone);
-                formatted_phone.clone()
-            };
+            let (phone_country, _national_number) = country_codes::parse_phone(&formatted_phone);
+
+            // Always enter the full number with + prefix.
+            // Entering just the national number causes WhatsApp's auto-detect to
+            // misidentify the country (e.g. "9501005734" is read as +95 Myanmar).
+            let value_to_enter = formatted_phone.clone();
+            info!("Entering full number: {} (detected dropdown +{}, phone needs +{})", value_to_enter, selected_code, phone_country.dial_code);
 
             // Set the phone number value
             if !Locators::set_phone_input_value(&page, Locators::phone_input(), &value_to_enter)
