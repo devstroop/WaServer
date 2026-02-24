@@ -1,377 +1,149 @@
-//! Database Service Core
+//! Database Service
 //!
-//! Creates and manages the SQLite connection, schema initialization, and migrations.
-//!
-//! Schema documentation: See `sql/` directory for complete schema files:
-//! - `sql/schema.sql` - Table definitions
-//! - `sql/indexes.sql` - Performance indexes
-//! - `sql/migrations.sql` - Migration scripts
-//! - `sql/ERD.sql` - Entity relationship diagram
+//! Manages an embedded SurrealDB instance (file-based via SurrealKV).
+//! Provides typed helpers for account CRUD operations.
 
-use anyhow::Result;
-use chrono::{DateTime, Utc};
-use rusqlite::Connection;
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use surrealdb::{
+    engine::local::{Db, SurrealKv},
+    Surreal,
+};
 use std::path::Path;
-use std::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::info;
 
-use crate::models::message::{MediaType, Message, MessageStatus};
+use super::schema;
 
-/// Batch size for bulk operations (inspired by whatsmeow)
-pub const CONTACT_BATCH_SIZE: usize = 300;
-
-/// Database service for message persistence
-pub struct DatabaseService {
-    pub(super) conn: Mutex<Connection>,
-    pub(super) db_path: String,
+/// Persistent account record stored in SurrealDB.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountRecord {
+    pub id: Option<surrealdb::sql::Thing>,
+    pub phone_number: String,
+    pub display_name: String,
+    pub data_dir: String,
+    pub auto_start: bool,
+    pub status: String,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
-impl DatabaseService {
-    /// Create a new database service
-    pub fn new(data_dir: &str) -> Result<Self> {
-        let db_path = Path::new(data_dir).join("database.db");
-        let db_path_str = db_path.to_string_lossy().to_string();
+/// Wraps an embedded SurrealDB connection.
+#[derive(Clone)]
+pub struct Database {
+    db: Surreal<Db>,
+}
 
-        // Ensure directory exists
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+impl Database {
+    /// Open (or create) a file-based SurrealDB at the given directory.
+    pub async fn open(data_dir: &Path) -> Result<Self> {
+        let db_path = data_dir.join("surreal");
+        tokio::fs::create_dir_all(&db_path).await?;
 
-        let conn = Connection::open(&db_path)?;
-        let service = Self {
-            conn: Mutex::new(conn),
-            db_path: db_path_str,
-        };
+        let db = Surreal::new::<SurrealKv>(db_path.to_str().unwrap()).await
+            .map_err(|e| anyhow!("Failed to open SurrealDB: {}", e))?;
 
-        // Migrate first (add missing columns to existing tables)
-        service.migrate_schema()?;
-        // Then create indexes (after columns exist)
-        service.init_schema()?;
-        info!("Database initialized at: {}", service.db_path);
+        db.use_ns("was").use_db("was").await
+            .map_err(|e| anyhow!("Failed to select namespace/database: {}", e))?;
 
-        Ok(service)
+        info!("SurrealDB opened at {:?}", db_path);
+
+        let instance = Self { db };
+        schema::apply(&instance.db).await?;
+        Ok(instance)
     }
 
-    /// Create an in-memory database (for testing or fallback)
-    pub fn in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        let service = Self {
-            conn: Mutex::new(conn),
-            db_path: ":memory:".to_string(),
-        };
+    // ========================================================================
+    // Account CRUD
+    // ========================================================================
 
-        service.init_schema()?;
-        info!("In-memory database initialized");
+    /// Insert a new account. The record ID is the account UUID (string).
+    pub async fn create_account(&self, id: &str, phone_number: &str, display_name: &str, data_dir: &str, auto_start: bool) -> Result<AccountRecord> {
+        // Check uniqueness of phone_number explicitly for a clear error message
+        let existing: Vec<AccountRecord> = self.db
+            .query("SELECT * FROM account WHERE phone_number = $phone LIMIT 1")
+            .bind(("phone", phone_number.to_string()))
+            .await?
+            .take(0)?;
 
-        Ok(service)
+        if !existing.is_empty() {
+            return Err(anyhow!("Phone number '{}' already exists", phone_number));
+        }
+
+        let record: Option<AccountRecord> = self.db
+            .create(("account", id))
+            .content(serde_json::json!({
+                "phone_number": phone_number,
+                "display_name": display_name,
+                "data_dir": data_dir,
+                "auto_start": auto_start,
+                "status": "stopped",
+            }))
+            .await
+            .map_err(|e| anyhow!("Failed to create account: {}", e))?;
+
+        record.ok_or_else(|| anyhow!("Account creation returned no record"))
     }
 
-    /// Migrate schema for existing databases (add missing columns)
-    fn migrate_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    /// Get an account by its UUID string id.
+    pub async fn get_account(&self, id: &str) -> Result<Option<AccountRecord>> {
+        let record: Option<AccountRecord> = self.db
+            .select(("account", id))
+            .await
+            .map_err(|e| anyhow!("Failed to get account: {}", e))?;
+        Ok(record)
+    }
 
-        // Check if messages table exists first
-        let table_exists: bool = conn
-            .query_row(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'",
-                [],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
+    /// Find an account by phone number.
+    pub async fn get_account_by_phone(&self, phone_number: &str) -> Result<Option<AccountRecord>> {
+        let mut results: Vec<AccountRecord> = self.db
+            .query("SELECT * FROM account WHERE phone_number = $phone LIMIT 1")
+            .bind(("phone", phone_number.to_string()))
+            .await?
+            .take(0)?;
+        Ok(results.pop())
+    }
 
-        if !table_exists {
-            debug!("Messages table doesn't exist, skipping migration");
-            return Ok(());
-        }
+    /// List all accounts.
+    pub async fn list_accounts(&self) -> Result<Vec<AccountRecord>> {
+        let records: Vec<AccountRecord> = self.db
+            .select("account")
+            .await
+            .map_err(|e| anyhow!("Failed to list accounts: {}", e))?;
+        Ok(records)
+    }
 
-        // Get existing columns using PRAGMA
-        let mut existing_columns: Vec<String> = Vec::new();
-        {
-            let mut stmt = conn.prepare("PRAGMA table_info(messages)")?;
-            let column_iter = stmt.query_map([], |row| {
-                let name: String = row.get(1)?;
-                Ok(name)
-            })?;
-            for name in column_iter.flatten() {
-                existing_columns.push(name);
-            }
-        }
-
-        debug!("Existing columns in messages table: {:?}", existing_columns);
-
-        // Add missing columns
-        let migrations = [
-            (
-                "priority",
-                "ALTER TABLE messages ADD COLUMN priority INTEGER DEFAULT 0",
-            ),
-            (
-                "max_retries",
-                "ALTER TABLE messages ADD COLUMN max_retries INTEGER DEFAULT 3",
-            ),
-            (
-                "is_group",
-                "ALTER TABLE messages ADD COLUMN is_group INTEGER DEFAULT 0",
-            ),
-            ("sender", "ALTER TABLE messages ADD COLUMN sender TEXT"),
-            (
-                "recipient",
-                "ALTER TABLE messages ADD COLUMN recipient TEXT",
-            ),
-            (
-                "sender_name",
-                "ALTER TABLE messages ADD COLUMN sender_name TEXT",
-            ),
-        ];
-
-        for (column, sql) in migrations {
-            if !existing_columns.contains(&column.to_string()) {
-                info!("Migrating database: adding {} column", column);
-                if let Err(e) = conn.execute(sql, []) {
-                    warn!("Failed to add column {}: {}", column, e);
-                }
-            }
-        }
-
-        // Migrate data from old phone/direction schema to sender/recipient model
-        let has_old_schema = existing_columns.contains(&"phone".to_string())
-            && existing_columns.contains(&"direction".to_string());
-        let has_new_schema = existing_columns.contains(&"sender".to_string())
-            && existing_columns.contains(&"recipient".to_string());
-
-        if has_old_schema && has_new_schema {
-            let needs_migration: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM messages WHERE (sender IS NULL OR sender = '') AND phone IS NOT NULL",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
-
-            if needs_migration > 0 {
-                info!(
-                    "Migrating {} messages from phone/direction to sender/recipient model",
-                    needs_migration
-                );
-
-                let outgoing_migrated = conn
-                    .execute(
-                        "UPDATE messages SET 
-                        sender = 'me',
-                        recipient = phone,
-                        is_group = 0
-                     WHERE (sender IS NULL OR sender = '') 
-                       AND direction = 'outgoing' 
-                       AND phone IS NOT NULL",
-                        [],
-                    )
-                    .unwrap_or(0);
-
-                let incoming_migrated = conn
-                    .execute(
-                        "UPDATE messages SET 
-                        sender = phone,
-                        recipient = 'me',
-                        sender_name = contact_name,
-                        is_group = 0
-                     WHERE (sender IS NULL OR sender = '') 
-                       AND direction = 'incoming' 
-                       AND phone IS NOT NULL",
-                        [],
-                    )
-                    .unwrap_or(0);
-
-                info!(
-                    "Data migration complete: {} outgoing, {} incoming messages converted",
-                    outgoing_migrated, incoming_migrated
-                );
-            } else {
-                debug!("No messages need migration (already migrated or empty)");
-            }
-        }
-
+    /// Update the status field of an account.
+    pub async fn update_status(&self, id: &str, status: &str) -> Result<()> {
+        let _: Option<AccountRecord> = self.db
+            .update(("account", id))
+            .merge(serde_json::json!({
+                "status": status,
+                "updated_at": chrono::Utc::now().to_rfc3339(),
+            }))
+            .await
+            .map_err(|e| anyhow!("Failed to update status: {}", e))?;
         Ok(())
     }
 
-    /// Initialize database schema
-    fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-
-        // Messages table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                sender TEXT NOT NULL,
-                recipient TEXT NOT NULL,
-                sender_name TEXT,
-                text TEXT,
-                is_group INTEGER DEFAULT 0,
-                status TEXT NOT NULL,
-                priority INTEGER DEFAULT 0,
-                media_type TEXT NOT NULL DEFAULT 'none',
-                media_path TEXT,
-                media_filename TEXT,
-                media_extension TEXT,
-                media_size INTEGER,
-                media_duration INTEGER,
-                quoted_message_id TEXT,
-                error TEXT,
-                retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 3,
-                message_timestamp TEXT,
-                created_at TEXT NOT NULL,
-                processed_at TEXT,
-                phone TEXT,
-                direction TEXT,
-                contact_name TEXT,
-                FOREIGN KEY (quoted_message_id) REFERENCES messages(id)
-            )",
-            [],
-        )?;
-
-        // Queue index
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_queue 
-             ON messages(sender, status, priority DESC, created_at ASC)
-             WHERE sender = 'me' AND status IN ('pending', 'processing')",
-            [],
-        )
-        .ok();
-
-        // Chat history index
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_chat 
-             ON messages(recipient, created_at DESC)",
-            [],
-        )
-        .ok();
-
-        // Conversations cache table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                phone TEXT,
-                name TEXT NOT NULL,
-                last_message TEXT,
-                last_message_time TEXT,
-                unread_count INTEGER DEFAULT 0,
-                is_group INTEGER DEFAULT 0,
-                is_muted INTEGER DEFAULT 0,
-                is_pinned INTEGER DEFAULT 0,
-                is_archived INTEGER DEFAULT 0,
-                avatar_url TEXT,
-                cached_at TEXT NOT NULL
-            )",
-            [],
-        )?;
-
-        // Chat settings table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS chat_settings (
-                chat_id TEXT PRIMARY KEY,
-                muted_until TEXT,
-                pinned INTEGER DEFAULT 0,
-                archived INTEGER DEFAULT 0,
-                updated_at TEXT NOT NULL
-            )",
-            [],
-        )?;
-
-        // Contacts table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS contacts (
-                phone TEXT PRIMARY KEY,
-                name TEXT,
-                is_business INTEGER DEFAULT 0,
-                last_seen TEXT,
-                updated_at TEXT NOT NULL
-            )",
-            [],
-        )?;
-
-        // Session table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS session (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )",
-            [],
-        )?;
-
-        // Indexes
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender)",
-            [],
-        )
-        .ok();
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient)",
-            [],
-        )
-        .ok();
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_media_type ON messages(media_type)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_priority ON messages(priority DESC, created_at ASC)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_chat_lookup ON messages(sender, recipient, created_at DESC)",
-            [],
-        ).ok();
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conversations_cached ON conversations(cached_at)",
-            [],
-        )?;
-
-        debug!("Database schema initialized");
+    /// Update display_name for an account.
+    pub async fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
+        let _: Option<AccountRecord> = self.db
+            .update(("account", id))
+            .merge(serde_json::json!({
+                "display_name": display_name,
+                "updated_at": chrono::Utc::now().to_rfc3339(),
+            }))
+            .await
+            .map_err(|e| anyhow!("Failed to update display_name: {}", e))?;
         Ok(())
     }
 
-    /// Helper: Convert row to Message
-    pub(super) fn row_to_message(row: &rusqlite::Row) -> Result<Message> {
-        let status_str: String = row.get(6)?;
-        let media_type_str: String = row.get(7)?;
-        let created_str: String = row.get(19)?;
-        let processed_str: Option<String> = row.get(20)?;
-        let msg_ts_str: Option<String> = row.get(18)?;
-
-        Ok(Message {
-            id: row.get(0)?,
-            sender: row.get(1)?,
-            recipient: row.get(2)?,
-            sender_name: row.get(3)?,
-            text: row.get(4)?,
-            is_group: row.get::<_, i32>(5)? != 0,
-            status: MessageStatus::try_from(status_str.as_str())?,
-            media_type: MediaType::try_from(media_type_str.as_str())?,
-            media_path: row.get(8)?,
-            media_filename: row.get(9)?,
-            media_extension: row.get(10)?,
-            media_size: row.get(11)?,
-            media_duration: row.get(12)?,
-            quoted_message_id: row.get(13)?,
-            error: row.get(14)?,
-            retry_count: row.get(15)?,
-            max_retries: row.get(16)?,
-            priority: row.get(17)?,
-            message_timestamp: msg_ts_str
-                .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
-                .transpose()?,
-            created_at: DateTime::parse_from_rfc3339(&created_str)?.with_timezone(&Utc),
-            processed_at: processed_str
-                .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
-                .transpose()?,
-        })
+    /// Delete an account record.
+    pub async fn delete_account(&self, id: &str) -> Result<()> {
+        let _: Option<AccountRecord> = self.db
+            .delete(("account", id))
+            .await
+            .map_err(|e| anyhow!("Failed to delete account: {}", e))?;
+        Ok(())
     }
 }

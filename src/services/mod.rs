@@ -9,8 +9,6 @@ pub mod whatsapp;
 
 // Re-exports for convenience
 pub use auth::{AuthCheckResult, AuthService, AuthServiceTrait};
-pub use database::{
-    is_self, Contact, DatabaseService, MediaType, Message, MessageStatus, NewMessage, SELF_JID,
-};
+pub use database::Database;
 pub use webhook::{WebhookEvent, WebhookMessageData, WebhookService};
-pub use whatsapp::{InstanceManager, ChatService, ChatServiceTrait, WhatsAppInstance};
+pub use whatsapp::{AccountManager, ChatService, ChatServiceTrait, WhatsAppAccount};

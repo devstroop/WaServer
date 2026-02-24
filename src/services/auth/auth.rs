@@ -3,7 +3,7 @@
 //! Handles WhatsApp Web authentication including QR code and phone number methods.
 
 use crate::{
-    browser::{BrowserService, Locators},
+    browser::{country_codes, BrowserService, Locators},
     config::AppConfig,
 };
 use anyhow::Result;
@@ -82,19 +82,15 @@ pub trait AuthServiceTrait: Send + Sync {
 /// Timeout configuration for authentication operations
 #[derive(Debug, Clone)]
 pub struct AuthTimeouts {
-    pub navigation: Duration,
     pub element_wait: Duration,
     pub code_detection: Duration,
-    pub total_operation: Duration,
 }
 
 impl Default for AuthTimeouts {
     fn default() -> Self {
         Self {
-            navigation: Duration::from_secs(15),
             element_wait: Duration::from_secs(10),
             code_detection: Duration::from_secs(30),
-            total_operation: Duration::from_secs(60),
         }
     }
 }
@@ -128,8 +124,8 @@ impl AuthService {
     }
 
     /// Wait for element with timeout
-    async fn wait_for_element(&self, page: &Page, selector: &str, timeout_ms: u64) -> Result<bool> {
-        Locators::wait_for_element(page, selector, timeout_ms).await
+    async fn wait_for_element(&self, page: &Page, selector: &str, timeout_ms: u64) -> bool {
+        Locators::wait_for(page, selector, timeout_ms).await
     }
 
     /// Extract QR code from canvas
@@ -147,16 +143,12 @@ impl AuthService {
             _ => return Err(anyhow::anyhow!("Failed to get QR code canvas data")),
         };
 
-        if canvas_string.is_empty() {
-            return Err(anyhow::anyhow!("Failed to get QR code canvas"));
-        }
+        let (_, base64_data) = canvas_string
+            .split_once(',')
+            .filter(|(_, data)| !data.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Invalid QR code data format"))?;
 
-        let parts: Vec<&str> = canvas_string.split(',').collect();
-        if parts.len() < 2 || parts[1].is_empty() {
-            return Err(anyhow::anyhow!("Invalid QR code data format"));
-        }
-
-        Ok(parts[1].to_string())
+        Ok(base64_data.to_string())
     }
 
     /// Format phone number for WhatsApp
@@ -203,7 +195,11 @@ impl AuthService {
         if let Ok(value) = result.into_value::<serde_json::Value>() {
             if let Some(code_str) = value.as_str() {
                 if !code_str.is_empty() && code_str != "null" && code_str.len() >= 4 {
-                    return Ok(Some(code_str.replace(" ", "")));
+                    let raw: String = code_str.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+                    if raw.len() >= 8 {
+                        return Ok(Some(format!("{}-{}", &raw[..4], &raw[4..8])));
+                    }
+                    return Ok(Some(raw));
                 }
             }
         }
@@ -216,6 +212,11 @@ impl AuthServiceTrait for AuthService {
     async fn check_auth_status(&self) -> Result<AuthCheckResult> {
         let page = self.get_page().await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Ensure we're on WhatsApp Web, not some redirect
+        if !Locators::ensure_whatsapp_page(&page).await {
+            return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
+        }
 
         let check_js = r##"
             (() => {
@@ -248,7 +249,7 @@ impl AuthServiceTrait for AuthService {
                 
                 // Check for phone number entry
                 const phoneEntry = document.body.innerText.includes('Enter phone number')
-                    || document.querySelector('input[aria-label="Type your phone number."]') !== null;
+                    || document.querySelector('input[aria-label="Type your phone number to log in to WhatsApp"]') !== null;
                 
                 // Check for pairing code entry
                 const codeEntry = document.body.innerText.includes('Enter code on phone')
@@ -281,16 +282,10 @@ impl AuthServiceTrait for AuthService {
             authorized, reason
         );
 
-        // Map the reason to a user-friendly status
-        let status = match (authorized, reason) {
-            (true, _) => "authenticated",
-            (false, "login") | (false, "phone") | (false, "code") => "not_authenticated",
-            (false, "unclear") | (false, _) => "checking",
-        };
-
-        Ok(AuthCheckResult {
-            authorized,
-            status: status.to_string(),
+        Ok(match (authorized, reason) {
+            (true, _) => AuthCheckResult::authenticated(),
+            (false, "login") | (false, "phone") | (false, "code") => AuthCheckResult::not_authenticated(),
+            _ => AuthCheckResult::checking(),
         })
     }
 
@@ -307,28 +302,23 @@ impl AuthServiceTrait for AuthService {
         }
 
         let sender_result = page.evaluate(
-            "window.localStorage.getItem('last-wid') || window.localStorage.getItem('last-wid-md') || '';"
+            "window.localStorage.getItem('last-wid') ?? window.localStorage.getItem('last-wid-md')"
         ).await?;
 
-        let sender_string = match sender_result.into_value()? {
-            serde_json::Value::String(s) => s,
-            _ => String::new(),
-        }
-        .trim_matches('"')
-        .to_string();
+        let raw: Option<String> = match sender_result.into_value()? {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        };
 
-        if sender_string.is_empty() {
-            return Ok(None);
-        }
-
-        let cleaned_id = sender_string
-            .split('@')
-            .next()
-            .and_then(|part| part.split(':').next())
+        let sender_id = raw.as_deref()
+            .map(|s| s.trim_matches('"'))
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.split('@').next())
+            .and_then(|s| s.split(':').next())
             .map(|s| s.to_string());
 
-        debug!("Sender ID: {:?}", cleaned_id);
-        Ok(cleaned_id)
+        debug!("Sender ID: {:?}", sender_id);
+        Ok(sender_id)
     }
 
     async fn get_auth_qr_code(&self) -> Result<String> {
@@ -338,34 +328,28 @@ impl AuthServiceTrait for AuthService {
             return Err(anyhow::anyhow!("Already authorized"));
         }
 
-        // Check if we need to switch to QR code mode
-        if page.find_element("text='Enter phone number'").await.is_ok()
-            || page
-                .find_element("text='Enter code on phone'")
-                .await
-                .is_ok()
+        // Check if we need to switch to QR code mode (currently on phone login screen)
+        if Locators::exists(&page, Locators::phone_number_label()).await
+            || Locators::exists(&page, "text:Enter code on phone").await
         {
             debug!("Switching to QR code login");
-            if let Ok(qr_link) = page.find_element("text='Log in with QR code'").await {
-                qr_link.click().await?;
-            }
+            Locators::click(&page, Locators::qr_auth_link()).await?;
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
 
         // Wait for QR code to be visible
         if !self
             .wait_for_element(&page, Locators::qr_code_canvas(), 20000)
-            .await?
+            .await
         {
             // Check if we need to reload the QR code
-            if let Ok(reload) = page.find_element("text='Click to reload QR code'").await {
-                reload.click().await?;
-            }
+            let _ = Locators::click(&page, Locators::config().auth.qr_reload_button.as_str()).await;
         }
 
         // Wait again after potential reload
         if !self
-            .wait_for_element(&page, Locators::qr_code_canvas(), 15000)
-            .await?
+            .wait_for_element(&page, Locators::qr_code_canvas(), 10000)
+            .await
         {
             return Err(anyhow::anyhow!("QR code not available"));
         }
@@ -381,49 +365,58 @@ impl AuthServiceTrait for AuthService {
         }
 
         let formatted_phone = self.format_phone_number(phone_number);
-        info!("Starting phone authentication for: {}", formatted_phone);
+        let (country, phone) = country_codes::parse_phone(&formatted_phone);
+        let country_code = format!("+{}", country.dial_code);
+        info!("Starting phone authentication for: {} ({}) {}", country.name, country_code, phone);
 
-        // Wait for page to load
-        tokio::time::sleep(Duration::from_millis(3000)).await;
+        // Ensure we're on WhatsApp Web (not a download/redirect page)
+        if !Locators::ensure_whatsapp_page(&page).await {
+            return Err(anyhow::anyhow!("Failed to navigate to WhatsApp Web"));
+        }
 
-        // Check current screen state
-        let has_qr_login = page
-            .find_element("text='Log into WhatsApp Web'")
-            .await
-            .is_ok();
+        // If already on "Enter code on phone" screen from a previous attempt, navigate back
+        if Locators::exists(&page, "text:Enter code on phone").await {
+            info!("Already 'Enter code on phone' screen, navigating back");
+            // Click the back/QR code link to return to the login screen
+            let _ = Locators::click(&page, Locators::qr_auth_link()).await;
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+        }
+
+        // Check current screen state — detect QR code / initial landing screen
+        let on_qr_screen = Locators::exists(&page, Locators::login_label()).await
+            || Locators::exists(&page, Locators::qr_code_canvas()).await
+            || Locators::exists(&page, "text:Log in with phone number").await;
+
+        if !on_qr_screen {
+            let diag = Locators::diagnose_page(&page).await;
+            info!("Not on QR/login screen, diagnosing: {}", diag);
+        }
 
         // Switch to phone number login if on QR screen
-        if has_qr_login {
-            debug!("Switching to phone number login");
-            if let Ok(phone_link) = page.find_element("text='Log in with phone number'").await {
-                phone_link.click().await?;
-
+        if on_qr_screen {
+            info!("Switching to phone number login");
+            if Locators::click(&page, "[role='button'] >> text:Log in with phone number").await? {
                 // Wait for phone input screen
-                tokio::time::timeout(self.timeouts.element_wait, async {
-                    while page
-                        .find_element("text='Enter phone number'")
-                        .await
-                        .is_err()
-                    {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                    }
-                })
-                .await
-                .map_err(|_| anyhow::anyhow!("Timeout waiting for phone input screen"))?;
+                if !Locators::wait_for(&page, Locators::phone_number_label(), self.timeouts.element_wait.as_millis() as u64).await {
+                    let diag = Locators::diagnose_page(&page).await;
+                    return Err(anyhow::anyhow!("Timeout waiting for phone input screen. Page state: {}", diag));
+                }
             }
         }
 
-        // Enter phone number
-        if page.find_element("text='Enter phone number'").await.is_ok() {
-            debug!("Entering phone number: {}", formatted_phone);
+        // Wait for phone input to be visible
+        if Locators::exists(&page, Locators::phone_number_label()).await {
+            tokio::time::sleep(Duration::from_millis(500)).await;
 
-            let phone_input = tokio::time::timeout(self.timeouts.element_wait, async {
+            // Find the phone input, click it, clear it, type the full international number.
+            // WhatsApp's own handler parses the country from what's typed.
+            let input = tokio::time::timeout(self.timeouts.element_wait, async {
                 loop {
-                    if let Ok(input) = page.find_element(Locators::phone_input()).await {
-                        return Ok::<_, anyhow::Error>(input);
+                    if let Ok(el) = page.find_element(Locators::phone_input()).await {
+                        return Ok::<_, anyhow::Error>(el);
                     }
-                    if let Ok(input) = page.find_element("input[type='tel']").await {
-                        return Ok(input);
+                    if let Ok(el) = page.find_element("input[type='text']").await {
+                        return Ok(el);
                     }
                     tokio::time::sleep(Duration::from_millis(200)).await;
                 }
@@ -431,24 +424,32 @@ impl AuthServiceTrait for AuthService {
             .await
             .map_err(|_| anyhow::anyhow!("Phone input not found"))??;
 
-            phone_input.click().await?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            // Clear the input using JS to bypass React's state management
+            let clear_js = r#"
+                (function() {
+                    const el = document.querySelector('input[aria-label="Type your phone number to log in to WhatsApp"]')
+                        || document.querySelector('input[type="text"]');
+                    if (!el) return false;
+                    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    setter.call(el, '');
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    return true;
+                })()
+            "#;
+            let _ = page.evaluate(clear_js).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
 
-            // Clear and type
-            let _ = phone_input.press_key("Control+A").await;
-            let _ = phone_input.press_key("Delete").await;
-            phone_input.type_str(&formatted_phone).await?;
+            input.click().await?;
+            input.type_str(&formatted_phone).await?;
+            info!("Typed phone number: {}", formatted_phone);
 
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            // Click Next button
-            if let Ok(next_btn) = page.find_element("text='Next'").await {
-                next_btn.click().await?;
-            } else if let Ok(submit) = page.find_element("button[type='submit']").await {
-                submit.click().await?;
-            } else {
+            // Click Next
+            if !Locators::click(&page, Locators::phone_submit_button()).await? {
                 return Err(anyhow::anyhow!("Could not find Next button"));
             }
+            info!("Clicked Next, waiting for verification code...");
         }
 
         // Wait for code screen
@@ -499,20 +500,108 @@ impl AuthServiceTrait for AuthService {
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
-        debug!("Logging out");
+        debug!("Logging out of WhatsApp Web");
 
-        // Click menu
-        if let Ok(menu) = page.find_element(Locators::menu_button()).await {
-            menu.click().await?;
+        // Step 1: Open the settings/menu dropdown.
+        // Try the three-dot menu button via multiple strategies.
+        let menu_opened = Locators::click(&page, Locators::menu_button()).await.unwrap_or(false)
+            || Locators::click(&page, "[data-icon='menu']").await.unwrap_or(false)
+            || {
+                // JS fallback: find the settings cog / three-dot icon in the header
+                let js = r#"(function() {
+                    // Look for the menu/settings button in the sidebar header
+                    var icons = document.querySelectorAll('header span[data-icon]');
+                    for (var i = 0; i < icons.length; i++) {
+                        var icon = icons[i].getAttribute('data-icon');
+                        if (icon === 'menu' || icon === 'settings') {
+                            var btn = icons[i].closest('button') || icons[i].closest('[role="button"]') || icons[i].parentElement;
+                            if (btn) { btn.click(); return true; }
+                        }
+                    }
+                    // Fallback: click the last button in the top-right area of the sidebar header
+                    var headers = document.querySelectorAll('#app header header');
+                    for (var h = 0; h < headers.length; h++) {
+                        var btns = headers[h].querySelectorAll('button');
+                        if (btns.length > 0) {
+                            btns[btns.length - 1].click();
+                            return true;
+                        }
+                    }
+                    return false;
+                })()"#;
+                page.evaluate(js).await
+                    .ok()
+                    .and_then(|r| r.into_value::<bool>().ok())
+                    .unwrap_or(false)
+            };
+
+        if !menu_opened {
+            return Err(anyhow::anyhow!("Failed to open menu"));
         }
 
-        // Click logout
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Ok(logout) = page.find_element(Locators::logout_button()).await {
-            logout.click().await?;
+        // Step 2: Wait for dropdown to appear, then click "Log out"
+        tokio::time::sleep(Duration::from_millis(600)).await;
+
+        let logout_clicked = Locators::click(&page, "text:Log out").await.unwrap_or(false)
+            || Locators::click(&page, Locators::logout_button()).await.unwrap_or(false);
+
+        if !logout_clicked {
+            return Err(anyhow::anyhow!("Failed to find 'Log out' in menu"));
         }
 
-        info!("Logout completed");
+        // Step 3: Wait for confirmation dialog and click confirmation button
+        tokio::time::sleep(Duration::from_millis(600)).await;
+
+        // The confirmation dialog has a "Log out" button — it's typically the last
+        // or second button in the dialog. We look for it specifically.
+        let confirm_js = r#"(function() {
+            // Find the confirmation dialog
+            var dialog = document.querySelector('[role="dialog"]')
+                || document.querySelector('[data-animate-modal-popup="true"]');
+            if (!dialog) return false;
+            // Find buttons inside
+            var buttons = dialog.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var text = (buttons[i].textContent || '').trim();
+                if (text === 'Log out') {
+                    buttons[i].click();
+                    return true;
+                }
+            }
+            // Fallback: click the last button (usually the confirm action)
+            if (buttons.length > 0) {
+                buttons[buttons.length - 1].click();
+                return true;
+            }
+            return false;
+        })()"#;
+
+        let confirmed = page.evaluate(confirm_js).await
+            .ok()
+            .and_then(|r| r.into_value::<bool>().ok())
+            .unwrap_or(false);
+
+        if !confirmed {
+            return Err(anyhow::anyhow!("Failed to confirm logout dialog"));
+        }
+
+        // Step 4: Wait for logout to complete (login screen should appear)
+        let logged_out = Locators::wait_for(
+            &page,
+            Locators::qr_code_canvas(),
+            10_000,
+        ).await || Locators::wait_for(
+            &page,
+            "text:Log into WhatsApp Web",
+            5_000,
+        ).await;
+
+        if logged_out {
+            info!("Logout completed — login screen visible");
+        } else {
+            info!("Logout actions performed — login screen not yet confirmed");
+        }
+
         Ok(())
     }
 }

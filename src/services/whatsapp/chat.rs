@@ -6,7 +6,6 @@
 use crate::{
     browser::BrowserService,
     config::AppConfig,
-    services::database::{DatabaseService, MediaType, MessageStatus},
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -59,7 +58,6 @@ pub struct ChatService {
     config: Arc<AppConfig>,
     browser_service: Arc<BrowserService>,
     message_queue: Semaphore,
-    db: Option<Arc<DatabaseService>>,
     /// Track if message listener has been injected into the browser
     listener_injected: AtomicBool,
 }
@@ -70,42 +68,7 @@ impl ChatService {
             config,
             browser_service,
             message_queue: Semaphore::new(1),
-            db: None,
             listener_injected: AtomicBool::new(false),
-        }
-    }
-
-    /// Create with database for message persistence
-    pub fn with_database(
-        config: Arc<AppConfig>,
-        browser_service: Arc<BrowserService>,
-        db: Arc<DatabaseService>,
-    ) -> Self {
-        Self {
-            config,
-            browser_service,
-            message_queue: Semaphore::new(1),
-            db: Some(db),
-            listener_injected: AtomicBool::new(false),
-        }
-    }
-
-    /// Get reference to database (if configured)
-    pub fn database(&self) -> Option<&Arc<DatabaseService>> {
-        self.db.as_ref()
-    }
-
-    /// Determine media type from file path
-    fn get_media_type(&self, path: &str) -> MediaType {
-        let mime = self.get_content_type(path);
-        if mime.contains("image") {
-            MediaType::Image
-        } else if mime.contains("video") {
-            MediaType::Video
-        } else if mime.contains("audio") {
-            MediaType::Voice
-        } else {
-            MediaType::Document
         }
     }
 
@@ -922,30 +885,6 @@ impl ChatServiceTrait for ChatService {
             }
         }
 
-        // Insert message into database as pending (if db configured)
-        let msg_id = if let Some(db) = &self.db {
-            let media_type = attachment_path
-                .map(|p| self.get_media_type(p))
-                .unwrap_or(MediaType::None);
-
-            let id = if media_type == MediaType::None {
-                db.insert_outgoing_message(phone, text.unwrap_or(""), MessageStatus::Processing)?
-            } else {
-                db.insert_outgoing_media(
-                    phone,
-                    media_type,
-                    attachment_path.unwrap(),
-                    attachment_path.and_then(|p| Path::new(p).file_name()?.to_str()),
-                    text,
-                    MessageStatus::Processing,
-                )?
-            };
-            debug!("Message queued with ID: {}", id);
-            Some(id)
-        } else {
-            None
-        };
-
         let _permit = tokio::time::timeout(
             std::time::Duration::from_millis(timeout),
             self.message_queue.acquire(),
@@ -957,50 +896,27 @@ impl ChatServiceTrait for ChatService {
         let page = self.get_page().await?;
 
         if !self.check_authorization(&page).await? {
-            // Update status to failed if db configured
-            if let (Some(db), Some(id)) = (&self.db, &msg_id) {
-                let _ = db.update_status(id, MessageStatus::Failed, Some("Not authorized"));
-            }
             return Err(anyhow::anyhow!("Not authorized"));
         }
 
-        // Attempt to send the message
-        let result = async {
-            self.navigate_to_chat(&page, phone).await?;
+        // Send the message
+        self.navigate_to_chat(&page, phone).await?;
 
-            match (attachment_path, text) {
-                (None, Some(msg)) if !msg.is_empty() => {
-                    self.send_text_only(&page, msg).await?;
-                }
-                (Some(path), caption) => {
-                    let mime = self.get_content_type(path);
-                    if mime.contains("image") || mime.contains("video") {
-                        self.send_image_or_video(&page, path, caption).await?;
-                    } else {
-                        self.send_document(&page, path, caption).await?;
-                    }
-                }
-                _ => return Err(anyhow::anyhow!("Invalid parameters")),
+        match (attachment_path, text) {
+            (None, Some(msg)) if !msg.is_empty() => {
+                self.send_text_only(&page, msg).await?;
             }
-            Ok(())
-        }
-        .await;
-
-        // Update database with result
-        if let Some(db) = &self.db {
-            if let Some(id) = &msg_id {
-                match &result {
-                    Ok(_) => {
-                        db.update_status(id, MessageStatus::Sent, None)?;
-                    }
-                    Err(e) => {
-                        db.update_status(id, MessageStatus::Failed, Some(&e.to_string()))?;
-                    }
+            (Some(path), caption) => {
+                let mime = self.get_content_type(path);
+                if mime.contains("image") || mime.contains("video") {
+                    self.send_image_or_video(&page, path, caption).await?;
+                } else {
+                    self.send_document(&page, path, caption).await?;
                 }
             }
+            _ => return Err(anyhow::anyhow!("Invalid parameters")),
         }
 
-        result?;
         info!("Message sent to {}", phone);
         Ok(())
     }

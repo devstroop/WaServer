@@ -30,7 +30,7 @@ pub struct WhatsAppEngine {
 }
 
 impl WhatsAppEngine {
-    /// Creates a new WAS instance with the provided configuration.
+    /// Creates a new WAS account with the provided configuration.
     pub async fn new(config: AppConfig) -> Result<Self> {
         info!("Initializing WAS (WhatsApp Server)");
 
@@ -77,7 +77,7 @@ impl WhatsAppEngine {
         })
     }
 
-    /// Creates a new WAS instance with default configuration.
+    /// Creates a new WAS account with default configuration.
     pub async fn with_defaults() -> Result<Self> {
         let config = AppConfig::load().map_err(|e| WhatsAppError::Configuration(e.to_string()))?;
         Self::new(config).await

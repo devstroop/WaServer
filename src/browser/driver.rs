@@ -38,7 +38,7 @@ pub struct BrowserServiceConfig {
 }
 
 impl BrowserServiceConfig {
-    /// Create config for a specific instance instance
+    /// Create config for a specific account account
     pub fn for_account(
         account_data_dir: &PathBuf,
         headless: bool,
@@ -60,12 +60,14 @@ impl BrowserServiceConfig {
     }
 }
 
-/// Browser service for managing Chrome browser instances
+/// Browser service for managing Chrome browser accounts
 pub struct BrowserService {
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,
     whatsapp_page: Arc<Mutex<Option<Page>>>,
     user_data_dir: Arc<Mutex<Option<String>>>,
+    /// Scripts to inject after every WhatsApp Web page navigation
+    page_scripts: Arc<Mutex<Vec<String>>>,
 }
 
 impl BrowserService {
@@ -76,6 +78,24 @@ impl BrowserService {
             browser: Arc::new(Mutex::new(None)),
             whatsapp_page: Arc::new(Mutex::new(None)),
             user_data_dir: Arc::new(Mutex::new(None)),
+            page_scripts: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Register a JavaScript snippet to execute after every WhatsApp Web page load.
+    /// Scripts are run in order after navigation completes.
+    pub async fn register_page_script(&self, js: impl Into<String>) {
+        self.page_scripts.lock().await.push(js.into());
+    }
+
+    /// Execute all registered page scripts on the given page.
+    async fn run_page_scripts(&self, page: &Page) {
+        let scripts = self.page_scripts.lock().await;
+        for (i, script) in scripts.iter().enumerate() {
+            match page.evaluate(script.as_str()).await {
+                Ok(_) => debug!("Page script {}/{} executed", i + 1, scripts.len()),
+                Err(e) => tracing::warn!("Page script {}/{} failed: {}", i + 1, scripts.len(), e),
+            }
         }
     }
 
@@ -221,6 +241,7 @@ impl BrowserService {
 
                 if let Some(page) = whatsapp_page {
                     info!("WhatsApp Web page loaded successfully");
+                    self.run_page_scripts(&page).await;
                     drop(browser_guard); // Release browser lock before acquiring page lock
                     *self.whatsapp_page.lock().await = Some(page);
                 } else {
@@ -372,6 +393,7 @@ impl BrowserService {
 
         debug!("Creating new WhatsApp Web page");
         let page = self.create_new_page("https://web.whatsapp.com").await?;
+        self.run_page_scripts(&page).await;
         *self.whatsapp_page.lock().await = Some(page.clone());
         Ok(page)
     }

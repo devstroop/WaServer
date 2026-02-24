@@ -1,15 +1,15 @@
-//! Chat Handlers - Uses path parameter {instance_id}
+//! Chat Handlers - Uses path parameter {account_id}
 //!
-//! All chat and message routes use path parameter /api/v1/instances/{instance_id}/... to identify which WhatsApp instance to use.
+//! All chat and message routes use path parameter /api/v1/accounts/{account_id}/... to identify which WhatsApp account to use.
 
 use std::sync::Arc;
 
 use crate::{
     models::chat::{
-        ChatListResponse, ErrorResponse, Message, MessageListResponse, MessageQueryParams,
+        ChatListResponse, ErrorResponse, MessageListResponse, MessageQueryParams,
         SendMessageResponse,
     },
-    services::InstanceManager,
+    services::AccountManager,
 };
 use axum::{
     extract::{Multipart, Path, Query, State},
@@ -38,12 +38,12 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
     } else if error_msg.contains("is busy") {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            "Instance is busy with another operation".to_string(),
+            "Account is busy with another operation".to_string(),
         )
     } else if error_msg.contains("Browser not") || error_msg.contains("not initialized") {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            "Browser not available. Please restart the instance.".to_string(),
+            "Browser not available. Please restart the account.".to_string(),
         )
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, error_msg.to_string())
@@ -63,13 +63,13 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
 /// - Unread count
 #[utoipa::path(
     get,
-    path = "/api/v1/instances/{instance_id}/chats",
+    path = "/api/v1/accounts/{account_id}/chats",
     params(
-        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+        ("account_id" = String, Path, description = "Account ID (UUID)")
     ),
     responses(
         (status = 200, description = "List of chats", body = ChatListResponse),
-        (status = 404, description = "Instance not found", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
         (status = 401, description = "Not authorized - scan QR first", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -80,54 +80,54 @@ fn categorize_error(error_msg: &str) -> (StatusCode, String) {
     tag = "Messaging"
 )]
 pub async fn list_chats(
-    State(manager): State<Arc<InstanceManager>>,
-    Path(instance_id): Path<String>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> Result<Json<ChatListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let instance = match manager.get_instance(&instance_id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse::new(format!(
-                    "Instance '{}' not found",
-                    instance_id
+                    "Account '{}' not found",
+                    account_id
                 ))),
             ));
         }
     };
 
     // Check if browser is running
-    if !instance.browser_service().is_running().await {
+    if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string())),
+            Json(ErrorResponse::new("Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string())),
         ));
     }
 
-    if instance.is_busy().await {
+    if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new(
-                "Instance is busy, please try again later".to_string(),
+                "Account is busy, please try again later".to_string(),
             )),
         ));
     }
 
-    let result = instance
-        .execute_with_busy_flag(async { instance.chat_service().get_chat_list().await })
+    let result = account
+        .execute_with_busy_flag(async { account.chat_service().get_chat_list().await })
         .await;
 
     match result {
         Ok(chats) => {
             let total = chats.len();
-            info!("Instance {} - Retrieved {} chats", instance.id, total);
+            info!("Account {} - Retrieved {} chats", account.id, total);
             Ok(Json(ChatListResponse { chats, total }))
         }
         Err(e) => {
             let error_msg = e.to_string();
             error!(
-                "Instance {} - Error listing chats: {}",
-                instance.id, error_msg
+                "Account {} - Error listing chats: {}",
+                account.id, error_msg
             );
             let (status, msg) = categorize_error(&error_msg);
             Err((status, Json(ErrorResponse::new(msg))))
@@ -151,16 +151,16 @@ pub async fn list_chats(
 /// - `load_more`: Scroll up to load older messages (default: false)
 #[utoipa::path(
     get,
-    path = "/api/v1/instances/{instance_id}/chats/{chat_id}",
+    path = "/api/v1/accounts/{account_id}/chats/{chat_id}",
     params(
-        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
+        ("account_id" = String, Path, description = "Account ID (UUID)"),
         ("chat_id" = String, Path, description = "Phone number, contact name, or chat ID"),
         ("limit" = Option<u32>, Query, description = "Maximum messages to retrieve"),
         ("load_more" = Option<bool>, Query, description = "Load older messages")
     ),
     responses(
         (status = 200, description = "List of messages", body = MessageListResponse),
-        (status = 404, description = "Instance or chat not found", body = ErrorResponse),
+        (status = 404, description = "Account or chat not found", body = ErrorResponse),
         (status = 401, description = "Not authorized - scan QR first", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -171,53 +171,53 @@ pub async fn list_chats(
     tag = "Messaging"
 )]
 pub async fn get_chat_messages(
-    State(manager): State<Arc<InstanceManager>>,
-    Path((instance_id, chat_id)): Path<(String, String)>,
+    State(manager): State<Arc<AccountManager>>,
+    Path((account_id, chat_id)): Path<(String, String)>,
     Query(params): Query<MessageQueryParams>,
 ) -> Result<Json<MessageListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let instance = match manager.get_instance(&instance_id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse::new(format!(
-                    "Instance '{}' not found",
-                    instance_id
+                    "Account '{}' not found",
+                    account_id
                 ))),
             ));
         }
     };
 
     // Check if browser is running
-    if !instance.browser_service().is_running().await {
+    if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new(
-                "Browser not running. Start instance first.".to_string(),
+                "Browser not running. Start account first.".to_string(),
             )),
         ));
     }
 
-    if instance.is_busy().await {
+    if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new(
-                "Instance is busy, please try again later".to_string(),
+                "Account is busy, please try again later".to_string(),
             )),
         ));
     }
 
     debug!(
-        "Instance {} - Getting messages for chat: {}",
-        instance.id, chat_id
+        "Account {} - Getting messages for chat: {}",
+        account.id, chat_id
     );
 
     let limit = params.limit;
     let load_more = params.load_more.unwrap_or(false);
 
-    let result = instance
+    let result = account
         .execute_with_busy_flag(async {
-            instance
+            account
                 .chat_service()
                 .get_messages(&chat_id, limit, load_more)
                 .await
@@ -227,16 +227,16 @@ pub async fn get_chat_messages(
     match result {
         Ok(response) => {
             info!(
-                "Instance {} - Retrieved {} messages from chat {}",
-                instance.id, response.total, chat_id
+                "Account {} - Retrieved {} messages from chat {}",
+                account.id, response.total, chat_id
             );
             Ok(Json(response))
         }
         Err(e) => {
             let error_msg = e.to_string();
             error!(
-                "Instance {} - Error getting messages: {}",
-                instance.id, error_msg
+                "Account {} - Error getting messages: {}",
+                account.id, error_msg
             );
 
             if error_msg.contains("Invalid phone") {
@@ -264,13 +264,13 @@ pub async fn get_chat_messages(
 /// Useful for polling new messages without navigating to each chat.
 #[utoipa::path(
     get,
-    path = "/api/v1/instances/{instance_id}/chats/events",
+    path = "/api/v1/accounts/{account_id}/chats/events",
     params(
-        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+        ("account_id" = String, Path, description = "Account ID (UUID)")
     ),
     responses(
         (status = 200, description = "New incoming messages", body = Vec<crate::models::chat::MessageInfo>),
-        (status = 404, description = "Instance not found", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
         (status = 401, description = "Not authorized", body = ErrorResponse),
         (status = 503, description = "Service unavailable", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -281,45 +281,45 @@ pub async fn get_chat_messages(
     tag = "Messaging"
 )]
 pub async fn watch_messages(
-    State(manager): State<Arc<InstanceManager>>,
-    Path(instance_id): Path<String>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
 ) -> Result<Json<Vec<crate::models::chat::MessageInfo>>, (StatusCode, Json<ErrorResponse>)> {
-    let instance = match manager.get_instance(&instance_id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse::new(format!(
-                    "Instance '{}' not found",
-                    instance_id
+                    "Account '{}' not found",
+                    account_id
                 ))),
             ));
         }
     };
 
-    if !instance.browser_service().is_running().await {
+    if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new("Browser not running".to_string())),
         ));
     }
 
-    if instance.is_busy().await {
+    if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Instance is busy".to_string())),
+            Json(ErrorResponse::new("Account is busy".to_string())),
         ));
     }
 
-    let result = instance
-        .execute_with_busy_flag(async { instance.chat_service().watch_messages().await })
+    let result = account
+        .execute_with_busy_flag(async { account.chat_service().watch_messages().await })
         .await;
 
     match result {
         Ok(messages) => {
             debug!(
-                "Instance {} - Watch found {} new messages",
-                instance.id,
+                "Account {} - Watch found {} new messages",
+                account.id,
                 messages.len()
             );
             Ok(Json(messages))
@@ -346,15 +346,15 @@ pub async fn watch_messages(
 /// **Note:** At least one of `text` or `file` must be provided.
 #[utoipa::path(
     post,
-    path = "/api/v1/instances/{instance_id}/messages",
+    path = "/api/v1/accounts/{account_id}/messages",
     params(
-        ("instance_id" = String, Path, description = "Instance ID (UUID)")
+        ("account_id" = String, Path, description = "Account ID (UUID)")
     ),
     responses(
         (status = 200, description = "Message sent successfully", body = SendMessageResponse),
         (status = 400, description = "Bad request - Phone is required and either text or file must be provided", body = ErrorResponse),
-        (status = 404, description = "Instance not found", body = ErrorResponse),
-        (status = 503, description = "Service unavailable - browser not running or instance busy", body = ErrorResponse),
+        (status = 404, description = "Account not found", body = ErrorResponse),
+        (status = 503, description = "Service unavailable - browser not running or account busy", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -363,37 +363,37 @@ pub async fn watch_messages(
     tag = "Messaging"
 )]
 pub async fn send_message(
-    State(manager): State<Arc<InstanceManager>>,
-    Path(instance_id): Path<String>,
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<SendMessageResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let instance = match manager.get_instance(&instance_id).await {
+    let account = match manager.get_account(&account_id).await {
         Some(acc) => acc,
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse::new(format!(
-                    "Instance '{}' not found",
-                    instance_id
+                    "Account '{}' not found",
+                    account_id
                 ))),
             ));
         }
     };
 
     // Check if browser is running
-    if !instance.browser_service().is_running().await {
+    if !account.browser_service().is_running().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Browser not running. Start instance first via POST /api/v1/instances/{instance_id}/start".to_string())),
+            Json(ErrorResponse::new("Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string())),
         ));
     }
 
-    // Check if instance is busy
-    if instance.is_busy().await {
+    // Check if account is busy
+    if account.is_busy().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse::new(
-                "Instance is busy processing another operation, please try again later".to_string(),
+                "Account is busy processing another operation, please try again later".to_string(),
             )),
         ));
     }
@@ -493,8 +493,8 @@ pub async fn send_message(
     })?;
 
     debug!(
-        "Instance {} - Processing send message request for phone: {}",
-        instance.id, phone
+        "Account {} - Processing send message request for phone: {}",
+        account.id, phone
     );
 
     // Validate that at least text or file is provided
@@ -539,9 +539,9 @@ pub async fn send_message(
     };
 
     // Send the message
-    let result = instance
+    let result = account
         .execute_with_busy_flag(async {
-            instance
+            account
                 .chat_service()
                 .send_message(
                     &phone,
@@ -562,10 +562,10 @@ pub async fn send_message(
     match result {
         Ok(_) => {
             let msg_id = Uuid::new_v4().to_string();
-            instance.track_message_sent();
+            account.track_message_sent();
             info!(
-                "Instance {} - Message sent successfully to {} (id: {})",
-                instance.id, phone, msg_id
+                "Account {} - Message sent successfully to {} (id: {})",
+                account.id, phone, msg_id
             );
             Ok(Json(SendMessageResponse {
                 status: "Message sent successfully".to_string(),
@@ -574,72 +574,14 @@ pub async fn send_message(
         }
         Err(e) => {
             let error_msg = e.to_string();
-            instance.track_error();
+            account.track_error();
             error!(
-                "Instance {} - Error sending message: {}",
-                instance.id, error_msg
+                "Account {} - Error sending message: {}",
+                account.id, error_msg
             );
 
             let (status, msg) = categorize_error(&error_msg);
             Err((status, Json(ErrorResponse::new(msg))))
-        }
-    }
-}
-
-// ============================================================================
-// Message by ID Endpoint
-// ============================================================================
-
-/// Get a specific message by ID
-///
-/// Returns full message details including status
-#[utoipa::path(
-    get,
-    path = "/api/v1/instances/{instance_id}/messages/{message_id}",
-    params(
-        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
-        ("message_id" = String, Path, description = "Message ID to retrieve")
-    ),
-    responses(
-        (status = 200, description = "Message details", body = Message),
-        (status = 404, description = "Instance or message not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    security(
-        ("bearer_auth" = [])
-    ),
-    tag = "Messaging"
-)]
-pub async fn get_message(
-    State(manager): State<Arc<InstanceManager>>,
-    Path((instance_id, message_id)): Path<(String, String)>,
-) -> Result<Json<Message>, (StatusCode, Json<ErrorResponse>)> {
-    let instance = match manager.get_instance(&instance_id).await {
-        Some(acc) => acc,
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new(format!(
-                    "Instance '{}' not found",
-                    instance_id
-                ))),
-            ));
-        }
-    };
-    let db = instance.database();
-
-    match db.get_message(&message_id) {
-        Ok(Some(msg)) => Ok(Json(Message::from(msg))),
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("Message not found".to_string())),
-        )),
-        Err(e) => {
-            error!("Instance {} - Failed to get message: {}", instance.id, e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new(format!("Failed to get message: {}", e))),
-            ))
         }
     }
 }
