@@ -423,3 +423,58 @@ pub async fn update_account_config(
             .into_response(),
     }
 }
+
+/// Reset an account
+///
+/// Stops the browser and wipes all session data (chrome profile, sessions, media).
+/// The account itself is preserved — only runtime data is cleared.
+/// Use this to start fresh without deleting and re-creating the account.
+#[utoipa::path(
+    post,
+    path = "/api/v1/accounts/{account_id}/reset",
+    tag = "Account",
+    params(
+        ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
+    ),
+    responses(
+        (status = 200, description = "Account reset", body = AccountActionResponse),
+        (status = 404, description = "Account not found"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn reset_account(
+    State(manager): State<Arc<AccountManager>>,
+    Path(account_id): Path<String>,
+) -> impl IntoResponse {
+    let account_ref = match manager.get_account(&account_id).await {
+        Some(acc) => acc,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "not_found",
+                    "message": format!("Account '{}' not found", account_id)
+                })),
+            )
+                .into_response()
+        }
+    };
+
+    let id = account_ref.id;
+
+    match account_ref.reset().await {
+        Ok(()) => Json(json!(AccountActionResponse {
+            message: "Account reset — all session data cleared".to_string(),
+            account_id: id,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "reset_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}

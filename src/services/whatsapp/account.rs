@@ -340,6 +340,31 @@ impl WhatsAppAccount {
         Ok(())
     }
 
+    /// Reset the account — stop browser and wipe all session data (chrome profile, sessions, media).
+    /// The account record and config are preserved; only runtime/browser data is cleared.
+    pub async fn reset(&self) -> Result<()> {
+        info!("Resetting account '{}'", self.id);
+
+        // Stop browser first
+        self.stop().await.ok(); // ignore if already stopped
+
+        // Wipe session-related directories
+        let dirs_to_clear = ["chrome-profile", "sessions", "media"];
+        for dir_name in &dirs_to_clear {
+            let dir = self.data_dir.join(dir_name);
+            if dir.exists() {
+                tokio::fs::remove_dir_all(&dir).await?;
+                tokio::fs::create_dir_all(&dir).await?;
+            }
+        }
+
+        // Clear auth cache
+        self.invalidate_auth_cache().await;
+
+        info!("Account '{}' reset — session data cleared", self.id);
+        Ok(())
+    }
+
     /// Get current account status
     pub async fn status(&self) -> AccountStatus {
         self.status.read().await.clone()

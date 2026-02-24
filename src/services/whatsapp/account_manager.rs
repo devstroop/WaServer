@@ -289,9 +289,15 @@ impl AccountManager {
         account.stop().await
     }
 
-    /// Discover existing accounts from filesystem
+    /// Reset an account — stop browser and wipe all session data
+    pub async fn reset_account(&self, id: &str) -> Result<()> {
+        let account = self.get_account_or_error(id).await?;
+        account.reset().await
+    }
+
+    /// Discover existing accounts from the database
     ///
-    /// Returns `(newly_loaded, already_loaded)` — accounts just loaded from disk
+    /// Returns `(newly_loaded, already_loaded)` — accounts just loaded
     /// and accounts that were already in memory.
     pub async fn discover_accounts(&self) -> Result<(Vec<AccountId>, Vec<AccountId>)> {
         let mut newly_loaded = Vec::new();

@@ -102,6 +102,7 @@ async fn run_server(
         extract::DefaultBodyLimit,
         http::Method,
         middleware,
+        response::Html,
         routing::{delete, get, post, put},
         Router,
     };
@@ -149,6 +150,7 @@ async fn run_server(
             accounts::start_account,
             accounts::stop_account,
             accounts::screenshot,
+            accounts::reset_account,
             accounts::get_account_config,
             accounts::update_account_config,
             // WhatsApp operations (uses path param)
@@ -164,7 +166,6 @@ async fn run_server(
             chat::get_chat_messages,
             chat::watch_messages,
             chat::send_message,
-            chat::get_message,
         ),
         components(
             schemas(
@@ -181,7 +182,7 @@ async fn run_server(
                 AccountConfig, AccountBrowserConfig, AccountWebhookConfig, WebhookEndpoint, AccountRateLimits,
                 UpdateAccountConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,
                 // Account operations
-                WhatsAppStatusResponse, PhoneLinkRequest, ProfileInfo,
+                WhatsAppStatusResponse, ProfileInfo,
                 UpdateProfileRequest,
             )
         ),
@@ -255,6 +256,7 @@ async fn run_server(
         // Account lifecycle
         .route("/:account_id/start", post(accounts::start_account))
         .route("/:account_id/stop", delete(accounts::stop_account))
+        .route("/:account_id/reset", post(accounts::reset_account))
         .route("/:account_id/screenshot", get(accounts::screenshot))
         .route("/:account_id/config", get(accounts::get_account_config))
         .route(
@@ -276,7 +278,6 @@ async fn run_server(
         .route("/:account_id/chats/events", get(chat::watch_messages))
         .route("/:account_id/chats/:chat_id", get(chat::get_chat_messages))
         .route("/:account_id/messages", post(chat::send_message))
-        .route("/:account_id/messages/:message_id", get(chat::get_message))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
@@ -302,6 +303,51 @@ async fn run_server(
     } else {
         info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
+
+    // Root landing page
+    let swagger_enabled = config.swagger.enabled;
+    let swagger_path = config.swagger.path.clone();
+    app = app.route("/", get(move || async move {
+        let swagger_link = if swagger_enabled {
+            format!(r#"<a href="{swagger_path}">API Documentation (Swagger UI)</a>"#)
+        } else {
+            "API Documentation (disabled)".to_string()
+        };
+        Html(format!(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WAS — WhatsApp Server</title>
+<style>
+  *{{margin:0;padding:0;box-sizing:border-box}}
+  body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b141a;color:#e9edef;min-height:100vh;display:flex;align-items:center;justify-content:center}}
+  .card{{background:#1f2c34;border-radius:12px;padding:2.5rem;max-width:480px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,.4)}}
+  h1{{font-size:1.6rem;margin-bottom:.25rem;color:#00a884}}
+  .version{{font-size:.85rem;color:#8696a0;margin-bottom:1.5rem}}
+  .links{{display:flex;flex-direction:column;gap:.75rem}}
+  a{{color:#53bdeb;text-decoration:none;padding:.6rem .8rem;border-radius:8px;background:#182229;transition:background .15s}}
+  a:hover{{background:#233138}}
+  .sep{{border-top:1px solid #2a3942;margin:.5rem 0}}
+  .status{{font-size:.8rem;color:#8696a0;margin-top:1rem;text-align:center}}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>WAS</h1>
+  <div class="version">WhatsApp Server v{version}</div>
+  <div class="links">
+    {swagger_link}
+    <a href="/api/health">Health Check</a>
+    <a href="/api/metrics">Metrics</a>
+    <div class="sep"></div>
+    <a href="/api-docs/openapi.json">OpenAPI Spec (JSON)</a>
+  </div>
+  <div class="status">Ready</div>
+</div>
+</body>
+</html>"#, version = env!("CARGO_PKG_VERSION")))
+    }));
 
     // Middleware
     let app = app.layer(
