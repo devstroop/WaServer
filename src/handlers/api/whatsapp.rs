@@ -126,6 +126,31 @@ pub async fn get_qr_code(
             .into_response();
     }
 
+    // Check if already authorized
+    match account.auth_service().is_authorized().await {
+        Ok(true) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "already_authorized",
+                    "message": "Account is already authorized. Use /api/v1/accounts/{account_id}/unlink to disconnect first."
+                })),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "auth_check_failed",
+                    "message": e.to_string()
+                })),
+            )
+                .into_response();
+        }
+        Ok(false) => {} // Continue to QR code generation
+    }
+
     match account.auth_service().get_auth_qr_code().await {
         Ok(qr_base64) => {
             match base64::engine::general_purpose::STANDARD.decode(&qr_base64) {
@@ -219,6 +244,31 @@ pub async fn link_phone(
                 .into_response();
         }
     };
+
+    // Check if already authorized
+    match account.auth_service().is_authorized().await {
+        Ok(true) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "already_authorized",
+                    "message": "Account is already authorized. Use /api/v1/accounts/{account_id}/unlink to disconnect first."
+                })),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "auth_check_failed",
+                    "message": e.to_string()
+                })),
+            )
+                .into_response();
+        }
+        Ok(false) => {} // Continue to phone linking
+    }
 
     match account
         .auth_service()

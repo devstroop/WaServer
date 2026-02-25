@@ -12,16 +12,6 @@
             "args": [
                 "@playwright/mcp@latest"
             ]
-        },
-        "rest-api": {
-            "command": "node",
-            "args": [
-                "~/mcp-servers/rest-mcp/build/index.js"
-            ],
-            "env": {
-                "REST_BASE_URL": "http://localhost:3000",
-                "AUTH_BEARER": "change-this-secret-key-in-production"
-            }
         }
     }
 }
