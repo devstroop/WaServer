@@ -44,7 +44,7 @@ const METADATA_FILE: &str = "account.json";
 const ACCOUNT_CONFIG_FILE: &str = "account_config.json";
 
 /// Self-contained WhatsApp account with isolated resources
-/// Each account is identified by UUID. Phone/display_name live in metadata after WhatsApp login.
+/// Each account is identified by UUID. Phone/account_name live in metadata after WhatsApp login.
 pub struct WhatsAppAccount {
     /// Account identifier (UUID)
     pub id: AccountId,
@@ -160,7 +160,7 @@ impl WhatsAppAccount {
             let metadata = AccountMetadata::new(
                 config.id,
                 config.phone_number.clone(),
-                config.display_name.clone(),
+                config.account_name.clone(),
             );
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
             info!("Created new metadata for account '{}'", config.id);
@@ -198,8 +198,8 @@ impl WhatsAppAccount {
             // Create default config from AccountSetupConfig
             let account_config = AccountConfig {
                 account_id: Some(config.id),
-                display_name: config.display_name.clone(),
-                auto_start: config.auto_start,
+                account_name: config.account_name.clone(),
+                idle_timeout: 300,
                 browser: AccountBrowserConfig {
                     headless: config.browser.headless.unwrap_or(true),
                     timeout_ms: 30000,
@@ -234,11 +234,11 @@ impl WhatsAppAccount {
         let mut config = self.account_config.write().await;
 
         // Apply partial updates
-        if let Some(display_name) = update.display_name {
-            config.display_name = Some(display_name);
+        if let Some(account_name) = update.account_name {
+            config.account_name = Some(account_name);
         }
-        if let Some(auto_start) = update.auto_start {
-            config.auto_start = auto_start;
+        if let Some(idle_timeout) = update.idle_timeout {
+            config.idle_timeout = idle_timeout;
         }
         if let Some(browser) = update.browser {
             if let Some(headless) = browser.headless {
@@ -674,11 +674,10 @@ impl WhatsAppAccount {
         AccountInfo {
             id: self.id,
             phone_number: metadata.phone_number.clone(),
-            display_name: metadata.display_name.clone(),
+            account_name: metadata.account_name.clone(),
             status,
             authorized,
             created_at: metadata.created_at,
-            last_activity: self.metrics.last_activity(),
         }
     }
 

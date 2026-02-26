@@ -90,3 +90,16 @@ retry_delay_ms = 1000
 # url = "https://your-server.com/webhook/whatsapp"
 # secret = "your-hmac-secret-for-signature-verification"
 # headers = { "X-Custom-Header" = "value" }
+
+# =============================================================================
+# Accounts - Multi-account configuration
+# =============================================================================
+# [accounts]
+# Base directory for all account data (default: ~/.was/accounts)
+# base_directory = "/path/to/accounts"
+
+# [accounts.defaults]
+# Default idle timeout in seconds before auto-sleep (0 = never, default 300)
+# idle_timeout = 300
+# Default headless mode for new accounts
+# headless = true

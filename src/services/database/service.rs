@@ -17,9 +17,9 @@ use super::schema;
 pub struct AccountRecord {
     pub id: String,
     pub phone_number: String,
-    pub display_name: String,
+    pub account_name: String,
     pub data_dir: String,
-    pub auto_start: bool,
+    pub idle_timeout: u64,
     pub status: String,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -63,9 +63,9 @@ impl Database {
         &self,
         id: &str,
         phone_number: &str,
-        display_name: &str,
+        account_name: &str,
         data_dir: &str,
-        auto_start: bool,
+        idle_timeout: u64,
     ) -> Result<AccountRecord> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
@@ -84,19 +84,19 @@ impl Database {
 
         let now = chrono::Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT INTO account (id, phone_number, display_name, data_dir, auto_start, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'stopped', ?6, ?7)",
-            rusqlite::params![id, phone_number, display_name, data_dir, auto_start as i32, &now, &now],
+            "INSERT INTO account (id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'sleeping', ?6, ?7)",
+            rusqlite::params![id, phone_number, account_name, data_dir, idle_timeout as i64, &now, &now],
         )
         .map_err(|e| anyhow!("Failed to create account: {}", e))?;
 
         Ok(AccountRecord {
             id: id.to_string(),
             phone_number: phone_number.to_string(),
-            display_name: display_name.to_string(),
+            account_name: account_name.to_string(),
             data_dir: data_dir.to_string(),
-            auto_start,
-            status: "stopped".to_string(),
+            idle_timeout,
+            status: "sleeping".to_string(),
             created_at: Some(now.clone()),
             updated_at: Some(now),
         })
@@ -107,7 +107,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, phone_number, display_name, data_dir, auto_start, status, created_at, updated_at FROM account WHERE id = ?1")
+            .prepare("SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at FROM account WHERE id = ?1")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let record = stmt
@@ -115,9 +115,9 @@ impl Database {
                 Ok(AccountRecord {
                     id: row.get(0)?,
                     phone_number: row.get(1)?,
-                    display_name: row.get(2)?,
+                    account_name: row.get(2)?,
                     data_dir: row.get(3)?,
-                    auto_start: row.get::<_, i32>(4)? != 0,
+                    idle_timeout: row.get::<_, i64>(4)? as u64,
                     status: row.get(5)?,
                     created_at: row.get(6)?,
                     updated_at: row.get(7)?,
@@ -133,7 +133,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, phone_number, display_name, data_dir, auto_start, status, created_at, updated_at FROM account WHERE phone_number = ?1 LIMIT 1")
+            .prepare("SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at FROM account WHERE phone_number = ?1 LIMIT 1")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let record = stmt
@@ -141,9 +141,9 @@ impl Database {
                 Ok(AccountRecord {
                     id: row.get(0)?,
                     phone_number: row.get(1)?,
-                    display_name: row.get(2)?,
+                    account_name: row.get(2)?,
                     data_dir: row.get(3)?,
-                    auto_start: row.get::<_, i32>(4)? != 0,
+                    idle_timeout: row.get::<_, i64>(4)? as u64,
                     status: row.get(5)?,
                     created_at: row.get(6)?,
                     updated_at: row.get(7)?,
@@ -159,7 +159,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, phone_number, display_name, data_dir, auto_start, status, created_at, updated_at FROM account")
+            .prepare("SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at FROM account")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let records = stmt
@@ -167,9 +167,9 @@ impl Database {
                 Ok(AccountRecord {
                     id: row.get(0)?,
                     phone_number: row.get(1)?,
-                    display_name: row.get(2)?,
+                    account_name: row.get(2)?,
                     data_dir: row.get(3)?,
-                    auto_start: row.get::<_, i32>(4)? != 0,
+                    idle_timeout: row.get::<_, i64>(4)? as u64,
                     status: row.get(5)?,
                     created_at: row.get(6)?,
                     updated_at: row.get(7)?,
@@ -196,16 +196,16 @@ impl Database {
         Ok(())
     }
 
-    /// Update display_name for an account.
-    pub fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
+    /// Update account_name for an account.
+    pub fn update_account_name(&self, id: &str, account_name: &str) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
         let now = chrono::Utc::now().to_rfc3339();
 
         conn.execute(
-            "UPDATE account SET display_name = ?1, updated_at = ?2 WHERE id = ?3",
-            rusqlite::params![display_name, &now, id],
+            "UPDATE account SET account_name = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![account_name, &now, id],
         )
-        .map_err(|e| anyhow!("Failed to update display_name: {}", e))?;
+        .map_err(|e| anyhow!("Failed to update account_name: {}", e))?;
 
         Ok(())
     }

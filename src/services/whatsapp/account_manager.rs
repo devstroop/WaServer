@@ -86,27 +86,26 @@ impl AccountManager {
 
         // Use UUID as directory name
         let account_dir = self.base_dir.join(account_id.to_string());
-        let display_name = request.display_name.clone();
-        let auto_start = request.auto_start.unwrap_or(false);
+        let account_name = request.account_name.clone();
+        let idle_timeout = request.idle_timeout.unwrap_or(300);
 
         // Persist to database first
         self.db
             .create_account(
                 &account_id.to_string(),
                 &phone_number,
-                &display_name,
+                &account_name,
                 &account_dir.to_string_lossy(),
-                auto_start,
+                idle_timeout,
             )?;
 
         // Create account config
         let setup_config = AccountSetupConfig {
             id: account_id,
             phone_number: Some(phone_number.clone()),
-            display_name: Some(display_name.clone()),
+            account_name: Some(account_name.clone()),
             data_dir: account_dir.clone(),
             browser: request.browser.clone().unwrap_or_default(),
-            auto_start,
         };
 
         // Create the account
@@ -127,7 +126,7 @@ impl AccountManager {
         Ok(CreateAccountResponse {
             id: account_id,
             phone_number,
-            display_name,
+            account_name,
             status: "created".to_string(),
             data_directory: account_dir.to_string_lossy().to_string(),
             created_at: Utc::now().to_rfc3339(),
@@ -326,10 +325,9 @@ impl AccountManager {
             let setup_config = AccountSetupConfig {
                 id: account_id,
                 phone_number: Some(record.phone_number.clone()),
-                display_name: Some(record.display_name.clone()),
+                account_name: Some(record.account_name.clone()),
                 data_dir: data_dir.clone(),
                 browser: Default::default(),
-                auto_start: record.auto_start,
             };
 
             match WhatsAppAccount::new(setup_config, self.config.clone()).await {

@@ -19,16 +19,13 @@ pub struct AccountSetupConfig {
     pub id: AccountId,
     /// Phone number in E.164 format (populated after WhatsApp login)
     pub phone_number: Option<String>,
-    /// Optional display name for the account (populated after WhatsApp login)
-    pub display_name: Option<String>,
+    /// Optional account name (user-defined label)
+    pub account_name: Option<String>,
     /// Data directory for this account (browser profile, database, etc.)
     pub data_dir: PathBuf,
     /// Browser configuration overrides
     #[serde(default)]
     pub browser: BrowserOverrides,
-    /// Whether to auto-start the browser on server startup
-    #[serde(default)]
-    pub auto_start: bool,
 }
 
 /// Browser configuration specific to an account
@@ -49,13 +46,13 @@ pub struct AccountConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<AccountId>,
 
-    /// Display name for this account
+    /// Account name (user-defined label)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    pub account_name: Option<String>,
 
-    /// Auto-start browser on server startup
-    #[serde(default)]
-    pub auto_start: bool,
+    /// Idle timeout in seconds before the account auto-sleeps (0 = never sleep)
+    #[serde(default = "default_idle_timeout")]
+    pub idle_timeout: u64,
 
     /// Browser configuration
     #[serde(default)]
@@ -70,12 +67,16 @@ pub struct AccountConfig {
     pub rate_limits: AccountRateLimits,
 }
 
+fn default_idle_timeout() -> u64 {
+    300
+}
+
 impl Default for AccountConfig {
     fn default() -> Self {
         Self {
             account_id: None,
-            display_name: None,
-            auto_start: false,
+            account_name: None,
+            idle_timeout: 300,
             browser: AccountBrowserConfig::default(),
             webhooks: AccountWebhookConfig::default(),
             rate_limits: AccountRateLimits::default(),
@@ -264,13 +265,13 @@ pub struct UpdateRateLimits {
 /// Request to update account configuration (all fields optional)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateAccountConfigRequest {
-    /// Display name
+    /// Account name (user-defined label)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    pub account_name: Option<String>,
 
-    /// Auto-start on server startup
+    /// Idle timeout in seconds before auto-sleep (0 = never)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub auto_start: Option<bool>,
+    pub idle_timeout: Option<u64>,
 
     /// Browser configuration updates
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,10 +291,9 @@ impl Default for AccountSetupConfig {
         Self {
             id: Uuid::nil(),
             phone_number: None,
-            display_name: None,
+            account_name: None,
             data_dir: PathBuf::new(),
             browser: BrowserOverrides::default(),
-            auto_start: false,
         }
     }
 }
@@ -345,8 +345,8 @@ pub struct AccountMetadata {
     pub id: AccountId,
     /// Phone number in E.164 format (populated after WhatsApp login)
     pub phone_number: Option<String>,
-    /// Display name (populated after WhatsApp login)
-    pub display_name: Option<String>,
+    /// Account name (user-defined label)
+    pub account_name: Option<String>,
     /// Timestamp when account was created
     pub created_at: DateTime<Utc>,
     /// Timestamp when WhatsApp was first linked
@@ -355,11 +355,11 @@ pub struct AccountMetadata {
 
 impl AccountMetadata {
     /// Create new metadata for a fresh account
-    pub fn new(id: AccountId, phone_number: Option<String>, display_name: Option<String>) -> Self {
+    pub fn new(id: AccountId, phone_number: Option<String>, account_name: Option<String>) -> Self {
         Self {
             id,
             phone_number,
-            display_name,
+            account_name,
             created_at: Utc::now(),
             first_linked_at: None,
         }
@@ -384,18 +384,18 @@ pub struct ProfileInfo {
 pub struct CreateAccountRequest {
     /// Phone number in E.164 format (unique, mandatory)
     pub phone_number: String,
-    /// Display name for this account (defaults to "unknown")
-    #[serde(default = "default_display_name")]
-    pub display_name: String,
+    /// Account name (user-defined label, defaults to "unknown")
+    #[serde(default = "default_account_name")]
+    pub account_name: String,
     /// Browser configuration overrides
     #[serde(default)]
     pub browser: Option<BrowserOverrides>,
-    /// Auto-start browser on server startup
+    /// Idle timeout in seconds before auto-sleep (overrides global default, 0 = never)
     #[serde(default)]
-    pub auto_start: Option<bool>,
+    pub idle_timeout: Option<u64>,
 }
 
-fn default_display_name() -> String {
+fn default_account_name() -> String {
     "unknown".to_string()
 }
 
@@ -407,17 +407,17 @@ pub struct CreateAccountResponse {
     pub id: AccountId,
     /// Phone number
     pub phone_number: String,
-    /// Display name
-    pub display_name: String,
+    /// Account name
+    pub account_name: String,
     pub status: String,
     pub data_directory: String,
     pub created_at: String,
 }
 
-/// Request to update account display name
+/// Request to update account name
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAccountRequest {
-    pub display_name: Option<String>,
+    pub account_name: Option<String>,
 }
 
 /// Account list response
@@ -435,7 +435,7 @@ pub struct WhatsAppStatusResponse {
     pub account_id: AccountId,
     /// Phone number in E.164 format (populated after WhatsApp login)
     pub phone_number: Option<String>,
-    /// Account status (stopped, starting, running, error)
+    /// Account status (sleeping, warming_up, active, error)
     pub status: String,
     /// Whether WhatsApp Web is authorized
     pub authorized: bool,
@@ -462,9 +462,6 @@ pub struct UpdateProfileRequest {
 pub struct ListAccountsQuery {
     /// Filter by status
     pub status: Option<String>,
-    /// Include stopped accounts
-    #[serde(default = "default_true")]
-    pub include_stopped: bool,
 }
 
 fn default_true() -> bool {

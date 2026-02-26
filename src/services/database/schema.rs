@@ -17,14 +17,14 @@ pub fn apply(conn: &Connection) -> Result<()> {
 /// Account table schema.
 const ACCOUNT_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS account (
-    id           TEXT PRIMARY KEY,
-    phone_number TEXT NOT NULL CHECK(length(phone_number) >= 7 AND length(phone_number) <= 15),
-    display_name TEXT NOT NULL DEFAULT 'unknown',
-    data_dir     TEXT NOT NULL,
-    auto_start   INTEGER NOT NULL DEFAULT 0,
-    status       TEXT NOT NULL DEFAULT 'stopped',
-    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    id                TEXT PRIMARY KEY,
+    phone_number      TEXT NOT NULL CHECK(length(phone_number) >= 7 AND length(phone_number) <= 15),
+    account_name      TEXT NOT NULL DEFAULT 'unknown',
+    data_dir          TEXT NOT NULL,
+    idle_timeout INTEGER NOT NULL DEFAULT 300,
+    status            TEXT NOT NULL DEFAULT 'sleeping',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_account_phone ON account(phone_number);

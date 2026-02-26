@@ -39,8 +39,13 @@ pub struct AccountsConfig {
 pub struct AccountDefaultsConfig {
     /// Default headless mode
     pub headless: Option<bool>,
-    /// Auto-start accounts on server startup
-    pub auto_start: bool,
+    /// Default idle timeout in seconds before auto-sleep (0 = never, default 300)
+    #[serde(default = "default_global_idle_timeout")]
+    pub idle_timeout: u64,
+}
+
+fn default_global_idle_timeout() -> u64 {
+    300
 }
 
 /// Webhook configuration for event callbacks
