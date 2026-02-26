@@ -301,22 +301,24 @@ async fn execute_tool(
         }
     };
 
-    // Check if account browser is running for most operations
+    // Ensure account is warm for most operations
     let needs_browser = !matches!(
         tool_name,
         "whatsapp_list_accounts" | "whatsapp_health_check"
     );
-    if needs_browser && !account.browser_service().is_running().await {
-        return McpToolResult {
-            content: vec![McpContent {
-                content_type: "text".to_string(),
-                text: format!(
-                    "Account {} browser not running. Start it via POST /api/v1/accounts/{}/start",
-                    account.id, account.id
-                ),
-            }],
-            is_error: Some(true),
-        };
+    if needs_browser {
+        if let Err(e) = account.ensure_warm().await {
+            return McpToolResult {
+                content: vec![McpContent {
+                    content_type: "text".to_string(),
+                    text: format!(
+                        "Account {} failed to warm up: {}",
+                        account.id, e
+                    ),
+                }],
+                is_error: Some(true),
+            };
+        }
     }
 
     match tool_name {

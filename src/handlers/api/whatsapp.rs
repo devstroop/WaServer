@@ -118,13 +118,13 @@ pub async fn get_qr_code(
         }
     };
 
-    // Check if browser is running
-    if !account.browser_service().is_running().await {
+    // Ensure browser is warm (auto-warms if sleeping)
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running. Start it first via POST /api/v1/accounts/{account_id}/start"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -220,13 +220,13 @@ pub async fn link_phone(
         }
     };
 
-    // Check if browser is running
-    if !account.browser_service().is_running().await {
+    // Ensure browser is warm (auto-warms if sleeping)
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -392,12 +392,12 @@ pub async fn get_profile(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -453,12 +453,12 @@ pub async fn update_profile(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -527,12 +527,12 @@ pub async fn send_typing(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -595,12 +595,12 @@ pub async fn mark_read(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -663,12 +663,12 @@ pub async fn get_presence(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -726,12 +726,12 @@ pub async fn get_group_info(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -789,12 +789,12 @@ pub async fn get_contact_info(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -855,12 +855,12 @@ pub async fn send_reaction(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();
@@ -930,12 +930,12 @@ pub async fn send_reply(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Account browser is not running"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         )
             .into_response();

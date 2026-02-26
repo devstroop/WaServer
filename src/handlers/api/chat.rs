@@ -96,11 +96,11 @@ pub async fn list_chats(
         }
     };
 
-    // Check if browser is running
-    if !account.browser_service().is_running().await {
+    // Ensure browser is warm (auto-warms if sleeping)
+    if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string())),
+            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
         ));
     }
 
@@ -188,13 +188,11 @@ pub async fn get_chat_messages(
         }
     };
 
-    // Check if browser is running
-    if !account.browser_service().is_running().await {
+    // Ensure browser is warm (auto-warms if sleeping)
+    if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(
-                "Browser not running. Start account first.".to_string(),
-            )),
+            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
         ));
     }
 
@@ -297,10 +295,10 @@ pub async fn watch_messages(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Browser not running".to_string())),
+            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
         ));
     }
 
@@ -380,11 +378,11 @@ pub async fn send_message(
         }
     };
 
-    // Check if browser is running
-    if !account.browser_service().is_running().await {
+    // Ensure browser is warm (auto-warms if sleeping)
+    if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Browser not running. Start account first via POST /api/v1/accounts/{account_id}/start".to_string())),
+            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
         ));
     }
 

@@ -154,8 +154,7 @@ async fn run_server(
             accounts::create_account,
             accounts::get_account,
             accounts::delete_account,
-            accounts::start_account,
-            accounts::stop_account,
+            accounts::warmup_account,
             accounts::screenshot,
             accounts::reset_account,
             accounts::get_account_config,
@@ -261,9 +260,8 @@ async fn run_server(
         .route("/:account_id", get(accounts::get_account))
         .route("/:account_id", delete(accounts::delete_account))
         // Account lifecycle
-        .route("/:account_id/start", post(accounts::start_account))
-        .route("/:account_id/stop", delete(accounts::stop_account))
-        .route("/:account_id/reset", post(accounts::reset_account))
+        .route("/:account_id/warmup", post(accounts::warmup_account))
+        .route("/:account_id/reset", delete(accounts::reset_account))
         .route("/:account_id/screenshot", get(accounts::screenshot))
         .route("/:account_id/config", get(accounts::get_account_config))
         .route("/:account_id/config", put(accounts::update_account_config))

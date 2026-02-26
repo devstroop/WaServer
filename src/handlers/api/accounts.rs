@@ -158,22 +158,25 @@ pub async fn delete_account(
     }
 }
 
-/// Start an account's browser
+/// Warmup an account's browser (pre-warm for faster response)
+///
+/// Accounts auto-warm on demand, but this endpoint lets you pre-warm
+/// an account before sending requests to it.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/start",
+    path = "/api/v1/accounts/{account_id}/warmup",
     tag = "Account",
     params(
         ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
     ),
     responses(
-        (status = 200, description = "Account started", body = AccountActionResponse),
+        (status = 200, description = "Account warmed up", body = AccountActionResponse),
         (status = 404, description = "Account not found"),
-        (status = 409, description = "Account already running"),
+        (status = 409, description = "Account already warming up"),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn start_account(
+pub async fn warmup_account(
     State(manager): State<Arc<AccountManager>>,
     Path(account_id): Path<String>,
 ) -> impl IntoResponse {
@@ -193,16 +196,15 @@ pub async fn start_account(
 
     let account_id = account.id;
 
-    match account.start().await {
+    match account.warmup().await {
         Ok(()) => Json(json!(AccountActionResponse {
-            message: "Account started successfully".to_string(),
+            message: "Account warmed up successfully".to_string(),
             account_id,
         }))
         .into_response(),
         Err(e) => {
             let error_msg = e.to_string();
-            let status = if error_msg.contains("already running")
-                || error_msg.contains("already starting")
+            let status = if error_msg.contains("already warming up")
             {
                 StatusCode::CONFLICT
             } else {
@@ -211,63 +213,12 @@ pub async fn start_account(
             (
                 status,
                 Json(json!({
-                    "error": "start_failed",
+                    "error": "warmup_failed",
                     "message": error_msg
                 })),
             )
                 .into_response()
         }
-    }
-}
-
-/// Stop an account's browser
-#[utoipa::path(
-    delete,
-    path = "/api/v1/accounts/{account_id}/stop",
-    tag = "Account",
-    params(
-        ("account_id" = String, Path, description = "Account ID (UUID or phone number)")
-    ),
-    responses(
-        (status = 200, description = "Account stopped", body = AccountActionResponse),
-        (status = 404, description = "Account not found"),
-    ),
-    security(("bearer_auth" = []))
-)]
-pub async fn stop_account(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
-) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
-        Some(acc) => acc,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "not_found",
-                    "message": format!("Account '{}' not found", account_id)
-                })),
-            )
-                .into_response()
-        }
-    };
-
-    let account_id = account.id;
-
-    match account.stop().await {
-        Ok(()) => Json(json!(AccountActionResponse {
-            message: "Account stopped successfully".to_string(),
-            account_id,
-        }))
-        .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "stop_failed",
-                "message": e.to_string()
-            })),
-        )
-            .into_response(),
     }
 }
 
@@ -282,7 +233,7 @@ pub async fn stop_account(
     responses(
         (status = 200, description = "PNG screenshot", content_type = "image/png"),
         (status = 404, description = "Account not found"),
-        (status = 503, description = "Browser not running"),
+        (status = 503, description = "Browser not active"),
     ),
     security(("bearer_auth" = []))
 )]
@@ -304,12 +255,12 @@ pub async fn screenshot(
         }
     };
 
-    if !account.browser_service().is_running().await {
+    if let Err(e) = account.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "browser_not_running",
-                "message": "Browser is not running. Start the account first via POST /api/v1/accounts/{account_id}/start"
+                "error": "warmup_failed",
+                "message": format!("Failed to warm up account: {}", e)
             })),
         ).into_response();
     }
@@ -427,7 +378,7 @@ pub async fn update_account_config(
 /// The account itself is preserved — only runtime data is cleared.
 /// Use this to start fresh without deleting and re-creating the account.
 #[utoipa::path(
-    post,
+    delete,
     path = "/api/v1/accounts/{account_id}/reset",
     tag = "Account",
     params(
