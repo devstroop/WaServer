@@ -281,7 +281,36 @@ async fn run_server(
         .route("/:account_id/chats", get(chat::list_chats))
         .route("/:account_id/chats/events", get(chat::watch_messages))
         .route("/:account_id/chats/:chat_id", get(chat::get_chat_messages))
+        .route(
+            "/:account_id/chats/:chat_id/typing",
+            post(whatsapp::send_typing),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/read",
+            post(whatsapp::mark_read),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/messages/:message_id/react",
+            post(whatsapp::send_reaction),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/messages/:message_id/reply",
+            post(whatsapp::send_reply),
+        )
         .route("/:account_id/messages", post(chat::send_message))
+        // Contacts & Groups
+        .route(
+            "/:account_id/contacts/:contact_id",
+            get(whatsapp::get_contact_info),
+        )
+        .route(
+            "/:account_id/contacts/:contact_id/presence",
+            get(whatsapp::get_presence),
+        )
+        .route(
+            "/:account_id/groups/:group_id",
+            get(whatsapp::get_group_info),
+        )
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
