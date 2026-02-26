@@ -327,9 +327,92 @@ impl ChatService {
         self.listener_injected.store(false, Ordering::SeqCst);
     }
 
-    async fn navigate_to_chat(&self, page: &Page, phone: &str) -> Result<()> {
-        let phone_number: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
-        debug!("Navigating to chat: {}", phone_number);
+    async fn navigate_to_chat(&self, page: &Page, chat_id: &str) -> Result<()> {
+        debug!("Navigating to chat: {}", chat_id);
+
+        // Determine the type of chat ID and handle accordingly
+        // 1. "919876543210@c.us" -> phone number
+        // 2. "120363123456@g.us" -> group JID
+        // 3. "name:Contact Name" -> search by name
+        // 4. "group:Group_Name" -> search by name
+        // 5. Just digits -> phone number
+
+        if chat_id.starts_with("name:") || chat_id.starts_with("group:") {
+            // Navigate by searching the name in sidebar
+            let search_name = if chat_id.starts_with("name:") {
+                chat_id.strip_prefix("name:").unwrap_or(chat_id).to_string()
+            } else {
+                chat_id
+                    .strip_prefix("group:")
+                    .unwrap_or(chat_id)
+                    .replace('_', " ")
+            };
+            return self.navigate_by_search(page, &search_name).await;
+        }
+
+        if chat_id.ends_with("@g.us") {
+            // Group JID - try using Store or search by group name
+            // First try to open via Store API
+            let store_script = format!(
+                r##"(async function() {{
+                    try {{
+                        if (window.Store && window.Store.Chat) {{
+                            const chat = await window.Store.Chat.find('{jid}');
+                            if (chat) {{
+                                // Open the chat
+                                if (window.WAPI && window.WAPI.openChat) {{
+                                    await window.WAPI.openChat('{jid}');
+                                    return 'ok';
+                                }}
+                                // Alternative: click the chat in the list
+                                const chatEl = document.querySelector('[data-id="{jid}"]');
+                                if (chatEl) {{
+                                    chatEl.click();
+                                    return 'ok';
+                                }}
+                            }}
+                        }}
+                    }} catch (e) {{
+                        console.log('[WAS] Store navigation failed:', e);
+                    }}
+                    return 'needs_search';
+                }})();"##,
+                jid = chat_id
+            );
+
+            if let Ok(result) = page.evaluate(store_script).await {
+                if result.into_value::<String>().unwrap_or_default() == "ok" {
+                    // Wait for chat to load
+                    return self
+                        .wait_for_element(
+                            page,
+                            r##"#app #main footer div[aria-placeholder="Type a message"]"##,
+                            10000,
+                        )
+                        .await;
+                }
+            }
+
+            // Fallback: search by group name (extract from JID if we have it cached)
+            // For now, we can't easily get group name from JID without Store access
+            return Err(anyhow::anyhow!(
+                "Cannot navigate to group {} - please use group name instead",
+                chat_id
+            ));
+        }
+
+        // Phone number - either @c.us suffix or just digits
+        let phone_number: String = chat_id
+            .replace("@c.us", "")
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect();
+
+        if phone_number.is_empty() {
+            return Err(anyhow::anyhow!("Invalid chat ID: {}", chat_id));
+        }
+
+        debug!("Navigating to phone: {}", phone_number);
 
         let script = format!(
             r##"(function() {{
@@ -363,6 +446,148 @@ impl ChatService {
                 return Err(anyhow::anyhow!("Invalid phone number"));
             }
         }
+
+        self.wait_for_element(
+            page,
+            r##"#app #main footer div[aria-placeholder="Type a message"]"##,
+            10000,
+        )
+        .await
+    }
+
+    /// Navigate to a chat by searching for the name in the sidebar
+    async fn navigate_by_search(&self, page: &Page, name: &str) -> Result<()> {
+        debug!("Searching for chat: {}", name);
+
+        // Click on search box
+        let search_script = r##"(function() {
+            // Find and click the search box
+            const searchBox = document.querySelector('[data-testid="chat-list-search"]') ||
+                             document.querySelector('div[contenteditable="true"][role="textbox"][title="Search input textbox"]') ||
+                             document.querySelector('div[contenteditable="true"][data-tab="3"]') ||
+                             document.querySelector('[aria-label="Search input textbox"]');
+            if (searchBox) {
+                searchBox.click();
+                searchBox.focus();
+                return true;
+            }
+            // Try clicking the search button first
+            const searchBtn = document.querySelector('[data-icon="search"]')?.closest('button') ||
+                             document.querySelector('button[aria-label*="Search"]');
+            if (searchBtn) {
+                searchBtn.click();
+                return true;
+            }
+            return false;
+        })();"##;
+
+        if !page
+            .evaluate(search_script)
+            .await?
+            .into_value::<bool>()
+            .unwrap_or(false)
+        {
+            return Err(anyhow::anyhow!("Could not find search box"));
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        // Type the search query
+        let escaped_name = serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
+        let type_script = format!(
+            r##"(function() {{
+                const searchBox = document.querySelector('[data-testid="chat-list-search"]') ||
+                                 document.querySelector('div[contenteditable="true"][role="textbox"][title="Search input textbox"]') ||
+                                 document.querySelector('div[contenteditable="true"][data-tab="3"]') ||
+                                 document.querySelector('[aria-label="Search input textbox"]');
+                if (searchBox) {{
+                    searchBox.focus();
+                    document.execCommand('selectAll', false, null);
+                    document.execCommand('insertText', false, {});
+                    return true;
+                }}
+                return false;
+            }})();"##,
+            escaped_name
+        );
+
+        if !page
+            .evaluate(type_script)
+            .await?
+            .into_value::<bool>()
+            .unwrap_or(false)
+        {
+            return Err(anyhow::anyhow!("Could not type in search box"));
+        }
+
+        // Wait for search results
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        // Click on the first search result that matches
+        let escaped_name_for_match =
+            serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
+        let click_result_script = format!(
+            r##"(function() {{
+                const searchName = {};
+                const searchNameLower = searchName.toLowerCase();
+                
+                // Look for chat rows in search results
+                const rows = document.querySelectorAll('[aria-label="Chat list"] [role="row"], [role="listitem"]');
+                for (const row of rows) {{
+                    const nameSpan = row.querySelector('span[title]');
+                    const name = nameSpan?.getAttribute('title') || nameSpan?.innerText || row.innerText?.split('\n')[0];
+                    if (name && name.toLowerCase().includes(searchNameLower)) {{
+                        row.click();
+                        return true;
+                    }}
+                }}
+                
+                // Also check search results section
+                const searchResults = document.querySelectorAll('[data-testid="cell-frame-title"]');
+                for (const result of searchResults) {{
+                    const name = result.innerText || result.textContent;
+                    if (name && name.toLowerCase().includes(searchNameLower)) {{
+                        result.closest('[role="row"], [role="listitem"]')?.click() || result.click();
+                        return true;
+                    }}
+                }}
+                
+                return false;
+            }})();"##,
+            escaped_name_for_match
+        );
+
+        if !page
+            .evaluate(click_result_script)
+            .await?
+            .into_value::<bool>()
+            .unwrap_or(false)
+        {
+            // Clear search and try clicking in chat list
+            let _ = page
+                .evaluate(
+                    r##"(function() {
+                const back = document.querySelector('[data-icon="x"]')?.closest('button') ||
+                             document.querySelector('button[aria-label*="Cancel"]');
+                if (back) back.click();
+            })();"##,
+                )
+                .await;
+
+            return Err(anyhow::anyhow!("Could not find chat: {}", name));
+        }
+
+        // Clear search box after navigation
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let _ = page
+            .evaluate(
+                r##"(function() {
+            const back = document.querySelector('[data-icon="x"]')?.closest('button') ||
+                         document.querySelector('[data-testid="x"]')?.closest('button');
+            if (back) back.click();
+        })();"##,
+            )
+            .await;
 
         self.wait_for_element(
             page,
@@ -877,6 +1102,81 @@ impl ChatService {
             .first_or_octet_stream()
             .to_string()
     }
+
+    /// DOM-based fallback for get_chat_list when IndexedDB is not accessible
+    async fn get_chat_list_dom_fallback(&self) -> Result<Vec<crate::models::chat::ChatInfo>> {
+        let page = self.get_page().await?;
+
+        let script = r##"
+        (function() {
+            const chats = [];
+            const seen = new Set();
+            
+            const chatList = document.querySelector('[aria-label="Chat list"], [data-testid="chat-list"]');
+            if (!chatList) return [];
+            
+            const chatRows = chatList.querySelectorAll('[role="row"]');
+            
+            chatRows.forEach((row) => {
+                try {
+                    // Get name from span[title]
+                    const titleSpan = row.querySelector('span[title]');
+                    const name = titleSpan?.getAttribute('title') || titleSpan?.innerText;
+                    
+                    if (!name || name === 'Loading…' || name === 'Archived' || seen.has(name)) return;
+                    seen.add(name);
+                    
+                    // Get timestamp
+                    const allText = row.innerText || '';
+                    const timestampMatch = allText.match(/(\d{1,2}:\d{2})|Yesterday|Today|(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/);
+                    const timestamp = timestampMatch ? timestampMatch[0] : null;
+                    
+                    // Check for group
+                    const isGroup = !!row.querySelector('[data-icon*="group"], [data-testid*="group"]');
+                    
+                    // Get unread count
+                    const rowLabel = row.getAttribute('aria-label') || '';
+                    const unreadMatch = rowLabel.match(/(\d+)\s+unread/i);
+                    const unreadCount = unreadMatch ? parseInt(unreadMatch[1]) : 0;
+                    
+                    // Get avatar
+                    const img = row.querySelector('img[src*="pps.whatsapp.net"], img[src^="blob:"]');
+                    const avatarUrl = img?.src || null;
+                    
+                    // Generate chat ID - try phone number first
+                    const phoneClean = name.replace(/[\s\-\(\)\+]/g, '');
+                    let chatId;
+                    if (/^\d{10,15}$/.test(phoneClean)) {
+                        chatId = phoneClean + '@c.us';
+                    } else if (isGroup) {
+                        chatId = 'group:' + name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
+                    } else {
+                        chatId = 'name:' + name;
+                    }
+                    
+                    chats.push({
+                        id: chatId,
+                        name: name,
+                        last_message: null,
+                        last_message_sender: null,
+                        timestamp: timestamp,
+                        unread_count: unreadCount,
+                        is_group: isGroup,
+                        avatar_url: avatarUrl,
+                        is_pinned: null,
+                        is_muted: null
+                    });
+                } catch(e) {}
+            });
+            
+            return chats;
+        })();
+        "##;
+
+        let result = page.evaluate(script).await?;
+        let chats: Vec<crate::models::chat::ChatInfo> = result.into_value().unwrap_or_default();
+        Ok(chats)
+    }
 }
 
 #[async_trait]
@@ -944,10 +1244,11 @@ impl ChatServiceTrait for ChatService {
     }
 
     // ========================================================================
-    // DOM-Based Chat/Message Reading
+    // IndexedDB-Based Chat/Message Reading (whatsmeow-style)
     // ========================================================================
 
-    /// Get list of visible chats from WhatsApp sidebar
+    /// Get list of chats from WhatsApp's IndexedDB - similar to whatsmeow's HistorySync
+    /// This reads directly from the model-storage database which has proper JIDs
     async fn get_chat_list(&self) -> Result<Vec<crate::models::chat::ChatInfo>> {
         let page = self.get_page().await?;
 
@@ -957,388 +1258,218 @@ impl ChatServiceTrait for ChatService {
             ));
         }
 
-        // New implementation based on WhatsApp Web Feb 2026 DOM structure
-        // Discovered through Playwright MCP inspection
+        // IndexedDB-based extraction - reads directly from WhatsApp's internal database
+        // This mirrors how whatsmeow gets chats from HistorySync protocol
         let script = r##"
-        (function() {
-            const chats = [];
-            const seen = new Set();
-            
-            // === TRY TO ACCESS WHATSAPP INTERNAL STORE FOR PROPER JIDs ===
-            // WhatsApp Web stores chat data in internal modules accessible via window.Store
-            // This gives us proper JIDs (like 919123456789@c.us or 120363123456@g.us)
-            let storeChats = null;
-            try {
-                if (window.Store && window.Store.Chat) {
-                    storeChats = window.Store.Chat.getModelsArray ? 
-                        window.Store.Chat.getModelsArray() : 
-                        (window.Store.Chat._models || window.Store.Chat.models || []);
-                    console.log('[WAS] Found Store.Chat with', storeChats?.length || 0, 'chats');
-                }
-            } catch (e) {
-                console.log('[WAS] Store.Chat not accessible:', e.message);
+        (async function() {
+            // Helper to open IndexedDB
+            function openDB(name) {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(name);
+                    req.onerror = () => reject(req.error);
+                    req.onsuccess = () => resolve(req.result);
+                });
             }
             
-            // Build a map of name -> JID from Store if available
-            const nameToJid = new Map();
-            if (storeChats && storeChats.length > 0) {
-                for (const chat of storeChats) {
+            // Helper to get all records from a store
+            function getAllFromStore(db, storeName) {
+                return new Promise((resolve, reject) => {
                     try {
-                        const jid = chat.id?._serialized || chat.id?.toString?.();
-                        const chatName = chat.name || chat.contact?.pushname || chat.contact?.name;
-                        if (jid && chatName) {
-                            nameToJid.set(chatName, jid);
+                        const tx = db.transaction(storeName, 'readonly');
+                        const store = tx.objectStore(storeName);
+                        const req = store.getAll();
+                        req.onerror = () => reject(req.error);
+                        req.onsuccess = () => resolve(req.result);
+                    } catch(e) {
+                        resolve([]);
+                    }
+                });
+            }
+            
+            try {
+                const db = await openDB('model-storage');
+                
+                // Get all data from relevant stores
+                const [chatsData, contactsData, groupMetadata, profilePics] = await Promise.all([
+                    getAllFromStore(db, 'chat'),
+                    getAllFromStore(db, 'contact'),
+                    getAllFromStore(db, 'group-metadata'),
+                    getAllFromStore(db, 'profile-pic-thumb')
+                ]);
+                
+                db.close();
+                
+                console.log('[WAS-IDB] Loaded:', chatsData.length, 'chats,', contactsData.length, 'contacts,', 
+                            groupMetadata.length, 'groups,', profilePics.length, 'profile pics');
+                
+                // Build lookup maps
+                // Contact map: LID -> contact info, also phone JID -> contact info
+                const contactMap = new Map();
+                for (const c of contactsData) {
+                    if (c.id) {
+                        contactMap.set(c.id, c);
+                        // Also map phoneNumber to same contact
+                        if (c.phoneNumber) {
+                            contactMap.set(c.phoneNumber, c);
                         }
-                        // Also map by formatted name for phone numbers
-                        if (chat.contact?.formattedName) {
-                            nameToJid.set(chat.contact.formattedName, jid);
-                        }
-                    } catch (e) {}
+                    }
                 }
-                console.log('[WAS] Built nameToJid map with', nameToJid.size, 'entries');
-            }
-            
-            // WhatsApp uses grid[aria-label="Chat list"] with role="row" children
-            const chatList = document.querySelector('[aria-label="Chat list"], [data-testid="chat-list"]');
-            if (!chatList) {
-                console.error('[WAS] Chat list container not found');
-                return [];
-            }
-            
-            const chatRows = chatList.querySelectorAll('[role="row"]');
-            console.log('[WAS] Found', chatRows.length, 'chat rows');
-            
-            chatRows.forEach((row, idx) => {
-                try {
-                    // === GET NAME from first gridcell or span with title ===
-                    // Structure: row > gridcell > generic > img + content
-                    // The name is typically in a span with title attribute or in a specific gridcell
+                
+                // Group metadata map: group JID -> group info
+                const groupMap = new Map();
+                for (const g of groupMetadata) {
+                    if (g.id) groupMap.set(g.id, g);
+                }
+                
+                // Profile pic map: JID -> pic info
+                const picMap = new Map();
+                for (const p of profilePics) {
+                    if (p.id) picMap.set(p.id, p);
+                }
+                
+                // Process chats - similar to whatsmeow's Conversation structure
+                const chats = [];
+                
+                for (const chat of chatsData) {
+                    // Skip invalid chats
+                    if (!chat.id) continue;
+                    // Skip some internal chat types
+                    if (chat.id === '0@c.us' || chat.id === 'status@broadcast') continue;
+                    
+                    const jid = chat.id;
+                    const isGroup = jid.endsWith('@g.us');
+                    const isNewsletter = jid.endsWith('@newsletter');
+                    
+                    // Skip newsletters for now
+                    if (isNewsletter) continue;
+                    
+                    // Get name - different sources for groups vs contacts
                     let name = null;
-                    
-                    // Method 1: Look for span with title attribute (most reliable)
-                    const titleSpan = row.querySelector('span[title]');
-                    if (titleSpan) {
-                        name = titleSpan.getAttribute('title') || titleSpan.innerText;
-                    }
-                    
-                    // Method 2: Look for gridcell containing the name
-                    if (!name) {
-                        const gridcells = row.querySelectorAll('[role="gridcell"]');
-                        for (const cell of gridcells) {
-                            const text = cell.innerText?.split('\n')[0]?.trim();
-                            // First gridcell with substantial text is usually the name
-                            if (text && text.length > 0 && text.length < 100 && 
-                                !text.match(/^\d{1,2}:\d{2}/) && 
-                                !text.match(/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/) &&
-                                !text.includes('unread')) {
-                                name = text;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Method 3: Parse from row's accessible name
-                    if (!name) {
-                        const ariaLabel = row.getAttribute('aria-label') || '';
-                        // Format: "Name Timestamp Message [UnreadCount]"
-                        // First token before time/day is the name
-                        const parts = ariaLabel.split(/\s+(\d{1,2}:\d{2}|Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d{1,2}\/\d{1,2}\/\d{2,4})\s+/);
-                        if (parts.length > 0 && parts[0]) {
-                            name = parts[0].trim();
-                        }
-                    }
-                    
-                    if (!name || name === 'Loading…' || name === 'Archived') return;
-                    
-                    // Deduplicate
-                    if (seen.has(name)) return;
-                    seen.add(name);
-                    
-                    // === GET TIMESTAMP ===
-                    let timestamp = null;
-                    
-                    // Look for the timestamp pattern in elements
-                    const allText = row.innerText || '';
-                    const timestampPatterns = [
-                        /(\d{1,2}:\d{2}(?:\s*[AP]M)?)/,           // "20:25" or "8:30 PM"
-                        /(Yesterday|Today)/,
-                        /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
-                        /(\d{1,2}\/\d{1,2}\/\d{2,4})/             // "16/02/2026"
-                    ];
-                    
-                    for (const pattern of timestampPatterns) {
-                        const match = allText.match(pattern);
-                        if (match) {
-                            timestamp = match[1];
-                            break;
-                        }
-                    }
-                    
-                    // === GET LAST MESSAGE ===
-                    let lastMsg = null;
-                    let lastMsgSender = null;
-                    let isGroup = false;
-                    
-                    // === GROUP DETECTION ===
-                    // Check multiple possible group icon selectors
-                    const groupIconSelectors = [
-                        '[data-icon="default-group"]',
-                        '[data-icon="group"]',
-                        '[data-icon="community"]',
-                        '[data-testid="default-group"]',
-                        '[data-testid="group"]',
-                        'img[src*="groups"]',
-                        'img[src*="group-icon"]'
-                    ];
-                    
-                    for (const selector of groupIconSelectors) {
-                        if (row.querySelector(selector)) {
-                            isGroup = true;
-                            break;
-                        }
-                    }
-                    
-                    // Also check any data-icon attribute containing "group"
-                    if (!isGroup) {
-                        const allIcons = row.querySelectorAll('[data-icon]');
-                        for (const icon of allIcons) {
-                            const iconName = icon.getAttribute('data-icon') || '';
-                            if (iconName.toLowerCase().includes('group')) {
-                                isGroup = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Get message from specific DOM elements
-                    // Look for spans that contain the message text (not name, not timestamp)
-                    const allSpans = row.querySelectorAll('span');
-                    let foundName = false;
-                    let foundTimestamp = false;
-                    
-                    for (const span of allSpans) {
-                        const text = span.innerText?.trim();
-                        if (!text || text.length === 0) continue;
-                        
-                        // Skip the name
-                        if (text === name || span.getAttribute('title') === name) {
-                            foundName = true;
-                            continue;
-                        }
-                        
-                        // Skip timestamps
-                        if (/^\d{1,2}:\d{2}(\s*[AP]M)?$/.test(text) ||
-                            /^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(text) ||
-                            /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(text)) {
-                            foundTimestamp = true;
-                            continue;
-                        }
-                        
-                        // Skip unread count
-                        if (/^\d+$/.test(text) || text.includes('unread message')) continue;
-                        
-                        // Skip very short text that might be icons or status
-                        if (text.length < 2) continue;
-                        
-                        // This should be the message - clean up multiline text first
-                        if (foundName || foundTimestamp) {
-                            // Normalize: replace newlines around colon with proper separator
-                            // "Sender\n:\nMessage" -> "Sender: Message"
-                            let cleanText = text.replace(/\s*\n\s*:\s*\n\s*/g, ': ').replace(/\n/g, ' ').trim();
-                            
-                            // Check for sender prefix pattern: "SenderName: message" or "SenderName : message"
-                            // Valid senders: personal names (Akash, Dharmendra), phone numbers, or (You)/You
-                            // Pattern: starts with name/phone, then colon+space, then message
-                            const senderMatch = cleanText.match(/^([A-Za-z\u0900-\u097F\+][A-Za-z0-9\u0900-\u097F\s\+\-\(\)]{0,25}):\s+(.+)$/s);
-                            
-                            if (senderMatch) {
-                                const potentialSender = senderMatch[1].trim();
-                                const potentialMsg = senderMatch[2].trim();
-                                
-                                // Validate sender - must look like a personal name or phone number
-                                // Personal name: starts with capital, 1-2 words, only letters
-                                // Phone: digits with optional +, spaces, dashes
-                                // Special: (You), You, ~ (tilde prefix for some names)
-                                const isPhoneNumber = /^[\+\d\s\-\(\)]+$/.test(potentialSender) && potentialSender.length >= 3;
-                                const isPersonalName = /^[A-Z\u0900-\u097F~][a-zA-Z\u0900-\u097F]*(\s[A-Z\u0900-\u097F][a-zA-Z\u0900-\u097F]*)?$/.test(potentialSender);
-                                const isYou = potentialSender === '(You)' || potentialSender === 'You';
-                                
-                                // Additional validation: sender should be SHORT (max 25 chars) and NOT look like message content
-                                const isTooLong = potentialSender.length > 25;
-                                const looksLikeContent = potentialSender.includes('http') || 
-                                                         potentialSender.includes('.com') ||
-                                                         /\d{5,}/.test(potentialSender.replace(/[\s\-\(\)\+]/g, '')) && !isPhoneNumber;
-                                
-                                if ((isPhoneNumber || isPersonalName || isYou) && !isTooLong && !looksLikeContent && potentialMsg.length > 0) {
-                                    lastMsgSender = potentialSender === '(You)' ? 'You' : potentialSender;
-                                    lastMsg = potentialMsg;
-                                    // If we found a valid sender, this is definitely a group!
-                                    if (!isYou) {
-                                        isGroup = true;
-                                    }
-                                    break;
-                                }
-                            }
-                            
-                            // No valid sender pattern - use the clean text as message
-                            if (!lastMsg) {
-                                lastMsg = cleanText;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Fallback: if still no message, get from row content more aggressively
-                    if (!lastMsg) {
-                        const rowText = row.innerText || '';
-                        // Clean up the row text - normalize newlines around colons
-                        const cleanRowText = rowText.replace(/\s*\n\s*:\s*\n\s*/g, ': ');
-                        const lines = cleanRowText.split('\n').filter(l => l.trim());
-                        // Look for a line that's not the name and not a timestamp
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (trimmed === name) continue;
-                            if (/^\d{1,2}:\d{2}/.test(trimmed)) continue;
-                            if (/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(trimmed)) continue;
-                            if (/^\d+$/.test(trimmed)) continue;
-                            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed)) continue;
-                            if (trimmed.includes('unread message')) continue;
-                            if (trimmed.length < 2) continue;
-                            lastMsg = trimmed;
-                            break;
-                        }
-                    }
-                    
-                    // === GET UNREAD COUNT ===
-                    let unreadCount = 0;
-                    const rowLabel = row.getAttribute('aria-label') || '';
-                    const unreadMatch = rowLabel.match(/(\d+)\s+unread\s+message/i);
-                    if (unreadMatch) {
-                        unreadCount = parseInt(unreadMatch[1]) || 0;
-                    }
-                    
-                    // Also check for badge element
-                    if (unreadCount === 0) {
-                        const badgeEl = row.querySelector('[aria-label*="unread"]');
-                        if (badgeEl) {
-                            const badgeText = badgeEl.innerText || badgeEl.getAttribute('aria-label') || '';
-                            const match = badgeText.match(/(\d+)/);
-                            if (match) unreadCount = parseInt(match[1]) || 0;
-                        }
-                    }
-                    
-                    // === GET AVATAR URL ===
                     let avatarUrl = null;
                     
-                    // Look for img element in the row
-                    const imgs = row.querySelectorAll('img');
-                    for (const img of imgs) {
-                        const src = img.src || img.getAttribute('src');
-                        // WhatsApp profile pics are hosted on pps.whatsapp.net
-                        if (src && (src.includes('pps.whatsapp.net') || src.includes('blob:') || 
-                                    (src.startsWith('https://') && !src.includes('emoji')))) {
-                            avatarUrl = src;
-                            break;
+                    if (isGroup) {
+                        // For groups, get name from group metadata or chat.name
+                        const groupInfo = groupMap.get(jid);
+                        name = groupInfo?.subject || chat.name || jid;
+                        
+                        // Group avatar
+                        const picInfo = picMap.get(jid);
+                        if (picInfo?.eurl) {
+                            avatarUrl = picInfo.eurl;
                         }
-                    }
-                    
-                    // === GET CHAT ID ===
-                    // Try multiple approaches to extract the chat ID
-                    let chatId = null;
-                    
-                    // Method 0: Look up from WhatsApp Store (most reliable if available)
-                    if (nameToJid.has(name)) {
-                        chatId = nameToJid.get(name);
-                        // If JID ends with @g.us, it's definitely a group
-                        if (chatId && chatId.endsWith('@g.us')) {
-                            isGroup = true;
+                    } else {
+                        // For 1:1 chats, get contact name
+                        // Chat ID could be phoneNumber@c.us/s.whatsapp.net or LID@lid
+                        let contact = contactMap.get(jid);
+                        
+                        // Also try with different server suffixes
+                        if (!contact && jid.includes('@')) {
+                            const [user, _server] = jid.split('@');
+                            contact = contactMap.get(user + '@c.us') || 
+                                     contactMap.get(user + '@s.whatsapp.net') ||
+                                     contactMap.get(user + '@lid');
                         }
-                    }
-                    
-                    // Method 1: data-id attribute (may not work in current WhatsApp version)
-                    if (!chatId) {
-                        let el = row;
-                        for (let i = 0; i < 10 && el; i++) {
-                            const dataId = el.getAttribute && el.getAttribute('data-id');
-                            if (dataId && dataId.includes('@')) {
-                                chatId = dataId;
-                                if (chatId.endsWith('@g.us')) isGroup = true;
-                                break;
+                        
+                        if (contact) {
+                            name = contact.name || contact.pushname || contact.shortName;
+                            // Try to get avatar
+                            const contactPic = picMap.get(jid) || 
+                                              (contact.phoneNumber ? picMap.get(contact.phoneNumber) : null);
+                            if (contactPic?.eurl) {
+                                avatarUrl = contactPic.eurl;
                             }
-                            el = el.parentElement;
+                        }
+                        
+                        // Fallback to chat.name or phone number
+                        if (!name) {
+                            name = chat.name;
+                        }
+                        if (!name && jid.includes('@')) {
+                            // Extract phone number from JID
+                            const phone = jid.split('@')[0];
+                            // Format phone number for display
+                            if (/^\d{10,15}$/.test(phone)) {
+                                name = '+' + phone;
+                            } else {
+                                name = phone;
+                            }
                         }
                     }
                     
-                    // Method 2: Extract phone number from name if it's a phone number
-                    if (!chatId && name) {
-                        // Names like "+91 97389 68141" or "919876543210"
-                        const phoneClean = name.replace(/[\s\-\(\)]/g, '').replace(/^\+/, '');
-                        if (/^\d{10,15}$/.test(phoneClean)) {
-                            chatId = phoneClean + '@c.us';
+                    // Convert timestamp (Unix epoch in seconds)
+                    let timestamp = null;
+                    if (chat.t) {
+                        const date = new Date(chat.t * 1000);
+                        const now = new Date();
+                        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+                        
+                        if (diffDays === 0) {
+                            // Today - show time
+                            timestamp = date.toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit',
+                                hour12: false 
+                            });
+                        } else if (diffDays === 1) {
+                            timestamp = 'Yesterday';
+                        } else if (diffDays < 7) {
+                            // Within a week - show day name
+                            timestamp = date.toLocaleDateString('en-US', { weekday: 'long' });
+                        } else {
+                            // Older - show date
+                            timestamp = date.toLocaleDateString('en-US', { 
+                                day: '2-digit', 
+                                month: '2-digit', 
+                                year: 'numeric' 
+                            });
                         }
                     }
-                    
-                    // Method 3: For groups without JID, use group: prefix
-                    if (!chatId && isGroup) {
-                        // For groups, use a group-style ID
-                        chatId = 'group:' + name.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, '_').substring(0, 50);
-                    }
-                    
-                    // Method 4: Fallback to name-based ID for contacts without phone
-                    if (!chatId) {
-                        chatId = 'name:' + name;
-                    }
-                    
-                    // === ADDITIONAL GROUP DETECTION ===
-                    // Check if chat has "(You)" prefix which indicates self-chat or group
-                    if (!isGroup && lastMsg && lastMsg.startsWith('(You)')) {
-                        // Self chat
-                        lastMsg = lastMsg.replace(/^\(You\)\s*/, '');
-                    }
-                    
-                    // Check for group icon one more time
-                    if (!isGroup) {
-                        const groupIcon = row.querySelector('[data-icon="default-group"], [data-icon="group"]');
-                        if (groupIcon) isGroup = true;
-                    }
-                    
-                    // === PINNED/MUTED STATUS ===
-                    let isPinned = null;
-                    let isMuted = null;
-                    
-                    const pinnedIcon = row.querySelector('[data-icon="pinned"], [data-testid="pinned"]');
-                    if (pinnedIcon) isPinned = true;
-                    
-                    const mutedIcon = row.querySelector('[data-icon="muted"], [data-testid="muted"]');
-                    if (mutedIcon) isMuted = true;
                     
                     chats.push({
-                        id: chatId,
-                        name: name,
-                        last_message: lastMsg,
-                        last_message_sender: lastMsgSender,
+                        id: jid,
+                        name: name || jid,
+                        last_message: null,  // Would need message store lookup
+                        last_message_sender: null,
                         timestamp: timestamp,
-                        unread_count: unreadCount,
+                        unread_count: chat.unreadCount || 0,
                         is_group: isGroup,
                         avatar_url: avatarUrl,
-                        is_pinned: isPinned,
-                        is_muted: isMuted
+                        is_pinned: chat.pin ? true : null,
+                        is_muted: chat.muteExpiration > 0 ? true : null,
+                        is_archived: chat.archive || false
                     });
-                    
-                } catch(e) {
-                    console.error('[WAS] Error parsing chat row', idx, ':', e);
                 }
-            });
-            
-            console.log('[WAS] Parsed', chats.length, 'chats successfully');
-            return chats;
+                
+                // Sort by timestamp (most recent first)
+                chats.sort((a, b) => {
+                    // Prioritize pinned chats
+                    if (a.is_pinned && !b.is_pinned) return -1;
+                    if (!a.is_pinned && b.is_pinned) return 1;
+                    return 0;  // Keep original order which is by last message time
+                });
+                
+                console.log('[WAS-IDB] Processed', chats.length, 'chats');
+                return chats;
+                
+            } catch(e) {
+                console.error('[WAS-IDB] Error:', e.message);
+                // Fallback to DOM-based extraction if IndexedDB fails
+                return { error: e.message, fallback: true };
+            }
         })();
         "##;
 
         let result = page.evaluate(script).await?;
-        let chats: Vec<crate::models::chat::ChatInfo> = result.into_value().unwrap_or_default();
 
-        Ok(chats)
+        // Check if we got an error object indicating fallback needed
+        // Try to parse as array first (success case)
+        if let Ok(chats) = result.into_value::<Vec<crate::models::chat::ChatInfo>>() {
+            return Ok(chats);
+        }
+
+        // If parsing as array failed, it's likely the error object, use fallback
+        info!("IndexedDB extraction failed, falling back to DOM scraping");
+        self.get_chat_list_dom_fallback().await
     }
 
     /// Get messages from the currently open chat or open a specific chat first
