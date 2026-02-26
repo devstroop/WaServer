@@ -136,10 +136,7 @@ pub async fn delete_account(
     Path(account_id): Path<String>,
     Query(query): Query<DeleteAccountQuery>,
 ) -> impl IntoResponse {
-    match manager
-        .delete_account(&account_id, query.delete_data)
-        .await
-    {
+    match manager.delete_account(&account_id, query.delete_data).await {
         Ok(account_id) => Json(json!(DeleteAccountResponse {
             message: if query.delete_data {
                 "Account and all data deleted".to_string()

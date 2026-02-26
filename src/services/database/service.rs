@@ -5,11 +5,11 @@
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use surrealdb::{
     engine::local::{Db, SurrealKv},
     Surreal,
 };
-use std::path::Path;
 use tracing::info;
 
 use super::schema;
@@ -39,10 +39,13 @@ impl Database {
         let db_path = data_dir.join("surreal");
         tokio::fs::create_dir_all(&db_path).await?;
 
-        let db = Surreal::new::<SurrealKv>(db_path.to_str().unwrap()).await
+        let db = Surreal::new::<SurrealKv>(db_path.to_str().unwrap())
+            .await
             .map_err(|e| anyhow!("Failed to open SurrealDB: {}", e))?;
 
-        db.use_ns("was").use_db("was").await
+        db.use_ns("was")
+            .use_db("was")
+            .await
             .map_err(|e| anyhow!("Failed to select namespace/database: {}", e))?;
 
         info!("SurrealDB opened at {:?}", db_path);
@@ -57,9 +60,17 @@ impl Database {
     // ========================================================================
 
     /// Insert a new account. The record ID is the account UUID (string).
-    pub async fn create_account(&self, id: &str, phone_number: &str, display_name: &str, data_dir: &str, auto_start: bool) -> Result<AccountRecord> {
+    pub async fn create_account(
+        &self,
+        id: &str,
+        phone_number: &str,
+        display_name: &str,
+        data_dir: &str,
+        auto_start: bool,
+    ) -> Result<AccountRecord> {
         // Check uniqueness of phone_number explicitly for a clear error message
-        let existing: Vec<AccountRecord> = self.db
+        let existing: Vec<AccountRecord> = self
+            .db
             .query("SELECT * FROM account WHERE phone_number = $phone LIMIT 1")
             .bind(("phone", phone_number.to_string()))
             .await?
@@ -69,7 +80,8 @@ impl Database {
             return Err(anyhow!("Phone number '{}' already exists", phone_number));
         }
 
-        let record: Option<AccountRecord> = self.db
+        let record: Option<AccountRecord> = self
+            .db
             .create(("account", id))
             .content(serde_json::json!({
                 "phone_number": phone_number,
@@ -86,7 +98,8 @@ impl Database {
 
     /// Get an account by its UUID string id.
     pub async fn get_account(&self, id: &str) -> Result<Option<AccountRecord>> {
-        let record: Option<AccountRecord> = self.db
+        let record: Option<AccountRecord> = self
+            .db
             .select(("account", id))
             .await
             .map_err(|e| anyhow!("Failed to get account: {}", e))?;
@@ -95,7 +108,8 @@ impl Database {
 
     /// Find an account by phone number.
     pub async fn get_account_by_phone(&self, phone_number: &str) -> Result<Option<AccountRecord>> {
-        let mut results: Vec<AccountRecord> = self.db
+        let mut results: Vec<AccountRecord> = self
+            .db
             .query("SELECT * FROM account WHERE phone_number = $phone LIMIT 1")
             .bind(("phone", phone_number.to_string()))
             .await?
@@ -105,7 +119,8 @@ impl Database {
 
     /// List all accounts.
     pub async fn list_accounts(&self) -> Result<Vec<AccountRecord>> {
-        let records: Vec<AccountRecord> = self.db
+        let records: Vec<AccountRecord> = self
+            .db
             .select("account")
             .await
             .map_err(|e| anyhow!("Failed to list accounts: {}", e))?;
@@ -114,7 +129,8 @@ impl Database {
 
     /// Update the status field of an account.
     pub async fn update_status(&self, id: &str, status: &str) -> Result<()> {
-        let _: Option<AccountRecord> = self.db
+        let _: Option<AccountRecord> = self
+            .db
             .update(("account", id))
             .merge(serde_json::json!({
                 "status": status,
@@ -127,7 +143,8 @@ impl Database {
 
     /// Update display_name for an account.
     pub async fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
-        let _: Option<AccountRecord> = self.db
+        let _: Option<AccountRecord> = self
+            .db
             .update(("account", id))
             .merge(serde_json::json!({
                 "display_name": display_name,
@@ -140,7 +157,8 @@ impl Database {
 
     /// Delete an account record.
     pub async fn delete_account(&self, id: &str) -> Result<()> {
-        let _: Option<AccountRecord> = self.db
+        let _: Option<AccountRecord> = self
+            .db
             .delete(("account", id))
             .await
             .map_err(|e| anyhow!("Failed to delete account: {}", e))?;

@@ -3,10 +3,7 @@
 //! Handles sending text messages and attachments via WhatsApp Web.
 //! Based on proven .NET implementation patterns.
 
-use crate::{
-    browser::BrowserService,
-    config::AppConfig,
-};
+use crate::{browser::BrowserService, config::AppConfig};
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
@@ -46,6 +43,31 @@ pub trait ChatServiceTrait: Send + Sync {
 
     /// Watch for new incoming messages
     async fn watch_messages(&self) -> Result<Vec<crate::models::chat::MessageInfo>>;
+
+    /// Send typing indicator (composing/paused)
+    async fn send_typing(
+        &self,
+        chat_id: &str,
+        state: crate::models::chat::TypingState,
+    ) -> Result<()>;
+
+    /// Mark messages as read
+    async fn mark_read(&self, chat_id: &str) -> Result<u32>;
+
+    /// Get presence/online status for a contact
+    async fn get_presence(&self, chat_id: &str) -> Result<crate::models::chat::PresenceInfo>;
+
+    /// Get detailed group info
+    async fn get_group_info(&self, group_id: &str) -> Result<crate::models::chat::GroupInfo>;
+
+    /// Get contact profile info
+    async fn get_contact_info(&self, contact_id: &str) -> Result<crate::models::chat::ContactInfo>;
+
+    /// Send a reaction to a message
+    async fn send_reaction(&self, chat_id: &str, message_id: &str, emoji: &str) -> Result<()>;
+
+    /// Send a reply to a message
+    async fn send_reply(&self, chat_id: &str, quoted_message_id: &str, text: &str) -> Result<()>;
 }
 
 // ============================================================================
@@ -935,160 +957,380 @@ impl ChatServiceTrait for ChatService {
             ));
         }
 
+        // New implementation based on WhatsApp Web Feb 2026 DOM structure
+        // Discovered through Playwright MCP inspection
         let script = r##"
         (function() {
             const chats = [];
-            const chatRows = document.querySelectorAll('[data-testid="cell-frame-container"], div[role="listitem"], div[role="row"]');
+            const seen = new Set();
             
-            chatRows.forEach(row => {
+            // === TRY TO ACCESS WHATSAPP INTERNAL STORE FOR PROPER JIDs ===
+            // WhatsApp Web stores chat data in internal modules accessible via window.Store
+            // This gives us proper JIDs (like 919123456789@c.us or 120363123456@g.us)
+            let storeChats = null;
+            try {
+                if (window.Store && window.Store.Chat) {
+                    storeChats = window.Store.Chat.getModelsArray ? 
+                        window.Store.Chat.getModelsArray() : 
+                        (window.Store.Chat._models || window.Store.Chat.models || []);
+                    console.log('[WAS] Found Store.Chat with', storeChats?.length || 0, 'chats');
+                }
+            } catch (e) {
+                console.log('[WAS] Store.Chat not accessible:', e.message);
+            }
+            
+            // Build a map of name -> JID from Store if available
+            const nameToJid = new Map();
+            if (storeChats && storeChats.length > 0) {
+                for (const chat of storeChats) {
+                    try {
+                        const jid = chat.id?._serialized || chat.id?.toString?.();
+                        const chatName = chat.name || chat.contact?.pushname || chat.contact?.name;
+                        if (jid && chatName) {
+                            nameToJid.set(chatName, jid);
+                        }
+                        // Also map by formatted name for phone numbers
+                        if (chat.contact?.formattedName) {
+                            nameToJid.set(chat.contact.formattedName, jid);
+                        }
+                    } catch (e) {}
+                }
+                console.log('[WAS] Built nameToJid map with', nameToJid.size, 'entries');
+            }
+            
+            // WhatsApp uses grid[aria-label="Chat list"] with role="row" children
+            const chatList = document.querySelector('[aria-label="Chat list"], [data-testid="chat-list"]');
+            if (!chatList) {
+                console.error('[WAS] Chat list container not found');
+                return [];
+            }
+            
+            const chatRows = chatList.querySelectorAll('[role="row"]');
+            console.log('[WAS] Found', chatRows.length, 'chat rows');
+            
+            chatRows.forEach((row, idx) => {
                 try {
-                    // Try to get the chat data
-                    const nameEl = row.querySelector('[data-testid="cell-frame-title"] span') ||
-                                   row.querySelector('span[title]') ||
-                                   row.querySelector('[dir="auto"]');
+                    // === GET NAME from first gridcell or span with title ===
+                    // Structure: row > gridcell > generic > img + content
+                    // The name is typically in a span with title attribute or in a specific gridcell
+                    let name = null;
                     
-                    if (!nameEl) return;
+                    // Method 1: Look for span with title attribute (most reliable)
+                    const titleSpan = row.querySelector('span[title]');
+                    if (titleSpan) {
+                        name = titleSpan.getAttribute('title') || titleSpan.innerText;
+                    }
                     
-                    const name = nameEl.innerText || nameEl.getAttribute('title') || '';
-                    if (!name || name === 'Loading…') return;
+                    // Method 2: Look for gridcell containing the name
+                    if (!name) {
+                        const gridcells = row.querySelectorAll('[role="gridcell"]');
+                        for (const cell of gridcells) {
+                            const text = cell.innerText?.split('\n')[0]?.trim();
+                            // First gridcell with substantial text is usually the name
+                            if (text && text.length > 0 && text.length < 100 && 
+                                !text.match(/^\d{1,2}:\d{2}/) && 
+                                !text.match(/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/) &&
+                                !text.includes('unread')) {
+                                name = text;
+                                break;
+                            }
+                        }
+                    }
                     
-                    // Get last message - look for the message preview text under the chat name
+                    // Method 3: Parse from row's accessible name
+                    if (!name) {
+                        const ariaLabel = row.getAttribute('aria-label') || '';
+                        // Format: "Name Timestamp Message [UnreadCount]"
+                        // First token before time/day is the name
+                        const parts = ariaLabel.split(/\s+(\d{1,2}:\d{2}|Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d{1,2}\/\d{1,2}\/\d{2,4})\s+/);
+                        if (parts.length > 0 && parts[0]) {
+                            name = parts[0].trim();
+                        }
+                    }
+                    
+                    if (!name || name === 'Loading…' || name === 'Archived') return;
+                    
+                    // Deduplicate
+                    if (seen.has(name)) return;
+                    seen.add(name);
+                    
+                    // === GET TIMESTAMP ===
+                    let timestamp = null;
+                    
+                    // Look for the timestamp pattern in elements
+                    const allText = row.innerText || '';
+                    const timestampPatterns = [
+                        /(\d{1,2}:\d{2}(?:\s*[AP]M)?)/,           // "20:25" or "8:30 PM"
+                        /(Yesterday|Today)/,
+                        /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
+                        /(\d{1,2}\/\d{1,2}\/\d{2,4})/             // "16/02/2026"
+                    ];
+                    
+                    for (const pattern of timestampPatterns) {
+                        const match = allText.match(pattern);
+                        if (match) {
+                            timestamp = match[1];
+                            break;
+                        }
+                    }
+                    
+                    // === GET LAST MESSAGE ===
                     let lastMsg = null;
+                    let lastMsgSender = null;
+                    let isGroup = false;
                     
-                    // Method 1: WhatsApp's last message status container
-                    const lastMsgContainer = row.querySelector('[data-testid="last-msg-status"]');
-                    if (lastMsgContainer) {
-                        const parent = lastMsgContainer.closest('div');
-                        if (parent) {
-                            // Get text excluding status icons
-                            const textSpans = parent.querySelectorAll('span');
-                            for (const span of textSpans) {
-                                if (!span.querySelector('[data-icon]') && span.innerText?.trim()) {
-                                    lastMsg = span.innerText.trim();
+                    // === GROUP DETECTION ===
+                    // Check multiple possible group icon selectors
+                    const groupIconSelectors = [
+                        '[data-icon="default-group"]',
+                        '[data-icon="group"]',
+                        '[data-icon="community"]',
+                        '[data-testid="default-group"]',
+                        '[data-testid="group"]',
+                        'img[src*="groups"]',
+                        'img[src*="group-icon"]'
+                    ];
+                    
+                    for (const selector of groupIconSelectors) {
+                        if (row.querySelector(selector)) {
+                            isGroup = true;
+                            break;
+                        }
+                    }
+                    
+                    // Also check any data-icon attribute containing "group"
+                    if (!isGroup) {
+                        const allIcons = row.querySelectorAll('[data-icon]');
+                        for (const icon of allIcons) {
+                            const iconName = icon.getAttribute('data-icon') || '';
+                            if (iconName.toLowerCase().includes('group')) {
+                                isGroup = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Get message from specific DOM elements
+                    // Look for spans that contain the message text (not name, not timestamp)
+                    const allSpans = row.querySelectorAll('span');
+                    let foundName = false;
+                    let foundTimestamp = false;
+                    
+                    for (const span of allSpans) {
+                        const text = span.innerText?.trim();
+                        if (!text || text.length === 0) continue;
+                        
+                        // Skip the name
+                        if (text === name || span.getAttribute('title') === name) {
+                            foundName = true;
+                            continue;
+                        }
+                        
+                        // Skip timestamps
+                        if (/^\d{1,2}:\d{2}(\s*[AP]M)?$/.test(text) ||
+                            /^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(text) ||
+                            /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(text)) {
+                            foundTimestamp = true;
+                            continue;
+                        }
+                        
+                        // Skip unread count
+                        if (/^\d+$/.test(text) || text.includes('unread message')) continue;
+                        
+                        // Skip very short text that might be icons or status
+                        if (text.length < 2) continue;
+                        
+                        // This should be the message - clean up multiline text first
+                        if (foundName || foundTimestamp) {
+                            // Normalize: replace newlines around colon with proper separator
+                            // "Sender\n:\nMessage" -> "Sender: Message"
+                            let cleanText = text.replace(/\s*\n\s*:\s*\n\s*/g, ': ').replace(/\n/g, ' ').trim();
+                            
+                            // Check for sender prefix pattern: "SenderName: message" or "SenderName : message"
+                            // Valid senders: personal names (Akash, Dharmendra), phone numbers, or (You)/You
+                            // Pattern: starts with name/phone, then colon+space, then message
+                            const senderMatch = cleanText.match(/^([A-Za-z\u0900-\u097F\+][A-Za-z0-9\u0900-\u097F\s\+\-\(\)]{0,25}):\s+(.+)$/s);
+                            
+                            if (senderMatch) {
+                                const potentialSender = senderMatch[1].trim();
+                                const potentialMsg = senderMatch[2].trim();
+                                
+                                // Validate sender - must look like a personal name or phone number
+                                // Personal name: starts with capital, 1-2 words, only letters
+                                // Phone: digits with optional +, spaces, dashes
+                                // Special: (You), You, ~ (tilde prefix for some names)
+                                const isPhoneNumber = /^[\+\d\s\-\(\)]+$/.test(potentialSender) && potentialSender.length >= 3;
+                                const isPersonalName = /^[A-Z\u0900-\u097F~][a-zA-Z\u0900-\u097F]*(\s[A-Z\u0900-\u097F][a-zA-Z\u0900-\u097F]*)?$/.test(potentialSender);
+                                const isYou = potentialSender === '(You)' || potentialSender === 'You';
+                                
+                                // Additional validation: sender should be SHORT (max 25 chars) and NOT look like message content
+                                const isTooLong = potentialSender.length > 25;
+                                const looksLikeContent = potentialSender.includes('http') || 
+                                                         potentialSender.includes('.com') ||
+                                                         /\d{5,}/.test(potentialSender.replace(/[\s\-\(\)\+]/g, '')) && !isPhoneNumber;
+                                
+                                if ((isPhoneNumber || isPersonalName || isYou) && !isTooLong && !looksLikeContent && potentialMsg.length > 0) {
+                                    lastMsgSender = potentialSender === '(You)' ? 'You' : potentialSender;
+                                    lastMsg = potentialMsg;
+                                    // If we found a valid sender, this is definitely a group!
+                                    if (!isYou) {
+                                        isGroup = true;
+                                    }
                                     break;
                                 }
                             }
-                        }
-                    }
-                    
-                    // Method 2: Look for the second row of text (first is name, second is message)
-                    if (!lastMsg) {
-                        const cellContainer = row.querySelector('[data-testid="cell-frame-container"]') || row;
-                        const spans = cellContainer.querySelectorAll('span[dir="ltr"], span[dir="auto"]');
-                        // Find spans that aren't the name and aren't timestamps
-                        for (const span of spans) {
-                            const text = span.innerText?.trim();
-                            if (text && text !== name && !text.match(/^\d{1,2}:\d{2}/) && 
-                                !text.match(/^(Yesterday|Today)/) && text.length > 0) {
-                                // Skip if this is likely the name element
-                                if (span.closest('[data-testid="cell-frame-title"]')) continue;
-                                lastMsg = text;
+                            
+                            // No valid sender pattern - use the clean text as message
+                            if (!lastMsg) {
+                                lastMsg = cleanText;
                                 break;
                             }
                         }
                     }
                     
-                    // Method 3: Look for message text in secondary content area
+                    // Fallback: if still no message, get from row content more aggressively
                     if (!lastMsg) {
-                        const secondaryEl = row.querySelector('[data-testid="cell-frame-secondary"]');
-                        if (secondaryEl) {
-                            lastMsg = secondaryEl.innerText?.trim() || null;
-                        }
-                    }
-                    
-                    // Get timestamp
-                    const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]') ||
-                                   row.querySelectorAll('[dir="auto"]')[1];
-                    const timestamp = timeEl ? timeEl.innerText : null;
-                    
-                    // Get unread count
-                    const unreadEl = row.querySelector('[data-testid="icon-unread-count"]') ||
-                                     row.querySelector('span[aria-label*="unread"]');
-                    let unreadCount = 0;
-                    if (unreadEl) {
-                        const text = unreadEl.innerText || unreadEl.getAttribute('aria-label') || '';
-                        const match = text.match(/\d+/);
-                        unreadCount = match ? parseInt(match[0]) : 0;
-                    }
-                    
-                    // Check if group (has group icon or multiple participants indicator)
-                    const isGroup = row.querySelector('[data-icon="default-group"]') !== null ||
-                                    name.includes('group') ||
-                                    row.querySelector('[data-testid="group"]') !== null;
-                    
-                    // Get avatar URL
-                    const avatarEl = row.querySelector('img[src*="pps.whatsapp.net"]');
-                    const avatarUrl = avatarEl ? avatarEl.src : null;
-                    
-                    // Try to extract chat ID from multiple sources
-                    let chatId = null;
-                    
-                    // Method 1: data-id attribute on row or parent
-                    let el = row;
-                    for (let i = 0; i < 5 && el; i++) {
-                        const dataId = el.getAttribute('data-id');
-                        if (dataId && dataId.includes('@')) {
-                            chatId = dataId;
+                        const rowText = row.innerText || '';
+                        // Clean up the row text - normalize newlines around colons
+                        const cleanRowText = rowText.replace(/\s*\n\s*:\s*\n\s*/g, ': ');
+                        const lines = cleanRowText.split('\n').filter(l => l.trim());
+                        // Look for a line that's not the name and not a timestamp
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed === name) continue;
+                            if (/^\d{1,2}:\d{2}/.test(trimmed)) continue;
+                            if (/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(trimmed)) continue;
+                            if (/^\d+$/.test(trimmed)) continue;
+                            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed)) continue;
+                            if (trimmed.includes('unread message')) continue;
+                            if (trimmed.length < 2) continue;
+                            lastMsg = trimmed;
                             break;
                         }
-                        el = el.parentElement;
                     }
                     
-                    // Method 2: Look for data-id in child elements (deeper search)
+                    // === GET UNREAD COUNT ===
+                    let unreadCount = 0;
+                    const rowLabel = row.getAttribute('aria-label') || '';
+                    const unreadMatch = rowLabel.match(/(\d+)\s+unread\s+message/i);
+                    if (unreadMatch) {
+                        unreadCount = parseInt(unreadMatch[1]) || 0;
+                    }
+                    
+                    // Also check for badge element
+                    if (unreadCount === 0) {
+                        const badgeEl = row.querySelector('[aria-label*="unread"]');
+                        if (badgeEl) {
+                            const badgeText = badgeEl.innerText || badgeEl.getAttribute('aria-label') || '';
+                            const match = badgeText.match(/(\d+)/);
+                            if (match) unreadCount = parseInt(match[1]) || 0;
+                        }
+                    }
+                    
+                    // === GET AVATAR URL ===
+                    let avatarUrl = null;
+                    
+                    // Look for img element in the row
+                    const imgs = row.querySelectorAll('img');
+                    for (const img of imgs) {
+                        const src = img.src || img.getAttribute('src');
+                        // WhatsApp profile pics are hosted on pps.whatsapp.net
+                        if (src && (src.includes('pps.whatsapp.net') || src.includes('blob:') || 
+                                    (src.startsWith('https://') && !src.includes('emoji')))) {
+                            avatarUrl = src;
+                            break;
+                        }
+                    }
+                    
+                    // === GET CHAT ID ===
+                    // Try multiple approaches to extract the chat ID
+                    let chatId = null;
+                    
+                    // Method 0: Look up from WhatsApp Store (most reliable if available)
+                    if (nameToJid.has(name)) {
+                        chatId = nameToJid.get(name);
+                        // If JID ends with @g.us, it's definitely a group
+                        if (chatId && chatId.endsWith('@g.us')) {
+                            isGroup = true;
+                        }
+                    }
+                    
+                    // Method 1: data-id attribute (may not work in current WhatsApp version)
                     if (!chatId) {
-                        const allWithId = row.querySelectorAll('[data-id]');
-                        for (const child of allWithId) {
-                            const childDataId = child.getAttribute('data-id');
-                            if (childDataId && childDataId.includes('@')) {
-                                chatId = childDataId;
+                        let el = row;
+                        for (let i = 0; i < 10 && el; i++) {
+                            const dataId = el.getAttribute && el.getAttribute('data-id');
+                            if (dataId && dataId.includes('@')) {
+                                chatId = dataId;
+                                if (chatId.endsWith('@g.us')) isGroup = true;
                                 break;
                             }
+                            el = el.parentElement;
                         }
                     }
                     
-                    // Method 3: Look for phone in aria-label or title attributes
-                    if (!chatId) {
-                        const allElements = row.querySelectorAll('[aria-label], [title]');
-                        for (const el of allElements) {
-                            const attr = el.getAttribute('aria-label') || el.getAttribute('title') || '';
-                            // Match phone patterns like +919876543210 or 919876543210
-                            const phoneMatch = attr.match(/\+?(\d{10,15})/);
-                            if (phoneMatch) {
-                                chatId = phoneMatch[1] + '@c.us';
-                                break;
-                            }
+                    // Method 2: Extract phone number from name if it's a phone number
+                    if (!chatId && name) {
+                        // Names like "+91 97389 68141" or "919876543210"
+                        const phoneClean = name.replace(/[\s\-\(\)]/g, '').replace(/^\+/, '');
+                        if (/^\d{10,15}$/.test(phoneClean)) {
+                            chatId = phoneClean + '@c.us';
                         }
                     }
                     
-                    // Method 4: Extract phone number from name (handles formats like "+91 97389 68141")
-                    if (!chatId) {
-                        // Remove all non-digit characters except leading +
-                        const cleanName = name.replace(/[^\d+]/g, '').replace(/^\+/, '');
-                        if (cleanName.length >= 10 && cleanName.length <= 15 && /^\d+$/.test(cleanName)) {
-                            chatId = cleanName + '@c.us';
-                        }
+                    // Method 3: For groups without JID, use group: prefix
+                    if (!chatId && isGroup) {
+                        // For groups, use a group-style ID
+                        chatId = 'group:' + name.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, '_').substring(0, 50);
                     }
                     
-                    // Method 5: Use the name as a fallback identifier
-                    // But prefix it to indicate it's a name-based ID
+                    // Method 4: Fallback to name-based ID for contacts without phone
                     if (!chatId) {
                         chatId = 'name:' + name;
                     }
+                    
+                    // === ADDITIONAL GROUP DETECTION ===
+                    // Check if chat has "(You)" prefix which indicates self-chat or group
+                    if (!isGroup && lastMsg && lastMsg.startsWith('(You)')) {
+                        // Self chat
+                        lastMsg = lastMsg.replace(/^\(You\)\s*/, '');
+                    }
+                    
+                    // Check for group icon one more time
+                    if (!isGroup) {
+                        const groupIcon = row.querySelector('[data-icon="default-group"], [data-icon="group"]');
+                        if (groupIcon) isGroup = true;
+                    }
+                    
+                    // === PINNED/MUTED STATUS ===
+                    let isPinned = null;
+                    let isMuted = null;
+                    
+                    const pinnedIcon = row.querySelector('[data-icon="pinned"], [data-testid="pinned"]');
+                    if (pinnedIcon) isPinned = true;
+                    
+                    const mutedIcon = row.querySelector('[data-icon="muted"], [data-testid="muted"]');
+                    if (mutedIcon) isMuted = true;
                     
                     chats.push({
                         id: chatId,
                         name: name,
                         last_message: lastMsg,
+                        last_message_sender: lastMsgSender,
                         timestamp: timestamp,
                         unread_count: unreadCount,
                         is_group: isGroup,
-                        avatar_url: avatarUrl
+                        avatar_url: avatarUrl,
+                        is_pinned: isPinned,
+                        is_muted: isMuted
                     });
+                    
                 } catch(e) {
-                    // Skip problematic rows
+                    console.error('[WAS] Error parsing chat row', idx, ':', e);
                 }
             });
             
+            console.log('[WAS] Parsed', chats.length, 'chats successfully');
             return chats;
         })();
         "##;
@@ -1383,5 +1625,705 @@ impl ChatServiceTrait for ChatService {
         }
 
         Ok(messages)
+    }
+
+    /// Send typing indicator to a chat
+    async fn send_typing(
+        &self,
+        chat_id: &str,
+        state: crate::models::chat::TypingState,
+    ) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat first
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Simulate typing by focusing and optionally typing/clearing
+        let is_composing = state == crate::models::chat::TypingState::Composing;
+
+        let script = format!(
+            r##"
+        (function() {{
+            const input = document.querySelector('div[contenteditable="true"][data-tab="10"]') ||
+                          document.querySelector('#main footer div[contenteditable="true"]') ||
+                          document.querySelector('div[aria-placeholder="Type a message"]');
+            
+            if (!input) {{
+                console.error('[WAS] Message input not found for typing');
+                return false;
+            }}
+            
+            // Focus the input to show typing state
+            input.focus();
+            
+            if ({}) {{
+                // Composing: type a space then delete it to trigger composing state
+                const event = new InputEvent('input', {{ bubbles: true, cancelable: true }});
+                input.textContent = ' ';
+                input.dispatchEvent(event);
+            }} else {{
+                // Paused: clear and blur
+                input.textContent = '';
+                input.blur();
+            }}
+            
+            return true;
+        }})();
+        "##,
+            is_composing
+        );
+
+        let result: bool = page.evaluate(script).await?.into_value().unwrap_or(false);
+
+        if !result {
+            return Err(anyhow::anyhow!("Failed to send typing indicator"));
+        }
+
+        debug!("Sent typing indicator: {:?} to {}", state, chat_id);
+        Ok(())
+    }
+
+    /// Mark all messages in a chat as read
+    async fn mark_read(&self, chat_id: &str) -> Result<u32> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat - this automatically marks messages as read
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Wait briefly for read receipts to be sent
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Get unread count (should be 0 now)
+        let script = r##"
+        (function() {
+            // Check if there are any unread indicators in the current chat
+            const unreadBadge = document.querySelector('#main [aria-label*="unread"]');
+            return unreadBadge ? parseInt(unreadBadge.textContent) || 0 : 0;
+        })();
+        "##;
+
+        let remaining: u32 = page.evaluate(script).await?.into_value().unwrap_or(0);
+
+        debug!(
+            "Marked messages as read in {}, remaining: {}",
+            chat_id, remaining
+        );
+        Ok(remaining)
+    }
+
+    /// Get presence/online status for a contact
+    async fn get_presence(&self, chat_id: &str) -> Result<crate::models::chat::PresenceInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat to see presence
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Wait for header to load
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            // Look for presence info in the chat header
+            const header = document.querySelector('#main header');
+            if (!header) return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+            
+            // Look for "online", "typing", or "last seen" text
+            const subtitleEl = header.querySelector('span[title]') ||
+                               header.querySelector('span[dir="auto"]');
+            
+            // Also check for explicit status spans
+            const statusSpans = header.querySelectorAll('span');
+            let statusText = null;
+            
+            for (const span of statusSpans) {
+                const text = span.innerText?.toLowerCase() || '';
+                if (text.includes('online') || text.includes('typing') || 
+                    text.includes('last seen') || text.includes('click here')) {
+                    statusText = span.innerText;
+                    break;
+                }
+            }
+            
+            if (!statusText && subtitleEl) {
+                // Get the second line (status) from header
+                const allText = header.innerText || '';
+                const lines = allText.split('\n').filter(l => l.trim());
+                if (lines.length > 1) {
+                    statusText = lines[1];
+                }
+            }
+            
+            if (!statusText) {
+                return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+            }
+            
+            const lowerStatus = statusText.toLowerCase();
+            
+            if (lowerStatus.includes('online')) {
+                return { status: 'online', last_seen: null, last_seen_hidden: false };
+            } else if (lowerStatus.includes('typing')) {
+                return { status: 'online', last_seen: 'typing', last_seen_hidden: false };
+            } else if (lowerStatus.includes('last seen')) {
+                return { status: 'offline', last_seen: statusText, last_seen_hidden: false };
+            } else if (lowerStatus.includes('click here') || lowerStatus.includes('tap here')) {
+                // Privacy setting hides last seen
+                return { status: 'unknown', last_seen: null, last_seen_hidden: true };
+            }
+            
+            return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawPresence {
+            status: String,
+            last_seen: Option<String>,
+            last_seen_hidden: bool,
+        }
+
+        let raw: RawPresence = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or(RawPresence {
+                status: "unknown".to_string(),
+                last_seen: None,
+                last_seen_hidden: false,
+            });
+
+        let status = match raw.status.as_str() {
+            "online" => crate::models::chat::PresenceStatus::Online,
+            "offline" => crate::models::chat::PresenceStatus::Offline,
+            _ => crate::models::chat::PresenceStatus::Unknown,
+        };
+
+        Ok(crate::models::chat::PresenceInfo {
+            chat_id: chat_id.to_string(),
+            status,
+            last_seen: raw.last_seen,
+            last_seen_hidden: raw.last_seen_hidden,
+        })
+    }
+
+    /// Get detailed group information
+    async fn get_group_info(&self, group_id: &str) -> Result<crate::models::chat::GroupInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the group
+        self.navigate_to_chat(&page, group_id).await?;
+
+        // Click on the group header to open info panel
+        let click_script = r##"
+        (function() {
+            const header = document.querySelector('#main header');
+            if (header) {
+                header.click();
+                return true;
+            }
+            return false;
+        })();
+        "##;
+
+        let clicked: bool = page
+            .evaluate(click_script)
+            .await?
+            .into_value()
+            .unwrap_or(false);
+        if !clicked {
+            return Err(anyhow::anyhow!("Failed to open group info panel"));
+        }
+
+        // Wait for panel to open
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            // Find the info panel (usually on the right side)
+            const panel = document.querySelector('[data-testid="conversation-panel-wrapper"]') ||
+                          document.querySelector('span[data-testid="conversation-info-header"]')?.closest('div[tabindex]');
+            
+            if (!panel) {
+                // Try alternate: look for the group name in any open panel
+                const panels = document.querySelectorAll('[role="application"], [data-animate-drawer-content="true"]');
+                for (const p of panels) {
+                    if (p.innerText?.includes('participants') || p.innerText?.includes('Group info')) {
+                        panel = p;
+                        break;
+                    }
+                }
+            }
+            
+            const info = {
+                name: null,
+                description: null,
+                avatar_url: null,
+                created_at: null,
+                created_by: null,
+                participant_count: 0,
+                participants: [],
+                is_announce: false,
+                is_locked: false,
+                invite_link: null
+            };
+            
+            // Get group name from header
+            const nameEl = document.querySelector('#main header span[title]');
+            info.name = nameEl?.getAttribute('title') || nameEl?.innerText;
+            
+            // Get avatar
+            const avatar = document.querySelector('#main header img[src*="pps.whatsapp.net"]');
+            info.avatar_url = avatar?.src;
+            
+            // Try to find participant list
+            const participantSection = document.querySelector('[data-testid="participants-section"]') ||
+                                       document.evaluate("//span[contains(text(), 'participants')]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.closest('div');
+            
+            if (participantSection) {
+                // Count participants from text like "50 participants"
+                const countMatch = participantSection.innerText?.match(/(\d+)\s*participant/i);
+                if (countMatch) {
+                    info.participant_count = parseInt(countMatch[1]);
+                }
+                
+                // Get individual participants
+                const participantRows = participantSection.querySelectorAll('[role="listitem"], [role="row"], [data-testid*="participant"]');
+                for (const row of participantRows) {
+                    const nameSpan = row.querySelector('span[title]');
+                    const name = nameSpan?.getAttribute('title') || nameSpan?.innerText;
+                    if (name) {
+                        const isAdmin = row.innerText?.toLowerCase().includes('admin') || false;
+                        const isOwner = row.innerText?.toLowerCase().includes('group admin') || false;
+                        info.participants.push({
+                            id: name,
+                            name: name,
+                            phone: null,
+                            is_admin: isAdmin,
+                            is_owner: isOwner
+                        });
+                    }
+                }
+            }
+            
+            // Get description
+            const descSection = document.querySelector('[data-testid="group-description"]') ||
+                               document.evaluate("//span[contains(text(), 'Add group description')]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.closest('div');
+            if (descSection && !descSection.innerText?.includes('Add group')) {
+                info.description = descSection.innerText?.trim();
+            }
+            
+            return info;
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawGroupInfo {
+            name: Option<String>,
+            description: Option<String>,
+            avatar_url: Option<String>,
+            created_at: Option<String>,
+            created_by: Option<String>,
+            participant_count: u32,
+            participants: Vec<crate::models::chat::GroupParticipant>,
+            is_announce: bool,
+            is_locked: bool,
+            invite_link: Option<String>,
+        }
+
+        let raw: RawGroupInfo = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or(RawGroupInfo {
+                name: None,
+                description: None,
+                avatar_url: None,
+                created_at: None,
+                created_by: None,
+                participant_count: 0,
+                participants: vec![],
+                is_announce: false,
+                is_locked: false,
+                invite_link: None,
+            });
+
+        // Close the panel by clicking elsewhere or pressing Escape
+        let _ = page.evaluate("document.body.click();").await;
+
+        Ok(crate::models::chat::GroupInfo {
+            id: group_id.to_string(),
+            name: raw.name.unwrap_or_else(|| group_id.to_string()),
+            description: raw.description,
+            avatar_url: raw.avatar_url,
+            created_at: raw.created_at,
+            created_by: raw.created_by,
+            participant_count: raw.participant_count,
+            participants: raw.participants,
+            is_announce: raw.is_announce,
+            is_locked: raw.is_locked,
+            invite_link: raw.invite_link,
+        })
+    }
+
+    /// Get contact profile information
+    async fn get_contact_info(&self, contact_id: &str) -> Result<crate::models::chat::ContactInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the contact's chat
+        self.navigate_to_chat(&page, contact_id).await?;
+
+        // Click on header to open contact info
+        let _ = page
+            .evaluate(r#"document.querySelector('#main header')?.click();"#)
+            .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            const info = {
+                name: null,
+                push_name: null,
+                phone: null,
+                avatar_url: null,
+                status: null,
+                is_business: false,
+                business_name: null,
+                business_category: null,
+                is_blocked: false
+            };
+            
+            // Get name from header
+            const nameEl = document.querySelector('#main header span[title]');
+            info.name = nameEl?.getAttribute('title') || nameEl?.innerText;
+            
+            // Get avatar
+            const avatar = document.querySelector('#main header img[src*="pps.whatsapp.net"]');
+            info.avatar_url = avatar?.src;
+            
+            // Look for contact info panel
+            const panels = document.querySelectorAll('[role="application"], [data-animate-drawer-content="true"]');
+            for (const panel of panels) {
+                const text = panel.innerText || '';
+                
+                // Check for business indicators
+                if (text.includes('Business account') || text.includes('Catalog')) {
+                    info.is_business = true;
+                }
+                
+                // Look for "About" section
+                const aboutMatch = text.match(/About\n(.+)/);
+                if (aboutMatch) {
+                    info.status = aboutMatch[1]?.split('\n')[0];
+                }
+                
+                // Look for phone number
+                const phoneMatch = text.match(/(\+\d[\d\s\-]+)/);
+                if (phoneMatch) {
+                    info.phone = phoneMatch[1];
+                }
+                
+                // Check if blocked
+                if (text.includes('Unblock') || text.includes('blocked')) {
+                    info.is_blocked = true;
+                }
+            }
+            
+            return info;
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawContactInfo {
+            name: Option<String>,
+            push_name: Option<String>,
+            phone: Option<String>,
+            avatar_url: Option<String>,
+            status: Option<String>,
+            is_business: bool,
+            business_name: Option<String>,
+            business_category: Option<String>,
+            is_blocked: bool,
+        }
+
+        let raw: RawContactInfo =
+            page.evaluate(script)
+                .await?
+                .into_value()
+                .unwrap_or(RawContactInfo {
+                    name: None,
+                    push_name: None,
+                    phone: None,
+                    avatar_url: None,
+                    status: None,
+                    is_business: false,
+                    business_name: None,
+                    business_category: None,
+                    is_blocked: false,
+                });
+
+        // Close the panel
+        let _ = page.evaluate("document.body.click();").await;
+
+        Ok(crate::models::chat::ContactInfo {
+            id: contact_id.to_string(),
+            name: raw.name,
+            push_name: raw.push_name,
+            phone: raw.phone,
+            avatar_url: raw.avatar_url,
+            status: raw.status,
+            is_business: raw.is_business,
+            business_name: raw.business_name,
+            business_category: raw.business_category,
+            is_blocked: raw.is_blocked,
+        })
+    }
+
+    /// Send a reaction (emoji) to a message
+    async fn send_reaction(&self, chat_id: &str, message_id: &str, emoji: &str) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Find the message and double-click or right-click to open reaction menu
+        let script = format!(
+            r##"
+        (async function() {{
+            // Find the message by ID or by searching message bubbles
+            const messages = document.querySelectorAll('[data-id="{msg_id}"], [data-testid="msg-container"]');
+            
+            let targetMsg = null;
+            for (const msg of messages) {{
+                const dataId = msg.getAttribute('data-id');
+                if (dataId && (dataId.includes('{msg_id}') || dataId === '{msg_id}')) {{
+                    targetMsg = msg;
+                    break;
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                // Try to find by index or content
+                const allMsgs = document.querySelectorAll('.message-in, .message-out, [data-testid="msg-container"]');
+                if (allMsgs.length > 0) {{
+                    // Default to last message if ID not found
+                    targetMsg = allMsgs[allMsgs.length - 1];
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                return {{ success: false, error: 'Message not found' }};
+            }}
+            
+            // Double-click to show reaction quick menu
+            const dblClick = new MouseEvent('dblclick', {{
+                bubbles: true,
+                cancelable: true,
+                view: window
+            }});
+            targetMsg.dispatchEvent(dblClick);
+            
+            // Wait for reaction menu
+            await new Promise(r => setTimeout(r, 500));
+            
+            // Look for reaction buttons
+            const reactionButtons = document.querySelectorAll('[data-testid="reaction-btn"], [aria-label="React"]');
+            
+            if (reactionButtons.length > 0) {{
+                // Click on the reaction menu
+                reactionButtons[0].click();
+                await new Promise(r => setTimeout(r, 300));
+            }}
+            
+            // Try to find and click the specific emoji
+            const emoji = '{emoji}';
+            if (emoji) {{
+                // Look for emoji in reaction picker
+                const emojiButtons = document.querySelectorAll('[data-emoji="{emoji}"], button[aria-label*="{emoji}"]');
+                for (const btn of emojiButtons) {{
+                    if (btn.innerText?.includes(emoji) || btn.getAttribute('data-emoji') === emoji) {{
+                        btn.click();
+                        return {{ success: true }};
+                    }}
+                }}
+                
+                // Fallback: try to type the emoji in search
+                const searchInput = document.querySelector('[data-testid="emoji-search"], input[placeholder*="Search"]');
+                if (searchInput) {{
+                    searchInput.value = emoji;
+                    searchInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    await new Promise(r => setTimeout(r, 300));
+                    
+                    const firstResult = document.querySelector('[data-testid="emoji-result"]');
+                    if (firstResult) {{
+                        firstResult.click();
+                        return {{ success: true }};
+                    }}
+                }}
+            }}
+            
+            return {{ success: false, error: 'Could not send reaction' }};
+        }})();
+        "##,
+            msg_id = message_id,
+            emoji = emoji
+        );
+
+        let result: serde_json::Value = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or_default();
+
+        if result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            debug!(
+                "Sent reaction {} to message {} in {}",
+                emoji, message_id, chat_id
+            );
+            Ok(())
+        } else {
+            let error = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            Err(anyhow::anyhow!("Failed to send reaction: {}", error))
+        }
+    }
+
+    /// Send a reply to a specific message
+    async fn send_reply(&self, chat_id: &str, quoted_message_id: &str, text: &str) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Find the message and click reply
+        let reply_script = format!(
+            r##"
+        (async function() {{
+            // Find the message
+            const messages = document.querySelectorAll('[data-id*="{msg_id}"], [data-testid="msg-container"]');
+            
+            let targetMsg = null;
+            for (const msg of messages) {{
+                const dataId = msg.getAttribute('data-id');
+                if (dataId && dataId.includes('{msg_id}')) {{
+                    targetMsg = msg;
+                    break;
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                return {{ success: false, error: 'Message not found' }};
+            }}
+            
+            // Hover over message to show menu
+            targetMsg.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
+            await new Promise(r => setTimeout(r, 200));
+            
+            // Click the down arrow to open context menu
+            const menuBtn = targetMsg.querySelector('[data-testid="down-context"], [data-icon="down-context"]') ||
+                            targetMsg.parentElement?.querySelector('[data-testid="down-context"]');
+            
+            if (menuBtn) {{
+                menuBtn.click();
+                await new Promise(r => setTimeout(r, 300));
+            }} else {{
+                // Try right-click
+                targetMsg.dispatchEvent(new MouseEvent('contextmenu', {{
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    button: 2
+                }}));
+                await new Promise(r => setTimeout(r, 300));
+            }}
+            
+            // Find and click "Reply" option
+            const menuItems = document.querySelectorAll('[role="menuitem"], [data-testid*="reply"], li[data-animate-dropdown-item]');
+            for (const item of menuItems) {{
+                if (item.innerText?.toLowerCase().includes('reply')) {{
+                    item.click();
+                    return {{ success: true }};
+                }}
+            }}
+            
+            // Alt: look for reply icon
+            const replyIcon = document.querySelector('[data-icon="reply"], [data-testid="reply"]');
+            if (replyIcon) {{
+                replyIcon.click();
+                return {{ success: true }};
+            }}
+            
+            return {{ success: false, error: 'Reply option not found' }};
+        }})();
+        "##,
+            msg_id = quoted_message_id
+        );
+
+        let result: serde_json::Value = page
+            .evaluate(reply_script)
+            .await?
+            .into_value()
+            .unwrap_or_default();
+
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let error = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            return Err(anyhow::anyhow!("Failed to initiate reply: {}", error));
+        }
+
+        // Wait for reply context to appear
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Now type and send the message
+        self.send_text_only(&page, text).await?;
+
+        debug!(
+            "Sent reply to message {} in {}: {}",
+            quoted_message_id, chat_id, text
+        );
+        Ok(())
     }
 }

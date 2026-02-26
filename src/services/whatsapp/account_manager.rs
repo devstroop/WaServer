@@ -7,7 +7,7 @@ use super::account::WhatsAppAccount;
 use crate::{
     config::AppConfig,
     models::account::{
-        validate_phone_number, AccountSetupConfig, AccountId, AccountListResponse,
+        validate_phone_number, AccountId, AccountListResponse, AccountSetupConfig,
         CreateAccountRequest, CreateAccountResponse,
     },
     services::database::Database,
@@ -171,8 +171,8 @@ impl AccountManager {
 
     /// Register a phone number for an account (called after WhatsApp authentication)
     pub async fn register_phone(&self, account_id: AccountId, phone: &str) -> Result<()> {
-        let phone = validate_phone_number(phone)
-            .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
+        let phone =
+            validate_phone_number(phone).map_err(|e| anyhow!("Invalid phone number: {}", e))?;
 
         // Check for conflict: another account already has this phone
         {
@@ -181,7 +181,8 @@ impl AccountManager {
                 if existing_id != account_id {
                     return Err(anyhow!(
                         "Phone '{}' is already registered to account '{}'",
-                        phone, existing_id
+                        phone,
+                        existing_id
                     ));
                 }
                 // Already registered to this account — nothing to do
@@ -262,16 +263,10 @@ impl AccountManager {
             let account_dir = self.base_dir.join(account_id.to_string());
             if account_dir.exists() {
                 tokio::fs::remove_dir_all(&account_dir).await?;
-                info!(
-                    "Deleted account '{}' and all data",
-                    account_id
-                );
+                info!("Deleted account '{}' and all data", account_id);
             }
         } else {
-            info!(
-                "Deleted account '{}' (data preserved)",
-                account_id
-            );
+            info!("Deleted account '{}' (data preserved)", account_id);
         }
 
         Ok(account_id)
@@ -366,7 +361,10 @@ impl AccountManager {
         }
 
         if !newly_loaded.is_empty() {
-            info!("Discovered {} new accounts from database", newly_loaded.len());
+            info!(
+                "Discovered {} new accounts from database",
+                newly_loaded.len()
+            );
         }
 
         Ok((newly_loaded, already_loaded))

@@ -60,13 +60,16 @@ impl ErrorResponse {
 /// A chat/conversation from the WhatsApp sidebar
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ChatInfo {
-    /// Chat ID (phone@c.us or group ID)
+    /// Chat ID (phone@c.us or group@g.us)
     pub id: String,
     /// Contact or group name
     pub name: String,
     /// Last message preview
     pub last_message: Option<String>,
-    /// Last message timestamp (human readable)
+    /// Last message sender (for group chats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_message_sender: Option<String>,
+    /// Last message timestamp (human readable like "10:30 AM", "Yesterday", "1/15/26")
     pub timestamp: Option<String>,
     /// Number of unread messages
     pub unread_count: u32,
@@ -74,6 +77,12 @@ pub struct ChatInfo {
     pub is_group: bool,
     /// Profile picture URL (if available)
     pub avatar_url: Option<String>,
+    /// Whether the chat is pinned to top
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_pinned: Option<bool>,
+    /// Whether notifications are muted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_muted: Option<bool>,
 }
 
 /// Response for listing chats
@@ -215,4 +224,248 @@ impl From<db::Message> for Message {
             processed_at: msg.processed_at,
         }
     }
+}
+
+// ============================================================================
+// Typing Indicator Models
+// ============================================================================
+
+/// Typing state enum
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TypingState {
+    /// User is typing
+    Composing,
+    /// User stopped typing
+    Paused,
+}
+
+/// Request to send typing indicator
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TypingRequest {
+    /// Chat ID (phone number or group ID)
+    pub chat_id: String,
+    /// Typing state
+    pub state: TypingState,
+}
+
+/// Response for typing indicator
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TypingResponse {
+    /// Success status
+    pub success: bool,
+    /// Chat ID where typing indicator was sent
+    pub chat_id: String,
+    /// The typing state that was set
+    pub state: TypingState,
+}
+
+// ============================================================================
+// Presence/Online Status Models
+// ============================================================================
+
+/// Online presence status
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PresenceStatus {
+    /// User is online
+    Online,
+    /// User is offline
+    Offline,
+    /// Status unknown/unavailable
+    Unknown,
+}
+
+/// Presence info for a contact
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PresenceInfo {
+    /// Chat/Contact ID
+    pub chat_id: String,
+    /// Presence status
+    pub status: PresenceStatus,
+    /// Last seen timestamp (if available)
+    pub last_seen: Option<String>,
+    /// Whether "last seen" is hidden by privacy settings
+    pub last_seen_hidden: bool,
+}
+
+/// Request to subscribe to presence updates
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PresenceSubscribeRequest {
+    /// Chat ID to subscribe to
+    pub chat_id: String,
+}
+
+// ============================================================================
+// Group Management Models
+// ============================================================================
+
+/// Group participant info
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GroupParticipant {
+    /// Participant JID
+    pub id: String,
+    /// Display name
+    pub name: Option<String>,
+    /// Phone number
+    pub phone: Option<String>,
+    /// Whether this is an admin
+    pub is_admin: bool,
+    /// Whether this is the group owner/creator
+    pub is_owner: bool,
+}
+
+/// Detailed group information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GroupInfo {
+    /// Group JID
+    pub id: String,
+    /// Group name
+    pub name: String,
+    /// Group description
+    pub description: Option<String>,
+    /// Group profile picture URL
+    pub avatar_url: Option<String>,
+    /// Group creation timestamp
+    pub created_at: Option<String>,
+    /// Group creator JID
+    pub created_by: Option<String>,
+    /// Participant count
+    pub participant_count: u32,
+    /// List of participants
+    pub participants: Vec<GroupParticipant>,
+    /// Whether only admins can send messages
+    pub is_announce: bool,
+    /// Whether only admins can edit group info
+    pub is_locked: bool,
+    /// Invite link (if available)
+    pub invite_link: Option<String>,
+}
+
+/// Request to create a group
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateGroupRequest {
+    /// Group name (max 25 characters)
+    pub name: String,
+    /// List of participant phone numbers
+    pub participants: Vec<String>,
+}
+
+/// Request to update group info
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateGroupRequest {
+    /// New group name (optional)
+    pub name: Option<String>,
+    /// New description (optional)
+    pub description: Option<String>,
+}
+
+/// Request to manage group participants
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GroupParticipantsRequest {
+    /// List of phone numbers to add/remove
+    pub participants: Vec<String>,
+}
+
+// ============================================================================
+// Contact Info Models
+// ============================================================================
+
+/// Contact profile information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ContactInfo {
+    /// Contact JID
+    pub id: String,
+    /// Display name
+    pub name: Option<String>,
+    /// Push name (name set by the contact themselves)
+    pub push_name: Option<String>,
+    /// Phone number
+    pub phone: Option<String>,
+    /// Profile picture URL
+    pub avatar_url: Option<String>,
+    /// Status/About text
+    pub status: Option<String>,
+    /// Whether this is a business account
+    pub is_business: bool,
+    /// Business name (if business account)
+    pub business_name: Option<String>,
+    /// Business category
+    pub business_category: Option<String>,
+    /// Whether the contact is blocked
+    pub is_blocked: bool,
+}
+
+// ============================================================================
+// Message Reaction Models
+// ============================================================================
+
+/// Request to send a reaction
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReactionRequest {
+    /// Message ID to react to
+    pub message_id: String,
+    /// Emoji reaction (empty string to remove)
+    #[schema(example = "👍")]
+    pub emoji: String,
+}
+
+/// Response for reaction
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReactionResponse {
+    /// Success status
+    pub success: bool,
+}
+
+/// Reaction info on a message
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MessageReaction {
+    /// Emoji used
+    pub emoji: String,
+    /// Who sent the reaction
+    pub sender: String,
+    /// Sender name
+    pub sender_name: Option<String>,
+    /// When the reaction was sent
+    pub timestamp: Option<String>,
+}
+
+// ============================================================================
+// Reply/Quote Models
+// ============================================================================
+
+/// Request to send a reply/quoted message
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplyMessageRequest {
+    /// Phone number or chat ID
+    pub chat_id: String,
+    /// Message ID to reply to
+    pub quoted_message_id: String,
+    /// Reply text
+    pub text: String,
+}
+
+// ============================================================================
+// Read Receipt Models
+// ============================================================================
+
+/// Request to mark messages as read
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MarkReadRequest {
+    /// Chat ID
+    pub chat_id: String,
+    /// Optional list of specific message IDs to mark read
+    /// If empty, marks all messages in chat as read
+    pub message_ids: Option<Vec<String>>,
+}
+
+/// Response for mark read
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MarkReadResponse {
+    /// Success status
+    pub success: bool,
+    /// Chat ID where messages were read
+    pub chat_id: String,
+    /// Number of messages marked as read
+    pub messages_read: u32,
 }

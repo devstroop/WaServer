@@ -5,7 +5,11 @@
 
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc, time::{Instant, SystemTime}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Instant, SystemTime},
+};
 use utoipa::ToSchema;
 
 use crate::services::AccountManager;

@@ -15,7 +15,11 @@
 use std::sync::Arc;
 use tracing::info;
 
-use was::{config::AppConfig, services::{AccountManager, Database}, utils::logging};
+use was::{
+    config::AppConfig,
+    services::{AccountManager, Database},
+    utils::logging,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -43,7 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Validate configuration
     if let Err(e) = config.validate() {
         if config.environment.is_development() {
-            tracing::warn!("⚠️  Config validation: {} (continuing in development mode)", e);
+            tracing::warn!(
+                "⚠️  Config validation: {} (continuing in development mode)",
+                e
+            );
         } else {
             eprintln!("Configuration error: {}", e);
             std::process::exit(1);
@@ -116,7 +123,7 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{whatsapp, chat, health, accounts},
+        api::{accounts, chat, health, whatsapp},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
@@ -259,10 +266,7 @@ async fn run_server(
         .route("/:account_id/reset", post(accounts::reset_account))
         .route("/:account_id/screenshot", get(accounts::screenshot))
         .route("/:account_id/config", get(accounts::get_account_config))
-        .route(
-            "/:account_id/config",
-            put(accounts::update_account_config),
-        )
+        .route("/:account_id/config", put(accounts::update_account_config))
         // WhatsApp auth & linking
         .route("/:account_id/status", get(whatsapp::get_account_status))
         .route("/:account_id/link/qr", get(whatsapp::get_qr_code))
@@ -277,7 +281,36 @@ async fn run_server(
         .route("/:account_id/chats", get(chat::list_chats))
         .route("/:account_id/chats/events", get(chat::watch_messages))
         .route("/:account_id/chats/:chat_id", get(chat::get_chat_messages))
+        .route(
+            "/:account_id/chats/:chat_id/typing",
+            post(whatsapp::send_typing),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/read",
+            post(whatsapp::mark_read),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/messages/:message_id/react",
+            post(whatsapp::send_reaction),
+        )
+        .route(
+            "/:account_id/chats/:chat_id/messages/:message_id/reply",
+            post(whatsapp::send_reply),
+        )
         .route("/:account_id/messages", post(chat::send_message))
+        // Contacts & Groups
+        .route(
+            "/:account_id/contacts/:contact_id",
+            get(whatsapp::get_contact_info),
+        )
+        .route(
+            "/:account_id/contacts/:contact_id/presence",
+            get(whatsapp::get_presence),
+        )
+        .route(
+            "/:account_id/groups/:group_id",
+            get(whatsapp::get_group_info),
+        )
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
