@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Arc::new(config);
 
-    // Initialize embedded SurrealDB
+    // Initialize embedded SQLite database
     let db_data_dir = config
         .accounts
         .as_ref()
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| "/tmp".to_string());
             std::path::PathBuf::from(home).join(".was")
         });
-    let db = Database::open(&db_data_dir).await.unwrap_or_else(|e| {
+    let db = Database::open(&db_data_dir).unwrap_or_else(|e| {
         eprintln!("Failed to open database: {}", e);
         std::process::exit(1);
     });

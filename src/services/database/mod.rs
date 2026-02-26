@@ -1,6 +1,6 @@
 //! Database Service Module
 //!
-//! Embedded SurrealDB (file-based) for persistent account storage.
+//! Embedded SQLite (file-based) for persistent account storage.
 
 pub mod schema;
 pub mod service;

@@ -73,8 +73,8 @@ reqwest = { version = "0.11", default-features = false, features = ["json", "mul
 # MIME type detection for file uploads
 mime_guess = "2.0"
 
-# Embedded database (SurrealDB file-based)
-surrealdb = { version = "2", features = ["kv-surrealkv"] }
+# Embedded database (SQLite)
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # HMAC for webhook signatures
 hmac = "0.12"

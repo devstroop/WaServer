@@ -31,7 +31,7 @@ pub struct AccountManager {
     base_dir: PathBuf,
     /// App configuration
     config: Arc<AppConfig>,
-    /// Persistent database (SurrealDB)
+    /// Persistent database (SQLite)
     db: Database,
 }
 
@@ -77,7 +77,7 @@ impl AccountManager {
             .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
 
         // Check phone uniqueness via database
-        if let Some(_) = self.db.get_account_by_phone(&phone_number).await? {
+        if let Some(_) = self.db.get_account_by_phone(&phone_number)? {
             return Err(anyhow!("Phone number '{}' already exists", phone_number));
         }
 
@@ -97,8 +97,7 @@ impl AccountManager {
                 &display_name,
                 &account_dir.to_string_lossy(),
                 auto_start,
-            )
-            .await?;
+            )?;
 
         // Create account config
         let setup_config = AccountSetupConfig {
@@ -237,7 +236,7 @@ impl AccountManager {
         let phone_number = account.phone_number().map(|s| s.to_string());
 
         // Remove from database
-        self.db.delete_account(&account_id.to_string()).await?;
+        self.db.delete_account(&account_id.to_string())?;
 
         // Remove from accounts map
         {
@@ -303,14 +302,10 @@ impl AccountManager {
             tokio::fs::create_dir_all(&self.base_dir).await?;
         }
 
-        let records = self.db.list_accounts().await?;
+        let records = self.db.list_accounts()?;
 
         for record in records {
-            // Extract account UUID from the SurrealDB Thing id
-            let id_str = match &record.id {
-                Some(thing) => thing.id.to_raw(),
-                None => continue,
-            };
+            let id_str = &record.id;
 
             let account_id: AccountId = match Uuid::parse_str(&id_str) {
                 Ok(uuid) => uuid,

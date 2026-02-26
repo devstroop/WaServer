@@ -439,7 +439,6 @@ pub struct WhatsAppStatusResponse {
     pub status: String,
     /// Whether WhatsApp Web is authorized
     pub authorized: bool,
-    pub last_activity: Option<String>,
 }
 
 /// Combined profile update request (all fields optional - update what's provided)

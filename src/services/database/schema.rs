@@ -1,45 +1,31 @@
 //! Database Schema Definitions
 //!
-//! SurrealDB schema for the `account` table.
+//! SQLite schema for the `account` table.
 //! Called once at startup to ensure tables and indexes exist.
 
 use anyhow::Result;
-use surrealdb::{engine::local::Db, Surreal};
+use rusqlite::Connection;
 use tracing::info;
 
 /// Apply all schema definitions to the database.
-pub async fn apply(db: &Surreal<Db>) -> Result<()> {
-    db.query(ACCOUNT_SCHEMA).await?.check()?;
+pub fn apply(conn: &Connection) -> Result<()> {
+    conn.execute_batch(ACCOUNT_SCHEMA)?;
     info!("Database schema applied");
     Ok(())
 }
 
 /// Account table schema.
-///
-/// Fields:
-///   - phone_number : string (unique, mandatory)
-///   - display_name : string (default "unknown")
-///   - data_dir     : string
-///   - auto_start   : bool
-///   - status       : string  (stopped | starting | running | error)
-///   - created_at   : datetime
-///   - updated_at   : datetime
 const ACCOUNT_SCHEMA: &str = r#"
-DEFINE TABLE IF NOT EXISTS account SCHEMAFULL;
+CREATE TABLE IF NOT EXISTS account (
+    id           TEXT PRIMARY KEY,
+    phone_number TEXT NOT NULL CHECK(length(phone_number) >= 7 AND length(phone_number) <= 15),
+    display_name TEXT NOT NULL DEFAULT 'unknown',
+    data_dir     TEXT NOT NULL,
+    auto_start   INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'stopped',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
-DEFINE FIELD IF NOT EXISTS phone_number ON account TYPE string
-    ASSERT string::len($value) >= 7 AND string::len($value) <= 15;
-DEFINE FIELD IF NOT EXISTS display_name ON account TYPE string
-    DEFAULT "unknown";
-DEFINE FIELD IF NOT EXISTS data_dir     ON account TYPE string;
-DEFINE FIELD IF NOT EXISTS auto_start   ON account TYPE bool
-    DEFAULT false;
-DEFINE FIELD IF NOT EXISTS status       ON account TYPE string
-    DEFAULT "stopped";
-DEFINE FIELD IF NOT EXISTS created_at   ON account TYPE datetime
-    DEFAULT time::now();
-DEFINE FIELD IF NOT EXISTS updated_at   ON account TYPE datetime
-    DEFAULT time::now();
-
-DEFINE INDEX IF NOT EXISTS idx_account_phone ON account FIELDS phone_number UNIQUE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_phone ON account(phone_number);
 "#;

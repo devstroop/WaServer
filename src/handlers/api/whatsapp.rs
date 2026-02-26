@@ -77,7 +77,6 @@ pub async fn get_account_status(
         phone_number: info.phone_number,
         status: status_str.to_string(),
         authorized: info.authorized,
-        last_activity: info.last_activity.map(|dt| dt.to_rfc3339()),
     }))
     .into_response()
 }
