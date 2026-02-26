@@ -8,13 +8,10 @@
             }
         },
         "playwright": {
-            "command": "/Users/akash/.nvm/versions/node/v22.13.1/bin/npx",
+            "command": "npx",
             "args": [
                 "@playwright/mcp@latest"
-            ],
-            "env": {
-                "PATH": "/Users/akash/.nvm/versions/node/v22.13.1/bin:/usr/local/bin:/usr/bin:/bin"
-            }
+            ]
         }
     }
 }
