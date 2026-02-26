@@ -306,35 +306,33 @@ pub struct AccountInfo {
     pub id: AccountId,
     /// Phone number in E.164 format (populated after WhatsApp login)
     pub phone_number: Option<String>,
-    /// Display name (populated after WhatsApp login)
-    pub display_name: Option<String>,
-    /// Current account status (stopped, starting, running, error)
+    /// Account name (user-defined label)
+    pub account_name: Option<String>,
+    /// Current account status (sleeping, warming_up, active, error)
     pub status: AccountStatus,
     /// Whether WhatsApp Web is authorized/authenticated
     pub authorized: bool,
     /// Timestamp when account was created
     pub created_at: DateTime<Utc>,
-    /// Timestamp of last WhatsApp activity
-    pub last_activity: Option<DateTime<Utc>>,
 }
 
 /// Account runtime status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountStatus {
-    /// Account exists but browser is not running
-    Stopped,
-    /// Browser is starting up
-    Starting,
+    /// Browser is not running; will auto-warm on demand
+    Sleeping,
+    /// Browser is starting up (warming)
+    WarmingUp,
     /// Browser is running and ready
-    Running,
+    Active,
     /// Account has an error
     Error(String),
 }
 
 impl Default for AccountStatus {
     fn default() -> Self {
-        Self::Stopped
+        Self::Sleeping
     }
 }
 

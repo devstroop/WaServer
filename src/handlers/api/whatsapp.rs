@@ -66,9 +66,9 @@ pub async fn get_account_status(
 
     // Convert AccountStatus enum to string
     let status_str = match &info.status {
-        crate::models::account::AccountStatus::Stopped => "stopped",
-        crate::models::account::AccountStatus::Starting => "starting",
-        crate::models::account::AccountStatus::Running => "running",
+        crate::models::account::AccountStatus::Sleeping => "sleeping",
+        crate::models::account::AccountStatus::WarmingUp => "warming_up",
+        crate::models::account::AccountStatus::Active => "active",
         crate::models::account::AccountStatus::Error(_) => "error",
     };
 

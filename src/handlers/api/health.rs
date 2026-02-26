@@ -186,9 +186,9 @@ pub async fn get_metrics(State(manager): State<Arc<AccountManager>>) -> Json<Met
         if let Some(account) = manager.get_account_by_id(info.id).await {
             let metrics = account.get_metrics();
             let status_str = match &info.status {
-                crate::models::account::AccountStatus::Stopped => "stopped",
-                crate::models::account::AccountStatus::Starting => "starting",
-                crate::models::account::AccountStatus::Running => "running",
+                crate::models::account::AccountStatus::Sleeping => "sleeping",
+                crate::models::account::AccountStatus::WarmingUp => "warming_up",
+                crate::models::account::AccountStatus::Active => "active",
                 crate::models::account::AccountStatus::Error(_) => "error",
             };
 

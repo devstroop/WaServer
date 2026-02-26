@@ -135,11 +135,13 @@ impl WhatsAppAccount {
             auth_service: auth_service as Arc<dyn AuthServiceTrait>,
             chat_service: chat_service as Arc<dyn ChatServiceTrait>,
             webhook_service,
-            status: Arc::new(RwLock::new(AccountStatus::Stopped)),
+            status: Arc::new(RwLock::new(AccountStatus::Sleeping)),
             operation_semaphore: Arc::new(Semaphore::new(1)),
             metrics: ServiceMetrics::new(),
             initialized: Arc::new(Mutex::new(false)),
             auth_cache: Arc::new(Mutex::new(None)),
+            last_activity: Arc::new(RwLock::new(Instant::now())),
+            idle_sleep_handle: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -615,18 +617,18 @@ impl WhatsAppAccount {
         }
     }
 
-    /// Check if the account status is Running
+    /// Check if the account status is Active
     async fn is_running_status(status: &Arc<RwLock<AccountStatus>>) -> bool {
-        matches!(&*status.read().await, AccountStatus::Running)
+        matches!(&*status.read().await, AccountStatus::Active)
     }
 
-    /// Reset the account — stop browser and wipe all session data (chrome profile, sessions, media).
+    /// Reset the account — sleep browser and wipe all session data (chrome profile, sessions, media).
     /// The account record and config are preserved; only runtime/browser data is cleared.
     pub async fn reset(&self) -> Result<()> {
         info!("Resetting account '{}'", self.id);
 
-        // Stop browser first
-        self.stop().await.ok(); // ignore if already stopped
+        // Sleep browser first
+        self.sleep().await.ok(); // ignore if already sleeping
 
         // Wipe session-related directories
         let dirs_to_clear = ["chrome-profile", "sessions", "media"];

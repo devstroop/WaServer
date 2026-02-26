@@ -105,8 +105,8 @@ impl McpState {
         }
     }
 
-    /// Get a running account for MCP operations
-    /// Priority: 1) Session account_id, 2) First running account
+    /// Get an active account for MCP operations
+    /// Priority: 1) Session account_id, 2) First active account
     pub async fn get_account(
         &self,
         session_account_id: Option<&str>,
@@ -118,15 +118,15 @@ impl McpState {
             }
         }
 
-        // Otherwise, find the first running account
+        // Otherwise, find the first active account
         let account_list = self.account_manager.list_accounts().await;
         for info in &account_list.accounts {
-            if matches!(info.status, crate::models::account::AccountStatus::Running) {
+            if matches!(info.status, crate::models::account::AccountStatus::Active) {
                 return self.account_manager.get_account_by_id(info.id).await;
             }
         }
 
-        // No running account, try to get any account
+        // No active account, try to get any account
         if let Some(info) = account_list.accounts.first() {
             return self.account_manager.get_account_by_id(info.id).await;
         }
