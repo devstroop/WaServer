@@ -388,7 +388,11 @@ async fn execute_tool(
                 };
             }
 
-            match account.auth_service().login_with_phone_number(phone_number).await {
+            match account
+                .auth_service()
+                .login_with_phone_number(phone_number)
+                .await
+            {
                 Ok(code) => {
                     // Register phone on successful auth
                     if code.is_some() {

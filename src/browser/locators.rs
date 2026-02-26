@@ -198,7 +198,8 @@ impl LocatorConfig {
                 login_with_qr_link: "[role='button'] >> text:Log in with QR code".into(),
                 login_label: "text:Log into WhatsApp Web".into(),
                 phone_number_label: "text:Enter phone number".into(),
-                phone_number_input: "[aria-label='Type your phone number to log in to WhatsApp']".into(),
+                phone_number_input: "[aria-label='Type your phone number to log in to WhatsApp']"
+                    .into(),
                 phone_submit_button: "[role='button'] >> text:Next".into(),
                 invalid_phone_dialog:
                     "#app div[data-animate-modal-popup='true'] div[data-animate-modal-body='true']"
@@ -488,7 +489,10 @@ impl Locators {
     /// Searches by country name for reliability, falls back to dial code scan.
     pub async fn select_country_by_code(page: &Page, country: &CountryInfo) -> Result<bool> {
         let digits = country.dial_code;
-        info!("select_country: starting for {} (+{})", country.name, digits);
+        info!(
+            "select_country: starting for {} (+{})",
+            country.name, digits
+        );
 
         // Step 0: Check if the correct country is already selected
         let check_js = r#"(function() {
@@ -498,8 +502,11 @@ impl Locators {
             if (!container) return '';
             return (container.textContent || '').trim();
         })()"#;
-        let current = page.evaluate(check_js).await?
-            .into_value::<String>().unwrap_or_default();
+        let current = page
+            .evaluate(check_js)
+            .await?
+            .into_value::<String>()
+            .unwrap_or_default();
         let code_pattern = format!("+{}", digits);
         if current.contains(&code_pattern) {
             info!("select_country: already correct (showing '{}')", current);
@@ -518,8 +525,11 @@ impl Locators {
             return 'clicked';
         })()"#;
 
-        let click_result = page.evaluate(click_js).await?
-            .into_value::<String>().unwrap_or_else(|_| "error".into());
+        let click_result = page
+            .evaluate(click_js)
+            .await?
+            .into_value::<String>()
+            .unwrap_or_else(|_| "error".into());
         info!("select_country: step1 chevron click = {}", click_result);
         if click_result != "clicked" {
             return Ok(false);
@@ -543,13 +553,20 @@ impl Locators {
         let mut focus_result = String::new();
         for attempt in 0..6 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            focus_result = page.evaluate(focus_js).await?
-                .into_value::<String>().unwrap_or_else(|_| "error".into());
+            focus_result = page
+                .evaluate(focus_js)
+                .await?
+                .into_value::<String>()
+                .unwrap_or_else(|_| "error".into());
             if focus_result.starts_with("focused") {
                 break;
             }
             if attempt < 5 {
-                info!("select_country: step2 attempt {}, waiting: {}", attempt + 1, focus_result);
+                info!(
+                    "select_country: step2 attempt {}, waiting: {}",
+                    attempt + 1,
+                    focus_result
+                );
             }
         }
         info!("select_country: step2 focus = {}", focus_result);
@@ -559,16 +576,14 @@ impl Locators {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             // Type country name for reliable filtering (e.g., "India" instead of "91")
             match page.find_element(":focus").await {
-                Ok(el) => {
-                    match el.type_str(country.name).await {
-                        Ok(_) => {
-                            searched = true;
-                            info!("select_country: step2 typed '{}'", country.name);
-                            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                        }
-                        Err(e) => info!("select_country: step2 type_str failed: {}", e),
+                Ok(el) => match el.type_str(country.name).await {
+                    Ok(_) => {
+                        searched = true;
+                        info!("select_country: step2 typed '{}'", country.name);
+                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                     }
-                }
+                    Err(e) => info!("select_country: step2 type_str failed: {}", e),
+                },
                 Err(e) => info!("select_country: step2 find :focus failed: {}", e),
             }
         }
@@ -596,8 +611,11 @@ impl Locators {
             if searched { country.name } else { "none" },
         );
 
-        let select_result = page.evaluate(select_js.as_str()).await?
-            .into_value::<String>().unwrap_or_else(|_| "error".into());
+        let select_result = page
+            .evaluate(select_js.as_str())
+            .await?
+            .into_value::<String>()
+            .unwrap_or_else(|_| "error".into());
         info!("select_country: step3 select = {}", select_result);
 
         let selected = select_result.starts_with("selected");
@@ -613,13 +631,15 @@ impl Locators {
 
     /// Close any open popover by pressing Escape
     async fn close_popover(page: &Page) {
-        let _ = page.evaluate(
-            r#"(function() {
+        let _ = page
+            .evaluate(
+                r#"(function() {
                 var e = new KeyboardEvent('keydown', {key:'Escape', code:'Escape', bubbles:true});
                 document.dispatchEvent(e);
                 document.activeElement && document.activeElement.blur();
-            })()"#
-        ).await;
+            })()"#,
+            )
+            .await;
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 
@@ -681,7 +701,9 @@ impl Locators {
             });
         })()"#;
 
-        let diag = page.evaluate(diag_js).await
+        let diag = page
+            .evaluate(diag_js)
+            .await
             .ok()
             .and_then(|v| v.into_value::<String>().ok())
             .unwrap_or_else(|| "failed to evaluate".into());

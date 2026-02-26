@@ -152,24 +152,22 @@ pub async fn get_qr_code(
     }
 
     match account.auth_service().get_auth_qr_code().await {
-        Ok(qr_base64) => {
-            match base64::engine::general_purpose::STANDARD.decode(&qr_base64) {
-                Ok(png_bytes) => (
-                    StatusCode::OK,
-                    [(header::CONTENT_TYPE, "image/png")],
-                    png_bytes,
-                )
-                    .into_response(),
-                Err(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": "qr_decode_failed",
-                        "message": "Failed to decode QR code image data"
-                    })),
-                )
-                    .into_response(),
-            }
-        }
+        Ok(qr_base64) => match base64::engine::general_purpose::STANDARD.decode(&qr_base64) {
+            Ok(png_bytes) => (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "image/png")],
+                png_bytes,
+            )
+                .into_response(),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "qr_decode_failed",
+                    "message": "Failed to decode QR code image data"
+                })),
+            )
+                .into_response(),
+        },
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({

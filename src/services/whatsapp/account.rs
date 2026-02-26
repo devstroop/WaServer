@@ -9,8 +9,8 @@ use crate::{
     browser::{BrowserService, BrowserServiceConfig},
     config::AppConfig,
     models::account::{
-        AccountSetupConfig, AccountId, AccountInfo, AccountMetadata, AccountStatus,
-        AccountBrowserConfig, AccountConfig, AccountRateLimits, AccountWebhookConfig,
+        AccountBrowserConfig, AccountConfig, AccountId, AccountInfo, AccountMetadata,
+        AccountRateLimits, AccountSetupConfig, AccountStatus, AccountWebhookConfig,
         UpdateAccountConfigRequest,
     },
     models::auth::AuthStatusResponse,
@@ -83,10 +83,7 @@ impl WhatsAppAccount {
     pub async fn new(config: AccountSetupConfig, app_config: Arc<AppConfig>) -> Result<Self> {
         let data_dir = config.data_dir.clone();
 
-        info!(
-            "Creating account '{}' at {:?}",
-            config.id, data_dir
-        );
+        info!("Creating account '{}' at {:?}", config.id, data_dir);
 
         // Ensure account directories exist
         tokio::fs::create_dir_all(&data_dir).await?;
@@ -123,7 +120,9 @@ impl WhatsAppAccount {
         ));
 
         // Register auth observer script — runs automatically after every WhatsApp page load
-        browser_service.register_page_script(Self::AUTH_OBSERVER_JS).await;
+        browser_service
+            .register_page_script(Self::AUTH_OBSERVER_JS)
+            .await;
 
         Ok(Self {
             id: config.id,
@@ -158,7 +157,11 @@ impl WhatsAppAccount {
             debug!("Loaded metadata for account '{}'", config.id);
             Ok(metadata)
         } else {
-            let metadata = AccountMetadata::new(config.id, config.phone_number.clone(), config.display_name.clone());
+            let metadata = AccountMetadata::new(
+                config.id,
+                config.phone_number.clone(),
+                config.display_name.clone(),
+            );
             Self::save_metadata_to_path(&metadata_path, &metadata).await?;
             info!("Created new metadata for account '{}'", config.id);
             Ok(metadata)
@@ -227,10 +230,7 @@ impl WhatsAppAccount {
     }
 
     /// Update account configuration with partial updates
-    pub async fn update_config(
-        &self,
-        update: UpdateAccountConfigRequest,
-    ) -> Result<AccountConfig> {
+    pub async fn update_config(&self, update: UpdateAccountConfigRequest) -> Result<AccountConfig> {
         let mut config = self.account_config.write().await;
 
         // Apply partial updates
@@ -422,7 +422,10 @@ impl WhatsAppAccount {
         let page = match browser_service.get_whatsapp_page().await {
             Ok(p) => p,
             Err(e) => {
-                warn!("Account '{}' — failed to get page for auth observer injection: {}", account_id, e);
+                warn!(
+                    "Account '{}' — failed to get page for auth observer injection: {}",
+                    account_id, e
+                );
                 return false;
             }
         };
@@ -438,7 +441,10 @@ impl WhatsAppAccount {
                 true
             }
             Err(e) => {
-                warn!("Account '{}' — failed to inject auth observer: {}", account_id, e);
+                warn!(
+                    "Account '{}' — failed to inject auth observer: {}",
+                    account_id, e
+                );
                 false
             }
         }
@@ -467,7 +473,10 @@ impl WhatsAppAccount {
         let result = match page.evaluate(js).await {
             Ok(r) => r,
             Err(e) => {
-                debug!("Account '{}' — failed to read auth event: {}", account_id, e);
+                debug!(
+                    "Account '{}' — failed to read auth event: {}",
+                    account_id, e
+                );
                 return None;
             }
         };
@@ -504,7 +513,10 @@ impl WhatsAppAccount {
         let expected_phone = match phone_number {
             Some(p) => p,
             None => {
-                info!("Account '{}' — no phone configured, auth watcher not needed", account_id);
+                info!(
+                    "Account '{}' — no phone configured, auth watcher not needed",
+                    account_id
+                );
                 return;
             }
         };
@@ -522,7 +534,10 @@ impl WhatsAppAccount {
 
             // Stop if account is no longer running
             if !Self::is_running_status(&status).await {
-                info!("Account '{}' — auth watcher exiting (account stopped)", account_id);
+                info!(
+                    "Account '{}' — auth watcher exiting (account stopped)",
+                    account_id
+                );
                 return;
             }
 
@@ -637,7 +652,10 @@ impl WhatsAppAccount {
 
     /// Get phone number from metadata (None if not yet authenticated with WhatsApp)
     pub fn phone_number(&self) -> Option<String> {
-        self.metadata.try_read().ok().and_then(|m| m.phone_number.clone())
+        self.metadata
+            .try_read()
+            .ok()
+            .and_then(|m| m.phone_number.clone())
     }
 
     /// Get account info
@@ -676,7 +694,8 @@ impl WhatsAppAccount {
             if *existing != auth_phone {
                 return Err(anyhow!(
                     "Account is already bound to phone {}. Cannot rebind to {}.",
-                    existing, auth_phone
+                    existing,
+                    auth_phone
                 ));
             }
         }
@@ -692,7 +711,10 @@ impl WhatsAppAccount {
         drop(metadata);
         self.save_metadata().await?;
 
-        info!("Account '{}' authenticated with phone '{}'", self.id, auth_phone);
+        info!(
+            "Account '{}' authenticated with phone '{}'",
+            self.id, auth_phone
+        );
         Ok(())
     }
 

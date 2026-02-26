@@ -195,7 +195,10 @@ impl AuthService {
         if let Ok(value) = result.into_value::<serde_json::Value>() {
             if let Some(code_str) = value.as_str() {
                 if !code_str.is_empty() && code_str != "null" && code_str.len() >= 4 {
-                    let raw: String = code_str.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+                    let raw: String = code_str
+                        .chars()
+                        .filter(|c| c.is_ascii_alphanumeric())
+                        .collect();
                     if raw.len() >= 8 {
                         return Ok(Some(format!("{}-{}", &raw[..4], &raw[4..8])));
                     }
@@ -284,7 +287,9 @@ impl AuthServiceTrait for AuthService {
 
         Ok(match (authorized, reason) {
             (true, _) => AuthCheckResult::authenticated(),
-            (false, "login") | (false, "phone") | (false, "code") => AuthCheckResult::not_authenticated(),
+            (false, "login") | (false, "phone") | (false, "code") => {
+                AuthCheckResult::not_authenticated()
+            }
             _ => AuthCheckResult::checking(),
         })
     }
@@ -310,7 +315,8 @@ impl AuthServiceTrait for AuthService {
             _ => None,
         };
 
-        let sender_id = raw.as_deref()
+        let sender_id = raw
+            .as_deref()
             .map(|s| s.trim_matches('"'))
             .filter(|s| !s.is_empty())
             .and_then(|s| s.split('@').next())
@@ -367,7 +373,10 @@ impl AuthServiceTrait for AuthService {
         let formatted_phone = self.format_phone_number(phone_number);
         let (country, phone) = country_codes::parse_phone(&formatted_phone);
         let country_code = format!("+{}", country.dial_code);
-        info!("Starting phone authentication for: {} ({}) {}", country.name, country_code, phone);
+        info!(
+            "Starting phone authentication for: {} ({}) {}",
+            country.name, country_code, phone
+        );
 
         // Ensure we're on WhatsApp Web (not a download/redirect page)
         if !Locators::ensure_whatsapp_page(&page).await {
@@ -397,9 +406,18 @@ impl AuthServiceTrait for AuthService {
             info!("Switching to phone number login");
             if Locators::click(&page, "[role='button'] >> text:Log in with phone number").await? {
                 // Wait for phone input screen
-                if !Locators::wait_for(&page, Locators::phone_number_label(), self.timeouts.element_wait.as_millis() as u64).await {
+                if !Locators::wait_for(
+                    &page,
+                    Locators::phone_number_label(),
+                    self.timeouts.element_wait.as_millis() as u64,
+                )
+                .await
+                {
                     let diag = Locators::diagnose_page(&page).await;
-                    return Err(anyhow::anyhow!("Timeout waiting for phone input screen. Page state: {}", diag));
+                    return Err(anyhow::anyhow!(
+                        "Timeout waiting for phone input screen. Page state: {}",
+                        diag
+                    ));
                 }
             }
         }
@@ -504,8 +522,12 @@ impl AuthServiceTrait for AuthService {
 
         // Step 1: Open the settings/menu dropdown.
         // Try the three-dot menu button via multiple strategies.
-        let menu_opened = Locators::click(&page, Locators::menu_button()).await.unwrap_or(false)
-            || Locators::click(&page, "[data-icon='menu']").await.unwrap_or(false)
+        let menu_opened = Locators::click(&page, Locators::menu_button())
+            .await
+            .unwrap_or(false)
+            || Locators::click(&page, "[data-icon='menu']")
+                .await
+                .unwrap_or(false)
             || {
                 // JS fallback: find the settings cog / three-dot icon in the header
                 let js = r#"(function() {
@@ -529,7 +551,8 @@ impl AuthServiceTrait for AuthService {
                     }
                     return false;
                 })()"#;
-                page.evaluate(js).await
+                page.evaluate(js)
+                    .await
                     .ok()
                     .and_then(|r| r.into_value::<bool>().ok())
                     .unwrap_or(false)
@@ -542,8 +565,12 @@ impl AuthServiceTrait for AuthService {
         // Step 2: Wait for dropdown to appear, then click "Log out"
         tokio::time::sleep(Duration::from_millis(600)).await;
 
-        let logout_clicked = Locators::click(&page, "text:Log out").await.unwrap_or(false)
-            || Locators::click(&page, Locators::logout_button()).await.unwrap_or(false);
+        let logout_clicked = Locators::click(&page, "text:Log out")
+            .await
+            .unwrap_or(false)
+            || Locators::click(&page, Locators::logout_button())
+                .await
+                .unwrap_or(false);
 
         if !logout_clicked {
             return Err(anyhow::anyhow!("Failed to find 'Log out' in menu"));
@@ -576,7 +603,9 @@ impl AuthServiceTrait for AuthService {
             return false;
         })()"#;
 
-        let confirmed = page.evaluate(confirm_js).await
+        let confirmed = page
+            .evaluate(confirm_js)
+            .await
             .ok()
             .and_then(|r| r.into_value::<bool>().ok())
             .unwrap_or(false);
@@ -586,15 +615,8 @@ impl AuthServiceTrait for AuthService {
         }
 
         // Step 4: Wait for logout to complete (login screen should appear)
-        let logged_out = Locators::wait_for(
-            &page,
-            Locators::qr_code_canvas(),
-            10_000,
-        ).await || Locators::wait_for(
-            &page,
-            "text:Log into WhatsApp Web",
-            5_000,
-        ).await;
+        let logged_out = Locators::wait_for(&page, Locators::qr_code_canvas(), 10_000).await
+            || Locators::wait_for(&page, "text:Log into WhatsApp Web", 5_000).await;
 
         if logged_out {
             info!("Logout completed — login screen visible");

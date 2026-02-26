@@ -3,8 +3,8 @@
 //! Core WAS (WhatsApp Server) implementation including browser automation,
 //! element locators, and the main WhatsApp engine interface.
 
-pub mod country_codes;
 mod core;
+pub mod country_codes;
 mod driver;
 mod locators;
 pub mod selector;

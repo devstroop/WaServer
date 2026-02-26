@@ -3,10 +3,7 @@
 //! Handles sending text messages and attachments via WhatsApp Web.
 //! Based on proven .NET implementation patterns.
 
-use crate::{
-    browser::BrowserService,
-    config::AppConfig,
-};
+use crate::{browser::BrowserService, config::AppConfig};
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
