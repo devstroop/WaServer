@@ -76,6 +76,10 @@ pub struct WhatsAppAccount {
     initialized: Arc<Mutex<bool>>,
     /// Cached auth status
     auth_cache: Arc<Mutex<Option<CachedAuthStatus>>>,
+    /// Timestamp of last activity (for idle auto-sleep)
+    last_activity: Arc<RwLock<Instant>>,
+    /// Handle to the idle-sleep background task (cancelled on sleep/warmup)
+    idle_sleep_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl WhatsAppAccount {
@@ -290,34 +294,62 @@ impl WhatsAppAccount {
         Ok(config.clone())
     }
 
-    /// Start the account (launch browser, navigate to WhatsApp)
-    pub async fn start(&self) -> Result<()> {
+    /// Warmup the account (launch browser, navigate to WhatsApp)
+    /// If already active, this is a no-op. If warming up, returns error.
+    pub async fn warmup(&self) -> Result<()> {
+        // If status is Active, verify the browser is actually alive
+        {
+            let status = self.status.read().await;
+            if matches!(&*status, AccountStatus::Active) {
+                drop(status);
+                if self.browser_service.is_responsive().await {
+                    self.touch_activity().await;
+                    return Ok(());
+                }
+                // Browser died externally — clean up stale handles and re-warm
+                warn!("Account '{}' — browser dead while status=Active, re-warming", self.id);
+                self.cancel_idle_timer().await;
+                // Close clears the dead browser/page handles so initialize() starts fresh
+                let _ = self.browser_service.close().await;
+                let mut s = self.status.write().await;
+                *s = AccountStatus::Sleeping;
+                drop(s);
+            }
+        }
+
         let mut status = self.status.write().await;
 
         match &*status {
-            AccountStatus::Running => {
-                return Err(anyhow!("Account '{}' is already running", self.id));
+            AccountStatus::Active => {
+                // Raced with another caller that already re-warmed
+                drop(status);
+                self.touch_activity().await;
+                return Ok(());
             }
-            AccountStatus::Starting => {
-                return Err(anyhow!("Account '{}' is already starting", self.id));
+            AccountStatus::WarmingUp => {
+                return Err(anyhow!("Account '{}' is already warming up", self.id));
             }
             _ => {}
         }
 
-        *status = AccountStatus::Starting;
+        *status = AccountStatus::WarmingUp;
         drop(status);
 
-        info!("Starting account '{}'", self.id);
+        info!("Warming up account '{}'", self.id);
 
         match self.browser_service.initialize().await {
             Ok(()) => {
                 let mut status = self.status.write().await;
-                *status = AccountStatus::Running;
+                *status = AccountStatus::Active;
                 let mut initialized = self.initialized.lock().await;
                 *initialized = true;
                 drop(initialized);
                 drop(status);
-                info!("Account '{}' started successfully", self.id);
+
+                self.touch_activity().await;
+                self.start_idle_timer().await;
+
+                info!("Account '{}' warmed up successfully", self.id);
 
                 // Start continuous phone watcher in background
                 let account_id = self.id;
@@ -343,18 +375,137 @@ impl WhatsAppAccount {
             Err(e) => {
                 let mut status = self.status.write().await;
                 *status = AccountStatus::Error(e.to_string());
-                error!("Failed to start account '{}': {}", self.id, e);
+                error!("Failed to warm up account '{}': {}", self.id, e);
                 Err(e)
             }
         }
     }
 
-    /// Stop the account (close browser, cleanup)
-    pub async fn stop(&self) -> Result<()> {
-        info!("Stopping account '{}'", self.id);
+    /// Ensure the account is warm (active). Auto-warms if sleeping.
+    /// Call this before any operation that requires the browser.
+    pub async fn ensure_warm(&self) -> Result<()> {
+        let status = self.status.read().await.clone();
+        match status {
+            AccountStatus::Active => {
+                // Verify the browser is actually alive — it may have been closed externally
+                if !self.browser_service.is_responsive().await {
+                    warn!("Account '{}' — browser dead while status=Active, re-warming", self.id);
+                    self.cancel_idle_timer().await;
+                    let _ = self.browser_service.close().await;
+                    *self.status.write().await = AccountStatus::Sleeping;
+                    return self.warmup().await;
+                }
+                self.touch_activity().await;
+                Ok(())
+            }
+            AccountStatus::Sleeping | AccountStatus::Error(_) => {
+                self.warmup().await
+            }
+            AccountStatus::WarmingUp => {
+                // Wait for warmup to complete (poll with short interval)
+                drop(status);
+                for _ in 0..300 {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let s = self.status.read().await.clone();
+                    match s {
+                        AccountStatus::Active => {
+                            self.touch_activity().await;
+                            return Ok(());
+                        }
+                        AccountStatus::Error(e) => {
+                            return Err(anyhow!("Account warmup failed: {}", e));
+                        }
+                        AccountStatus::Sleeping => {
+                            return self.warmup().await;
+                        }
+                        AccountStatus::WarmingUp => continue,
+                    }
+                }
+                Err(anyhow!("Timeout waiting for account '{}' to warm up", self.id))
+            }
+        }
+    }
+
+    /// Update last activity timestamp (resets the idle timer)
+    pub async fn touch_activity(&self) {
+        let mut last = self.last_activity.write().await;
+        *last = Instant::now();
+    }
+
+    /// Start the idle-sleep background timer
+    async fn start_idle_timer(&self) {
+        // Cancel any existing idle timer
+        self.cancel_idle_timer().await;
+
+        let idle_timeout_val = self.account_config.read().await.idle_timeout;
+        if idle_timeout_val == 0 {
+            debug!("Account '{}' — idle auto-sleep disabled (timeout=0)", self.id);
+            return;
+        }
+
+        let account_id = self.id;
+        let status = self.status.clone();
+        let last_activity = self.last_activity.clone();
+        let browser_service = self.browser_service.clone();
+        let initialized = self.initialized.clone();
+        let idle_timeout = Duration::from_secs(idle_timeout_val);
+
+        let handle = tokio::spawn(async move {
+            let check_interval = Duration::from_secs(30);
+            loop {
+                tokio::time::sleep(check_interval).await;
+
+                // Check if still active
+                if !matches!(&*status.read().await, AccountStatus::Active) {
+                    return;
+                }
+
+                let elapsed = last_activity.read().await.elapsed();
+                if elapsed >= idle_timeout {
+                    info!(
+                        "Account '{}' — idle for {:?}, auto-sleeping",
+                        account_id, elapsed
+                    );
+
+                    // Perform sleep: close browser, set status
+                    let mut s = status.write().await;
+                    *s = AccountStatus::Sleeping;
+                    drop(s);
+
+                    let mut init = initialized.lock().await;
+                    *init = false;
+                    drop(init);
+
+                    if let Err(e) = browser_service.close().await {
+                        warn!("Account '{}' — error during auto-sleep: {}", account_id, e);
+                    }
+
+                    info!("Account '{}' — auto-slept", account_id);
+                    return;
+                }
+            }
+        });
+
+        let mut guard = self.idle_sleep_handle.lock().await;
+        *guard = Some(handle);
+    }
+
+    /// Cancel the idle-sleep timer
+    async fn cancel_idle_timer(&self) {
+        let mut guard = self.idle_sleep_handle.lock().await;
+        if let Some(handle) = guard.take() {
+            handle.abort();
+        }
+    }
+
+    /// Sleep the account (close browser, set to sleeping)
+    pub async fn sleep(&self) -> Result<()> {
+        info!("Sleeping account '{}'", self.id);
+
+        self.cancel_idle_timer().await;
 
         let mut status = self.status.write().await;
-        *status = AccountStatus::Stopped;
+        *status = AccountStatus::Sleeping;
         drop(status);
 
         let mut initialized = self.initialized.lock().await;
@@ -363,7 +514,7 @@ impl WhatsAppAccount {
 
         self.browser_service.close().await?;
 
-        info!("Account '{}' stopped", self.id);
+        info!("Account '{}' is now sleeping", self.id);
         Ok(())
     }
 

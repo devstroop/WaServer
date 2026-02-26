@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Manages multiple WhatsApp accounts
@@ -248,10 +248,10 @@ impl AccountManager {
             phone_map.remove(phone);
         }
 
-        // Stop the account first
-        if let Err(e) = account.stop().await {
+        // Sleep the account first
+        if let Err(e) = account.sleep().await {
             warn!(
-                "Error stopping account '{}' during deletion: {}",
+                "Error sleeping account '{}' during deletion: {}",
                 account_id, e
             );
         }
@@ -270,19 +270,20 @@ impl AccountManager {
         Ok(account_id)
     }
 
-    /// Start an account's browser
-    pub async fn start_account(&self, id: &str) -> Result<()> {
+    /// Warmup an account's browser (on-demand)
+    pub async fn warmup_account(&self, id: &str) -> Result<()> {
         let account = self.get_account_or_error(id).await?;
-        account.start().await
+        account.warmup().await
     }
 
-    /// Stop an account's browser
-    pub async fn stop_account(&self, id: &str) -> Result<()> {
+    /// Ensure an account is warm (auto-warms if sleeping)
+    pub async fn ensure_account_warm(&self, id: &str) -> Result<Arc<WhatsAppAccount>> {
         let account = self.get_account_or_error(id).await?;
-        account.stop().await
+        account.ensure_warm().await?;
+        Ok(account)
     }
 
-    /// Reset an account — stop browser and wipe all session data
+    /// Reset an account — sleep browser and wipe all session data
     pub async fn reset_account(&self, id: &str) -> Result<()> {
         let account = self.get_account_or_error(id).await?;
         account.reset().await
@@ -373,29 +374,13 @@ impl AccountManager {
         self.get_account(id).await.is_some()
     }
 
-    /// Auto-start accounts that have auto_start enabled
-    pub async fn auto_start_accounts(&self) -> Vec<(AccountId, Result<()>)> {
-        let accounts = self.accounts.read().await;
-        let results = Vec::new();
-
-        for (id, account) in accounts.iter() {
-            let info = account.info().await;
-            // TODO: Check config for auto_start flag
-            // For now, skip auto-start
-            debug!("Account '{}' auto_start check (disabled for now)", id);
-            let _ = info;
-        }
-
-        results
-    }
-
-    /// Shutdown all accounts
+    /// Shutdown all accounts (sleep all active browsers)
     pub async fn shutdown_all(&self) -> Vec<(AccountId, Result<()>)> {
         let accounts = self.accounts.read().await;
         let mut results = Vec::new();
 
         for (id, account) in accounts.iter() {
-            let result = account.stop().await;
+            let result = account.sleep().await;
             results.push((*id, result));
         }
 
