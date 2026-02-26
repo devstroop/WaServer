@@ -170,7 +170,6 @@ async fn run_server(
             // Chat
             chat::list_chats,
             chat::get_chat_messages,
-            chat::watch_messages,
             chat::send_message,
         ),
         components(
@@ -277,8 +276,10 @@ async fn run_server(
         )
         // Chats & messages
         .route("/:account_id/chats", get(chat::list_chats))
-        .route("/:account_id/chats/events", get(chat::watch_messages))
-        .route("/:account_id/chats/:chat_id", get(chat::get_chat_messages))
+        .route(
+            "/:account_id/chats/:chat_id/messages",
+            get(chat::get_chat_messages).post(chat::send_message),
+        )
         .route(
             "/:account_id/chats/:chat_id/typing",
             post(whatsapp::send_typing),
@@ -295,7 +296,6 @@ async fn run_server(
             "/:account_id/chats/:chat_id/messages/:message_id/reply",
             post(whatsapp::send_reply),
         )
-        .route("/:account_id/messages", post(chat::send_message))
         // Contacts & Groups
         .route(
             "/:account_id/contacts/:contact_id",

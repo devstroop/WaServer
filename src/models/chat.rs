@@ -7,13 +7,16 @@ use utoipa::ToSchema;
 // Request/Response Models
 // ============================================================================
 
-/// Request for sending a message
+/// Request for sending a message (multipart/form-data).
+/// The recipient is identified by chat_id in the URL path.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
-    /// Recipient phone number
-    pub phone: String,
     /// Message text (optional if sending file)
+    #[schema(nullable = true)]
     pub text: Option<String>,
+    /// File attachment (optional if sending text)
+    #[schema(value_type = Option<String>, format = "binary", nullable = true)]
+    pub file: Option<String>,
 }
 
 /// Response for sending a message

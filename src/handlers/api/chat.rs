@@ -151,7 +151,7 @@ pub async fn list_chats(
 /// - `load_more`: Scroll up to load older messages (default: false)
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/chats/{chat_id}",
+    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/messages",
     params(
         ("account_id" = String, Path, description = "Account ID (UUID)"),
         ("chat_id" = String, Path, description = "Phone number, contact name, or chat ID"),
@@ -253,106 +253,35 @@ pub async fn get_chat_messages(
 }
 
 // ============================================================================
-// Watch/Poll Endpoint for Incoming Messages
-// ============================================================================
-
-/// Watch for new incoming messages
-///
-/// Returns any unread messages visible in the chat list.
-/// Useful for polling new messages without navigating to each chat.
-#[utoipa::path(
-    get,
-    path = "/api/v1/accounts/{account_id}/chats/events",
-    params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
-    ),
-    responses(
-        (status = 200, description = "New incoming messages", body = Vec<crate::models::chat::MessageInfo>),
-        (status = 404, description = "Account not found", body = ErrorResponse),
-        (status = 401, description = "Not authorized", body = ErrorResponse),
-        (status = 503, description = "Service unavailable", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    security(
-        ("bearer_auth" = [])
-    ),
-    tag = "Messaging"
-)]
-pub async fn watch_messages(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
-) -> Result<Json<Vec<crate::models::chat::MessageInfo>>, (StatusCode, Json<ErrorResponse>)> {
-    let account = match manager.get_account(&account_id).await {
-        Some(acc) => acc,
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new(format!(
-                    "Account '{}' not found",
-                    account_id
-                ))),
-            ));
-        }
-    };
-
-    if let Err(e) = account.ensure_warm().await {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
-        ));
-    }
-
-    if account.is_busy().await {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new("Account is busy".to_string())),
-        ));
-    }
-
-    let result = account
-        .execute_with_busy_flag(async { account.chat_service().watch_messages().await })
-        .await;
-
-    match result {
-        Ok(messages) => {
-            debug!(
-                "Account {} - Watch found {} new messages",
-                account.id,
-                messages.len()
-            );
-            Ok(Json(messages))
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            let (status, msg) = categorize_error(&error_msg);
-            Err((status, Json(ErrorResponse::new(msg))))
-        }
-    }
-}
-
-// ============================================================================
 // Send Message Endpoint
 // ============================================================================
 
-/// Send a message (text or file attachment)
+/// Send a message (text or file attachment) to a chat
 ///
 /// This endpoint accepts multipart form data with the following fields:
-/// - `phone` (string, required): Recipient phone number  
 /// - `text` (string, optional): Message text content
 /// - `file` (file, optional): File attachment
+///
+/// The recipient is identified by `chat_id` in the URL path (phone number, contact name, or chat ID).
 ///
 /// **Note:** At least one of `text` or `file` must be provided.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/messages",
+    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/messages",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
+        ("account_id" = String, Path, description = "Account ID (UUID)"),
+        ("chat_id" = String, Path, description = "Recipient phone number, contact name, or chat ID")
+    ),
+    request_body(
+        content_type = "multipart/form-data",
+        content = SendMessageRequest,
+        description = "Message payload. Provide at least one of 'text' or 'file'."
     ),
     responses(
         (status = 200, description = "Message sent successfully", body = SendMessageResponse),
-        (status = 400, description = "Bad request - Phone is required and either text or file must be provided", body = ErrorResponse),
+        (status = 400, description = "Bad request - at least text or file must be provided", body = ErrorResponse),
         (status = 404, description = "Account not found", body = ErrorResponse),
-        (status = 503, description = "Service unavailable - browser not running or account busy", body = ErrorResponse),
+        (status = 503, description = "Service unavailable - browser not active or account busy", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -362,7 +291,7 @@ pub async fn watch_messages(
 )]
 pub async fn send_message(
     State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    Path((account_id, chat_id)): Path<(String, String)>,
     mut multipart: Multipart,
 ) -> Result<Json<SendMessageResponse>, (StatusCode, Json<ErrorResponse>)> {
     let account = match manager.get_account(&account_id).await {
@@ -396,7 +325,6 @@ pub async fn send_message(
         ));
     }
 
-    let mut phone: Option<String> = None;
     let mut text: Option<String> = None;
     let mut attachment_path: Option<String> = None;
     let mut original_filename: Option<String> = None;
@@ -411,15 +339,6 @@ pub async fn send_message(
     })? {
         if let Some(name) = field.name() {
             match name {
-                "phone" => {
-                    phone = Some(field.text().await.map_err(|e| {
-                        error!("Error reading phone field: {}", e);
-                        (
-                            StatusCode::BAD_REQUEST,
-                            Json(ErrorResponse::new("Invalid phone field".to_string())),
-                        )
-                    })?);
-                }
                 "text" => {
                     text = Some(field.text().await.map_err(|e| {
                         error!("Error reading text field: {}", e);
@@ -482,16 +401,11 @@ pub async fn send_message(
         }
     }
 
-    // Validate required fields
-    let phone = phone.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Phone number is required".to_string())),
-        )
-    })?;
+    // chat_id from URL path is the recipient (phone number, contact name, or chat ID)
+    let phone = chat_id;
 
     debug!(
-        "Account {} - Processing send message request for phone: {}",
+        "Account {} - Processing send message request for chat: {}",
         account.id, phone
     );
 
