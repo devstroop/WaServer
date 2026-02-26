@@ -957,160 +957,380 @@ impl ChatServiceTrait for ChatService {
             ));
         }
 
+        // New implementation based on WhatsApp Web Feb 2026 DOM structure
+        // Discovered through Playwright MCP inspection
         let script = r##"
         (function() {
             const chats = [];
-            const chatRows = document.querySelectorAll('[data-testid="cell-frame-container"], div[role="listitem"], div[role="row"]');
+            const seen = new Set();
             
-            chatRows.forEach(row => {
+            // === TRY TO ACCESS WHATSAPP INTERNAL STORE FOR PROPER JIDs ===
+            // WhatsApp Web stores chat data in internal modules accessible via window.Store
+            // This gives us proper JIDs (like 919123456789@c.us or 120363123456@g.us)
+            let storeChats = null;
+            try {
+                if (window.Store && window.Store.Chat) {
+                    storeChats = window.Store.Chat.getModelsArray ? 
+                        window.Store.Chat.getModelsArray() : 
+                        (window.Store.Chat._models || window.Store.Chat.models || []);
+                    console.log('[WAS] Found Store.Chat with', storeChats?.length || 0, 'chats');
+                }
+            } catch (e) {
+                console.log('[WAS] Store.Chat not accessible:', e.message);
+            }
+            
+            // Build a map of name -> JID from Store if available
+            const nameToJid = new Map();
+            if (storeChats && storeChats.length > 0) {
+                for (const chat of storeChats) {
+                    try {
+                        const jid = chat.id?._serialized || chat.id?.toString?.();
+                        const chatName = chat.name || chat.contact?.pushname || chat.contact?.name;
+                        if (jid && chatName) {
+                            nameToJid.set(chatName, jid);
+                        }
+                        // Also map by formatted name for phone numbers
+                        if (chat.contact?.formattedName) {
+                            nameToJid.set(chat.contact.formattedName, jid);
+                        }
+                    } catch (e) {}
+                }
+                console.log('[WAS] Built nameToJid map with', nameToJid.size, 'entries');
+            }
+            
+            // WhatsApp uses grid[aria-label="Chat list"] with role="row" children
+            const chatList = document.querySelector('[aria-label="Chat list"], [data-testid="chat-list"]');
+            if (!chatList) {
+                console.error('[WAS] Chat list container not found');
+                return [];
+            }
+            
+            const chatRows = chatList.querySelectorAll('[role="row"]');
+            console.log('[WAS] Found', chatRows.length, 'chat rows');
+            
+            chatRows.forEach((row, idx) => {
                 try {
-                    // Try to get the chat data
-                    const nameEl = row.querySelector('[data-testid="cell-frame-title"] span') ||
-                                   row.querySelector('span[title]') ||
-                                   row.querySelector('[dir="auto"]');
+                    // === GET NAME from first gridcell or span with title ===
+                    // Structure: row > gridcell > generic > img + content
+                    // The name is typically in a span with title attribute or in a specific gridcell
+                    let name = null;
                     
-                    if (!nameEl) return;
+                    // Method 1: Look for span with title attribute (most reliable)
+                    const titleSpan = row.querySelector('span[title]');
+                    if (titleSpan) {
+                        name = titleSpan.getAttribute('title') || titleSpan.innerText;
+                    }
                     
-                    const name = nameEl.innerText || nameEl.getAttribute('title') || '';
-                    if (!name || name === 'Loading…') return;
+                    // Method 2: Look for gridcell containing the name
+                    if (!name) {
+                        const gridcells = row.querySelectorAll('[role="gridcell"]');
+                        for (const cell of gridcells) {
+                            const text = cell.innerText?.split('\n')[0]?.trim();
+                            // First gridcell with substantial text is usually the name
+                            if (text && text.length > 0 && text.length < 100 && 
+                                !text.match(/^\d{1,2}:\d{2}/) && 
+                                !text.match(/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/) &&
+                                !text.includes('unread')) {
+                                name = text;
+                                break;
+                            }
+                        }
+                    }
                     
-                    // Get last message - look for the message preview text under the chat name
+                    // Method 3: Parse from row's accessible name
+                    if (!name) {
+                        const ariaLabel = row.getAttribute('aria-label') || '';
+                        // Format: "Name Timestamp Message [UnreadCount]"
+                        // First token before time/day is the name
+                        const parts = ariaLabel.split(/\s+(\d{1,2}:\d{2}|Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d{1,2}\/\d{1,2}\/\d{2,4})\s+/);
+                        if (parts.length > 0 && parts[0]) {
+                            name = parts[0].trim();
+                        }
+                    }
+                    
+                    if (!name || name === 'Loading…' || name === 'Archived') return;
+                    
+                    // Deduplicate
+                    if (seen.has(name)) return;
+                    seen.add(name);
+                    
+                    // === GET TIMESTAMP ===
+                    let timestamp = null;
+                    
+                    // Look for the timestamp pattern in elements
+                    const allText = row.innerText || '';
+                    const timestampPatterns = [
+                        /(\d{1,2}:\d{2}(?:\s*[AP]M)?)/,           // "20:25" or "8:30 PM"
+                        /(Yesterday|Today)/,
+                        /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
+                        /(\d{1,2}\/\d{1,2}\/\d{2,4})/             // "16/02/2026"
+                    ];
+                    
+                    for (const pattern of timestampPatterns) {
+                        const match = allText.match(pattern);
+                        if (match) {
+                            timestamp = match[1];
+                            break;
+                        }
+                    }
+                    
+                    // === GET LAST MESSAGE ===
                     let lastMsg = null;
+                    let lastMsgSender = null;
+                    let isGroup = false;
                     
-                    // Method 1: WhatsApp's last message status container
-                    const lastMsgContainer = row.querySelector('[data-testid="last-msg-status"]');
-                    if (lastMsgContainer) {
-                        const parent = lastMsgContainer.closest('div');
-                        if (parent) {
-                            // Get text excluding status icons
-                            const textSpans = parent.querySelectorAll('span');
-                            for (const span of textSpans) {
-                                if (!span.querySelector('[data-icon]') && span.innerText?.trim()) {
-                                    lastMsg = span.innerText.trim();
+                    // === GROUP DETECTION ===
+                    // Check multiple possible group icon selectors
+                    const groupIconSelectors = [
+                        '[data-icon="default-group"]',
+                        '[data-icon="group"]',
+                        '[data-icon="community"]',
+                        '[data-testid="default-group"]',
+                        '[data-testid="group"]',
+                        'img[src*="groups"]',
+                        'img[src*="group-icon"]'
+                    ];
+                    
+                    for (const selector of groupIconSelectors) {
+                        if (row.querySelector(selector)) {
+                            isGroup = true;
+                            break;
+                        }
+                    }
+                    
+                    // Also check any data-icon attribute containing "group"
+                    if (!isGroup) {
+                        const allIcons = row.querySelectorAll('[data-icon]');
+                        for (const icon of allIcons) {
+                            const iconName = icon.getAttribute('data-icon') || '';
+                            if (iconName.toLowerCase().includes('group')) {
+                                isGroup = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Get message from specific DOM elements
+                    // Look for spans that contain the message text (not name, not timestamp)
+                    const allSpans = row.querySelectorAll('span');
+                    let foundName = false;
+                    let foundTimestamp = false;
+                    
+                    for (const span of allSpans) {
+                        const text = span.innerText?.trim();
+                        if (!text || text.length === 0) continue;
+                        
+                        // Skip the name
+                        if (text === name || span.getAttribute('title') === name) {
+                            foundName = true;
+                            continue;
+                        }
+                        
+                        // Skip timestamps
+                        if (/^\d{1,2}:\d{2}(\s*[AP]M)?$/.test(text) ||
+                            /^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(text) ||
+                            /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(text)) {
+                            foundTimestamp = true;
+                            continue;
+                        }
+                        
+                        // Skip unread count
+                        if (/^\d+$/.test(text) || text.includes('unread message')) continue;
+                        
+                        // Skip very short text that might be icons or status
+                        if (text.length < 2) continue;
+                        
+                        // This should be the message - clean up multiline text first
+                        if (foundName || foundTimestamp) {
+                            // Normalize: replace newlines around colon with proper separator
+                            // "Sender\n:\nMessage" -> "Sender: Message"
+                            let cleanText = text.replace(/\s*\n\s*:\s*\n\s*/g, ': ').replace(/\n/g, ' ').trim();
+                            
+                            // Check for sender prefix pattern: "SenderName: message" or "SenderName : message"
+                            // Valid senders: personal names (Akash, Dharmendra), phone numbers, or (You)/You
+                            // Pattern: starts with name/phone, then colon+space, then message
+                            const senderMatch = cleanText.match(/^([A-Za-z\u0900-\u097F\+][A-Za-z0-9\u0900-\u097F\s\+\-\(\)]{0,25}):\s+(.+)$/s);
+                            
+                            if (senderMatch) {
+                                const potentialSender = senderMatch[1].trim();
+                                const potentialMsg = senderMatch[2].trim();
+                                
+                                // Validate sender - must look like a personal name or phone number
+                                // Personal name: starts with capital, 1-2 words, only letters
+                                // Phone: digits with optional +, spaces, dashes
+                                // Special: (You), You, ~ (tilde prefix for some names)
+                                const isPhoneNumber = /^[\+\d\s\-\(\)]+$/.test(potentialSender) && potentialSender.length >= 3;
+                                const isPersonalName = /^[A-Z\u0900-\u097F~][a-zA-Z\u0900-\u097F]*(\s[A-Z\u0900-\u097F][a-zA-Z\u0900-\u097F]*)?$/.test(potentialSender);
+                                const isYou = potentialSender === '(You)' || potentialSender === 'You';
+                                
+                                // Additional validation: sender should be SHORT (max 25 chars) and NOT look like message content
+                                const isTooLong = potentialSender.length > 25;
+                                const looksLikeContent = potentialSender.includes('http') || 
+                                                         potentialSender.includes('.com') ||
+                                                         /\d{5,}/.test(potentialSender.replace(/[\s\-\(\)\+]/g, '')) && !isPhoneNumber;
+                                
+                                if ((isPhoneNumber || isPersonalName || isYou) && !isTooLong && !looksLikeContent && potentialMsg.length > 0) {
+                                    lastMsgSender = potentialSender === '(You)' ? 'You' : potentialSender;
+                                    lastMsg = potentialMsg;
+                                    // If we found a valid sender, this is definitely a group!
+                                    if (!isYou) {
+                                        isGroup = true;
+                                    }
                                     break;
                                 }
                             }
-                        }
-                    }
-                    
-                    // Method 2: Look for the second row of text (first is name, second is message)
-                    if (!lastMsg) {
-                        const cellContainer = row.querySelector('[data-testid="cell-frame-container"]') || row;
-                        const spans = cellContainer.querySelectorAll('span[dir="ltr"], span[dir="auto"]');
-                        // Find spans that aren't the name and aren't timestamps
-                        for (const span of spans) {
-                            const text = span.innerText?.trim();
-                            if (text && text !== name && !text.match(/^\d{1,2}:\d{2}/) && 
-                                !text.match(/^(Yesterday|Today)/) && text.length > 0) {
-                                // Skip if this is likely the name element
-                                if (span.closest('[data-testid="cell-frame-title"]')) continue;
-                                lastMsg = text;
+                            
+                            // No valid sender pattern - use the clean text as message
+                            if (!lastMsg) {
+                                lastMsg = cleanText;
                                 break;
                             }
                         }
                     }
                     
-                    // Method 3: Look for message text in secondary content area
+                    // Fallback: if still no message, get from row content more aggressively
                     if (!lastMsg) {
-                        const secondaryEl = row.querySelector('[data-testid="cell-frame-secondary"]');
-                        if (secondaryEl) {
-                            lastMsg = secondaryEl.innerText?.trim() || null;
-                        }
-                    }
-                    
-                    // Get timestamp
-                    const timeEl = row.querySelector('[data-testid="cell-frame-primary-detail"]') ||
-                                   row.querySelectorAll('[dir="auto"]')[1];
-                    const timestamp = timeEl ? timeEl.innerText : null;
-                    
-                    // Get unread count
-                    const unreadEl = row.querySelector('[data-testid="icon-unread-count"]') ||
-                                     row.querySelector('span[aria-label*="unread"]');
-                    let unreadCount = 0;
-                    if (unreadEl) {
-                        const text = unreadEl.innerText || unreadEl.getAttribute('aria-label') || '';
-                        const match = text.match(/\d+/);
-                        unreadCount = match ? parseInt(match[0]) : 0;
-                    }
-                    
-                    // Check if group (has group icon or multiple participants indicator)
-                    const isGroup = row.querySelector('[data-icon="default-group"]') !== null ||
-                                    name.includes('group') ||
-                                    row.querySelector('[data-testid="group"]') !== null;
-                    
-                    // Get avatar URL
-                    const avatarEl = row.querySelector('img[src*="pps.whatsapp.net"]');
-                    const avatarUrl = avatarEl ? avatarEl.src : null;
-                    
-                    // Try to extract chat ID from multiple sources
-                    let chatId = null;
-                    
-                    // Method 1: data-id attribute on row or parent
-                    let el = row;
-                    for (let i = 0; i < 5 && el; i++) {
-                        const dataId = el.getAttribute('data-id');
-                        if (dataId && dataId.includes('@')) {
-                            chatId = dataId;
+                        const rowText = row.innerText || '';
+                        // Clean up the row text - normalize newlines around colons
+                        const cleanRowText = rowText.replace(/\s*\n\s*:\s*\n\s*/g, ': ');
+                        const lines = cleanRowText.split('\n').filter(l => l.trim());
+                        // Look for a line that's not the name and not a timestamp
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed === name) continue;
+                            if (/^\d{1,2}:\d{2}/.test(trimmed)) continue;
+                            if (/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(trimmed)) continue;
+                            if (/^\d+$/.test(trimmed)) continue;
+                            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed)) continue;
+                            if (trimmed.includes('unread message')) continue;
+                            if (trimmed.length < 2) continue;
+                            lastMsg = trimmed;
                             break;
                         }
-                        el = el.parentElement;
                     }
                     
-                    // Method 2: Look for data-id in child elements (deeper search)
+                    // === GET UNREAD COUNT ===
+                    let unreadCount = 0;
+                    const rowLabel = row.getAttribute('aria-label') || '';
+                    const unreadMatch = rowLabel.match(/(\d+)\s+unread\s+message/i);
+                    if (unreadMatch) {
+                        unreadCount = parseInt(unreadMatch[1]) || 0;
+                    }
+                    
+                    // Also check for badge element
+                    if (unreadCount === 0) {
+                        const badgeEl = row.querySelector('[aria-label*="unread"]');
+                        if (badgeEl) {
+                            const badgeText = badgeEl.innerText || badgeEl.getAttribute('aria-label') || '';
+                            const match = badgeText.match(/(\d+)/);
+                            if (match) unreadCount = parseInt(match[1]) || 0;
+                        }
+                    }
+                    
+                    // === GET AVATAR URL ===
+                    let avatarUrl = null;
+                    
+                    // Look for img element in the row
+                    const imgs = row.querySelectorAll('img');
+                    for (const img of imgs) {
+                        const src = img.src || img.getAttribute('src');
+                        // WhatsApp profile pics are hosted on pps.whatsapp.net
+                        if (src && (src.includes('pps.whatsapp.net') || src.includes('blob:') || 
+                                    (src.startsWith('https://') && !src.includes('emoji')))) {
+                            avatarUrl = src;
+                            break;
+                        }
+                    }
+                    
+                    // === GET CHAT ID ===
+                    // Try multiple approaches to extract the chat ID
+                    let chatId = null;
+                    
+                    // Method 0: Look up from WhatsApp Store (most reliable if available)
+                    if (nameToJid.has(name)) {
+                        chatId = nameToJid.get(name);
+                        // If JID ends with @g.us, it's definitely a group
+                        if (chatId && chatId.endsWith('@g.us')) {
+                            isGroup = true;
+                        }
+                    }
+                    
+                    // Method 1: data-id attribute (may not work in current WhatsApp version)
                     if (!chatId) {
-                        const allWithId = row.querySelectorAll('[data-id]');
-                        for (const child of allWithId) {
-                            const childDataId = child.getAttribute('data-id');
-                            if (childDataId && childDataId.includes('@')) {
-                                chatId = childDataId;
+                        let el = row;
+                        for (let i = 0; i < 10 && el; i++) {
+                            const dataId = el.getAttribute && el.getAttribute('data-id');
+                            if (dataId && dataId.includes('@')) {
+                                chatId = dataId;
+                                if (chatId.endsWith('@g.us')) isGroup = true;
                                 break;
                             }
+                            el = el.parentElement;
                         }
                     }
                     
-                    // Method 3: Look for phone in aria-label or title attributes
-                    if (!chatId) {
-                        const allElements = row.querySelectorAll('[aria-label], [title]');
-                        for (const el of allElements) {
-                            const attr = el.getAttribute('aria-label') || el.getAttribute('title') || '';
-                            // Match phone patterns like +919876543210 or 919876543210
-                            const phoneMatch = attr.match(/\+?(\d{10,15})/);
-                            if (phoneMatch) {
-                                chatId = phoneMatch[1] + '@c.us';
-                                break;
-                            }
+                    // Method 2: Extract phone number from name if it's a phone number
+                    if (!chatId && name) {
+                        // Names like "+91 97389 68141" or "919876543210"
+                        const phoneClean = name.replace(/[\s\-\(\)]/g, '').replace(/^\+/, '');
+                        if (/^\d{10,15}$/.test(phoneClean)) {
+                            chatId = phoneClean + '@c.us';
                         }
                     }
                     
-                    // Method 4: Extract phone number from name (handles formats like "+91 97389 68141")
-                    if (!chatId) {
-                        // Remove all non-digit characters except leading +
-                        const cleanName = name.replace(/[^\d+]/g, '').replace(/^\+/, '');
-                        if (cleanName.length >= 10 && cleanName.length <= 15 && /^\d+$/.test(cleanName)) {
-                            chatId = cleanName + '@c.us';
-                        }
+                    // Method 3: For groups without JID, use group: prefix
+                    if (!chatId && isGroup) {
+                        // For groups, use a group-style ID
+                        chatId = 'group:' + name.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, '_').substring(0, 50);
                     }
                     
-                    // Method 5: Use the name as a fallback identifier
-                    // But prefix it to indicate it's a name-based ID
+                    // Method 4: Fallback to name-based ID for contacts without phone
                     if (!chatId) {
                         chatId = 'name:' + name;
                     }
+                    
+                    // === ADDITIONAL GROUP DETECTION ===
+                    // Check if chat has "(You)" prefix which indicates self-chat or group
+                    if (!isGroup && lastMsg && lastMsg.startsWith('(You)')) {
+                        // Self chat
+                        lastMsg = lastMsg.replace(/^\(You\)\s*/, '');
+                    }
+                    
+                    // Check for group icon one more time
+                    if (!isGroup) {
+                        const groupIcon = row.querySelector('[data-icon="default-group"], [data-icon="group"]');
+                        if (groupIcon) isGroup = true;
+                    }
+                    
+                    // === PINNED/MUTED STATUS ===
+                    let isPinned = null;
+                    let isMuted = null;
+                    
+                    const pinnedIcon = row.querySelector('[data-icon="pinned"], [data-testid="pinned"]');
+                    if (pinnedIcon) isPinned = true;
+                    
+                    const mutedIcon = row.querySelector('[data-icon="muted"], [data-testid="muted"]');
+                    if (mutedIcon) isMuted = true;
                     
                     chats.push({
                         id: chatId,
                         name: name,
                         last_message: lastMsg,
+                        last_message_sender: lastMsgSender,
                         timestamp: timestamp,
                         unread_count: unreadCount,
                         is_group: isGroup,
-                        avatar_url: avatarUrl
+                        avatar_url: avatarUrl,
+                        is_pinned: isPinned,
+                        is_muted: isMuted
                     });
+                    
                 } catch(e) {
-                    // Skip problematic rows
+                    console.error('[WAS] Error parsing chat row', idx, ':', e);
                 }
             });
             
+            console.log('[WAS] Parsed', chats.length, 'chats successfully');
             return chats;
         })();
         "##;
