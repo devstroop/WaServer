@@ -1406,4 +1406,704 @@ impl ChatServiceTrait for ChatService {
 
         Ok(messages)
     }
+
+    /// Send typing indicator to a chat
+    async fn send_typing(
+        &self,
+        chat_id: &str,
+        state: crate::models::chat::TypingState,
+    ) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat first
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Simulate typing by focusing and optionally typing/clearing
+        let is_composing = state == crate::models::chat::TypingState::Composing;
+
+        let script = format!(
+            r##"
+        (function() {{
+            const input = document.querySelector('div[contenteditable="true"][data-tab="10"]') ||
+                          document.querySelector('#main footer div[contenteditable="true"]') ||
+                          document.querySelector('div[aria-placeholder="Type a message"]');
+            
+            if (!input) {{
+                console.error('[WAS] Message input not found for typing');
+                return false;
+            }}
+            
+            // Focus the input to show typing state
+            input.focus();
+            
+            if ({}) {{
+                // Composing: type a space then delete it to trigger composing state
+                const event = new InputEvent('input', {{ bubbles: true, cancelable: true }});
+                input.textContent = ' ';
+                input.dispatchEvent(event);
+            }} else {{
+                // Paused: clear and blur
+                input.textContent = '';
+                input.blur();
+            }}
+            
+            return true;
+        }})();
+        "##,
+            is_composing
+        );
+
+        let result: bool = page.evaluate(script).await?.into_value().unwrap_or(false);
+
+        if !result {
+            return Err(anyhow::anyhow!("Failed to send typing indicator"));
+        }
+
+        debug!("Sent typing indicator: {:?} to {}", state, chat_id);
+        Ok(())
+    }
+
+    /// Mark all messages in a chat as read
+    async fn mark_read(&self, chat_id: &str) -> Result<u32> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat - this automatically marks messages as read
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Wait briefly for read receipts to be sent
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Get unread count (should be 0 now)
+        let script = r##"
+        (function() {
+            // Check if there are any unread indicators in the current chat
+            const unreadBadge = document.querySelector('#main [aria-label*="unread"]');
+            return unreadBadge ? parseInt(unreadBadge.textContent) || 0 : 0;
+        })();
+        "##;
+
+        let remaining: u32 = page.evaluate(script).await?.into_value().unwrap_or(0);
+
+        debug!(
+            "Marked messages as read in {}, remaining: {}",
+            chat_id, remaining
+        );
+        Ok(remaining)
+    }
+
+    /// Get presence/online status for a contact
+    async fn get_presence(&self, chat_id: &str) -> Result<crate::models::chat::PresenceInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat to see presence
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        // Wait for header to load
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            // Look for presence info in the chat header
+            const header = document.querySelector('#main header');
+            if (!header) return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+            
+            // Look for "online", "typing", or "last seen" text
+            const subtitleEl = header.querySelector('span[title]') ||
+                               header.querySelector('span[dir="auto"]');
+            
+            // Also check for explicit status spans
+            const statusSpans = header.querySelectorAll('span');
+            let statusText = null;
+            
+            for (const span of statusSpans) {
+                const text = span.innerText?.toLowerCase() || '';
+                if (text.includes('online') || text.includes('typing') || 
+                    text.includes('last seen') || text.includes('click here')) {
+                    statusText = span.innerText;
+                    break;
+                }
+            }
+            
+            if (!statusText && subtitleEl) {
+                // Get the second line (status) from header
+                const allText = header.innerText || '';
+                const lines = allText.split('\n').filter(l => l.trim());
+                if (lines.length > 1) {
+                    statusText = lines[1];
+                }
+            }
+            
+            if (!statusText) {
+                return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+            }
+            
+            const lowerStatus = statusText.toLowerCase();
+            
+            if (lowerStatus.includes('online')) {
+                return { status: 'online', last_seen: null, last_seen_hidden: false };
+            } else if (lowerStatus.includes('typing')) {
+                return { status: 'online', last_seen: 'typing', last_seen_hidden: false };
+            } else if (lowerStatus.includes('last seen')) {
+                return { status: 'offline', last_seen: statusText, last_seen_hidden: false };
+            } else if (lowerStatus.includes('click here') || lowerStatus.includes('tap here')) {
+                // Privacy setting hides last seen
+                return { status: 'unknown', last_seen: null, last_seen_hidden: true };
+            }
+            
+            return { status: 'unknown', last_seen: null, last_seen_hidden: false };
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawPresence {
+            status: String,
+            last_seen: Option<String>,
+            last_seen_hidden: bool,
+        }
+
+        let raw: RawPresence = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or(RawPresence {
+                status: "unknown".to_string(),
+                last_seen: None,
+                last_seen_hidden: false,
+            });
+
+        let status = match raw.status.as_str() {
+            "online" => crate::models::chat::PresenceStatus::Online,
+            "offline" => crate::models::chat::PresenceStatus::Offline,
+            _ => crate::models::chat::PresenceStatus::Unknown,
+        };
+
+        Ok(crate::models::chat::PresenceInfo {
+            chat_id: chat_id.to_string(),
+            status,
+            last_seen: raw.last_seen,
+            last_seen_hidden: raw.last_seen_hidden,
+        })
+    }
+
+    /// Get detailed group information
+    async fn get_group_info(&self, group_id: &str) -> Result<crate::models::chat::GroupInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the group
+        self.navigate_to_chat(&page, group_id).await?;
+
+        // Click on the group header to open info panel
+        let click_script = r##"
+        (function() {
+            const header = document.querySelector('#main header');
+            if (header) {
+                header.click();
+                return true;
+            }
+            return false;
+        })();
+        "##;
+
+        let clicked: bool = page
+            .evaluate(click_script)
+            .await?
+            .into_value()
+            .unwrap_or(false);
+        if !clicked {
+            return Err(anyhow::anyhow!("Failed to open group info panel"));
+        }
+
+        // Wait for panel to open
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            // Find the info panel (usually on the right side)
+            const panel = document.querySelector('[data-testid="conversation-panel-wrapper"]') ||
+                          document.querySelector('span[data-testid="conversation-info-header"]')?.closest('div[tabindex]');
+            
+            if (!panel) {
+                // Try alternate: look for the group name in any open panel
+                const panels = document.querySelectorAll('[role="application"], [data-animate-drawer-content="true"]');
+                for (const p of panels) {
+                    if (p.innerText?.includes('participants') || p.innerText?.includes('Group info')) {
+                        panel = p;
+                        break;
+                    }
+                }
+            }
+            
+            const info = {
+                name: null,
+                description: null,
+                avatar_url: null,
+                created_at: null,
+                created_by: null,
+                participant_count: 0,
+                participants: [],
+                is_announce: false,
+                is_locked: false,
+                invite_link: null
+            };
+            
+            // Get group name from header
+            const nameEl = document.querySelector('#main header span[title]');
+            info.name = nameEl?.getAttribute('title') || nameEl?.innerText;
+            
+            // Get avatar
+            const avatar = document.querySelector('#main header img[src*="pps.whatsapp.net"]');
+            info.avatar_url = avatar?.src;
+            
+            // Try to find participant list
+            const participantSection = document.querySelector('[data-testid="participants-section"]') ||
+                                       document.evaluate("//span[contains(text(), 'participants')]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.closest('div');
+            
+            if (participantSection) {
+                // Count participants from text like "50 participants"
+                const countMatch = participantSection.innerText?.match(/(\d+)\s*participant/i);
+                if (countMatch) {
+                    info.participant_count = parseInt(countMatch[1]);
+                }
+                
+                // Get individual participants
+                const participantRows = participantSection.querySelectorAll('[role="listitem"], [role="row"], [data-testid*="participant"]');
+                for (const row of participantRows) {
+                    const nameSpan = row.querySelector('span[title]');
+                    const name = nameSpan?.getAttribute('title') || nameSpan?.innerText;
+                    if (name) {
+                        const isAdmin = row.innerText?.toLowerCase().includes('admin') || false;
+                        const isOwner = row.innerText?.toLowerCase().includes('group admin') || false;
+                        info.participants.push({
+                            id: name,
+                            name: name,
+                            phone: null,
+                            is_admin: isAdmin,
+                            is_owner: isOwner
+                        });
+                    }
+                }
+            }
+            
+            // Get description
+            const descSection = document.querySelector('[data-testid="group-description"]') ||
+                               document.evaluate("//span[contains(text(), 'Add group description')]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.closest('div');
+            if (descSection && !descSection.innerText?.includes('Add group')) {
+                info.description = descSection.innerText?.trim();
+            }
+            
+            return info;
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawGroupInfo {
+            name: Option<String>,
+            description: Option<String>,
+            avatar_url: Option<String>,
+            created_at: Option<String>,
+            created_by: Option<String>,
+            participant_count: u32,
+            participants: Vec<crate::models::chat::GroupParticipant>,
+            is_announce: bool,
+            is_locked: bool,
+            invite_link: Option<String>,
+        }
+
+        let raw: RawGroupInfo = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or(RawGroupInfo {
+                name: None,
+                description: None,
+                avatar_url: None,
+                created_at: None,
+                created_by: None,
+                participant_count: 0,
+                participants: vec![],
+                is_announce: false,
+                is_locked: false,
+                invite_link: None,
+            });
+
+        // Close the panel by clicking elsewhere or pressing Escape
+        let _ = page.evaluate("document.body.click();").await;
+
+        Ok(crate::models::chat::GroupInfo {
+            id: group_id.to_string(),
+            name: raw.name.unwrap_or_else(|| group_id.to_string()),
+            description: raw.description,
+            avatar_url: raw.avatar_url,
+            created_at: raw.created_at,
+            created_by: raw.created_by,
+            participant_count: raw.participant_count,
+            participants: raw.participants,
+            is_announce: raw.is_announce,
+            is_locked: raw.is_locked,
+            invite_link: raw.invite_link,
+        })
+    }
+
+    /// Get contact profile information
+    async fn get_contact_info(&self, contact_id: &str) -> Result<crate::models::chat::ContactInfo> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the contact's chat
+        self.navigate_to_chat(&page, contact_id).await?;
+
+        // Click on header to open contact info
+        let _ = page
+            .evaluate(r#"document.querySelector('#main header')?.click();"#)
+            .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        let script = r##"
+        (function() {
+            const info = {
+                name: null,
+                push_name: null,
+                phone: null,
+                avatar_url: null,
+                status: null,
+                is_business: false,
+                business_name: null,
+                business_category: null,
+                is_blocked: false
+            };
+            
+            // Get name from header
+            const nameEl = document.querySelector('#main header span[title]');
+            info.name = nameEl?.getAttribute('title') || nameEl?.innerText;
+            
+            // Get avatar
+            const avatar = document.querySelector('#main header img[src*="pps.whatsapp.net"]');
+            info.avatar_url = avatar?.src;
+            
+            // Look for contact info panel
+            const panels = document.querySelectorAll('[role="application"], [data-animate-drawer-content="true"]');
+            for (const panel of panels) {
+                const text = panel.innerText || '';
+                
+                // Check for business indicators
+                if (text.includes('Business account') || text.includes('Catalog')) {
+                    info.is_business = true;
+                }
+                
+                // Look for "About" section
+                const aboutMatch = text.match(/About\n(.+)/);
+                if (aboutMatch) {
+                    info.status = aboutMatch[1]?.split('\n')[0];
+                }
+                
+                // Look for phone number
+                const phoneMatch = text.match(/(\+\d[\d\s\-]+)/);
+                if (phoneMatch) {
+                    info.phone = phoneMatch[1];
+                }
+                
+                // Check if blocked
+                if (text.includes('Unblock') || text.includes('blocked')) {
+                    info.is_blocked = true;
+                }
+            }
+            
+            return info;
+        })();
+        "##;
+
+        #[derive(serde::Deserialize)]
+        struct RawContactInfo {
+            name: Option<String>,
+            push_name: Option<String>,
+            phone: Option<String>,
+            avatar_url: Option<String>,
+            status: Option<String>,
+            is_business: bool,
+            business_name: Option<String>,
+            business_category: Option<String>,
+            is_blocked: bool,
+        }
+
+        let raw: RawContactInfo =
+            page.evaluate(script)
+                .await?
+                .into_value()
+                .unwrap_or(RawContactInfo {
+                    name: None,
+                    push_name: None,
+                    phone: None,
+                    avatar_url: None,
+                    status: None,
+                    is_business: false,
+                    business_name: None,
+                    business_category: None,
+                    is_blocked: false,
+                });
+
+        // Close the panel
+        let _ = page.evaluate("document.body.click();").await;
+
+        Ok(crate::models::chat::ContactInfo {
+            id: contact_id.to_string(),
+            name: raw.name,
+            push_name: raw.push_name,
+            phone: raw.phone,
+            avatar_url: raw.avatar_url,
+            status: raw.status,
+            is_business: raw.is_business,
+            business_name: raw.business_name,
+            business_category: raw.business_category,
+            is_blocked: raw.is_blocked,
+        })
+    }
+
+    /// Send a reaction (emoji) to a message
+    async fn send_reaction(&self, chat_id: &str, message_id: &str, emoji: &str) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Find the message and double-click or right-click to open reaction menu
+        let script = format!(
+            r##"
+        (async function() {{
+            // Find the message by ID or by searching message bubbles
+            const messages = document.querySelectorAll('[data-id="{msg_id}"], [data-testid="msg-container"]');
+            
+            let targetMsg = null;
+            for (const msg of messages) {{
+                const dataId = msg.getAttribute('data-id');
+                if (dataId && (dataId.includes('{msg_id}') || dataId === '{msg_id}')) {{
+                    targetMsg = msg;
+                    break;
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                // Try to find by index or content
+                const allMsgs = document.querySelectorAll('.message-in, .message-out, [data-testid="msg-container"]');
+                if (allMsgs.length > 0) {{
+                    // Default to last message if ID not found
+                    targetMsg = allMsgs[allMsgs.length - 1];
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                return {{ success: false, error: 'Message not found' }};
+            }}
+            
+            // Double-click to show reaction quick menu
+            const dblClick = new MouseEvent('dblclick', {{
+                bubbles: true,
+                cancelable: true,
+                view: window
+            }});
+            targetMsg.dispatchEvent(dblClick);
+            
+            // Wait for reaction menu
+            await new Promise(r => setTimeout(r, 500));
+            
+            // Look for reaction buttons
+            const reactionButtons = document.querySelectorAll('[data-testid="reaction-btn"], [aria-label="React"]');
+            
+            if (reactionButtons.length > 0) {{
+                // Click on the reaction menu
+                reactionButtons[0].click();
+                await new Promise(r => setTimeout(r, 300));
+            }}
+            
+            // Try to find and click the specific emoji
+            const emoji = '{emoji}';
+            if (emoji) {{
+                // Look for emoji in reaction picker
+                const emojiButtons = document.querySelectorAll('[data-emoji="{emoji}"], button[aria-label*="{emoji}"]');
+                for (const btn of emojiButtons) {{
+                    if (btn.innerText?.includes(emoji) || btn.getAttribute('data-emoji') === emoji) {{
+                        btn.click();
+                        return {{ success: true }};
+                    }}
+                }}
+                
+                // Fallback: try to type the emoji in search
+                const searchInput = document.querySelector('[data-testid="emoji-search"], input[placeholder*="Search"]');
+                if (searchInput) {{
+                    searchInput.value = emoji;
+                    searchInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    await new Promise(r => setTimeout(r, 300));
+                    
+                    const firstResult = document.querySelector('[data-testid="emoji-result"]');
+                    if (firstResult) {{
+                        firstResult.click();
+                        return {{ success: true }};
+                    }}
+                }}
+            }}
+            
+            return {{ success: false, error: 'Could not send reaction' }};
+        }})();
+        "##,
+            msg_id = message_id,
+            emoji = emoji
+        );
+
+        let result: serde_json::Value = page
+            .evaluate(script)
+            .await?
+            .into_value()
+            .unwrap_or_default();
+
+        if result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            debug!(
+                "Sent reaction {} to message {} in {}",
+                emoji, message_id, chat_id
+            );
+            Ok(())
+        } else {
+            let error = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            Err(anyhow::anyhow!("Failed to send reaction: {}", error))
+        }
+    }
+
+    /// Send a reply to a specific message
+    async fn send_reply(&self, chat_id: &str, quoted_message_id: &str, text: &str) -> Result<()> {
+        let page = self.get_page().await?;
+
+        if !self.check_authorization(&page).await? {
+            return Err(anyhow::anyhow!("Not authorized"));
+        }
+
+        // Navigate to the chat
+        self.navigate_to_chat(&page, chat_id).await?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Find the message and click reply
+        let reply_script = format!(
+            r##"
+        (async function() {{
+            // Find the message
+            const messages = document.querySelectorAll('[data-id*="{msg_id}"], [data-testid="msg-container"]');
+            
+            let targetMsg = null;
+            for (const msg of messages) {{
+                const dataId = msg.getAttribute('data-id');
+                if (dataId && dataId.includes('{msg_id}')) {{
+                    targetMsg = msg;
+                    break;
+                }}
+            }}
+            
+            if (!targetMsg) {{
+                return {{ success: false, error: 'Message not found' }};
+            }}
+            
+            // Hover over message to show menu
+            targetMsg.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
+            await new Promise(r => setTimeout(r, 200));
+            
+            // Click the down arrow to open context menu
+            const menuBtn = targetMsg.querySelector('[data-testid="down-context"], [data-icon="down-context"]') ||
+                            targetMsg.parentElement?.querySelector('[data-testid="down-context"]');
+            
+            if (menuBtn) {{
+                menuBtn.click();
+                await new Promise(r => setTimeout(r, 300));
+            }} else {{
+                // Try right-click
+                targetMsg.dispatchEvent(new MouseEvent('contextmenu', {{
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    button: 2
+                }}));
+                await new Promise(r => setTimeout(r, 300));
+            }}
+            
+            // Find and click "Reply" option
+            const menuItems = document.querySelectorAll('[role="menuitem"], [data-testid*="reply"], li[data-animate-dropdown-item]');
+            for (const item of menuItems) {{
+                if (item.innerText?.toLowerCase().includes('reply')) {{
+                    item.click();
+                    return {{ success: true }};
+                }}
+            }}
+            
+            // Alt: look for reply icon
+            const replyIcon = document.querySelector('[data-icon="reply"], [data-testid="reply"]');
+            if (replyIcon) {{
+                replyIcon.click();
+                return {{ success: true }};
+            }}
+            
+            return {{ success: false, error: 'Reply option not found' }};
+        }})();
+        "##,
+            msg_id = quoted_message_id
+        );
+
+        let result: serde_json::Value = page
+            .evaluate(reply_script)
+            .await?
+            .into_value()
+            .unwrap_or_default();
+
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let error = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            return Err(anyhow::anyhow!("Failed to initiate reply: {}", error));
+        }
+
+        // Wait for reply context to appear
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Now type and send the message
+        self.send_text_only(&page, text).await?;
+
+        debug!(
+            "Sent reply to message {} in {}: {}",
+            quoted_message_id, chat_id, text
+        );
+        Ok(())
+    }
 }
