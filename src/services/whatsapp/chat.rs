@@ -43,6 +43,31 @@ pub trait ChatServiceTrait: Send + Sync {
 
     /// Watch for new incoming messages
     async fn watch_messages(&self) -> Result<Vec<crate::models::chat::MessageInfo>>;
+
+    /// Send typing indicator (composing/paused)
+    async fn send_typing(
+        &self,
+        chat_id: &str,
+        state: crate::models::chat::TypingState,
+    ) -> Result<()>;
+
+    /// Mark messages as read
+    async fn mark_read(&self, chat_id: &str) -> Result<u32>;
+
+    /// Get presence/online status for a contact
+    async fn get_presence(&self, chat_id: &str) -> Result<crate::models::chat::PresenceInfo>;
+
+    /// Get detailed group info
+    async fn get_group_info(&self, group_id: &str) -> Result<crate::models::chat::GroupInfo>;
+
+    /// Get contact profile info
+    async fn get_contact_info(&self, contact_id: &str) -> Result<crate::models::chat::ContactInfo>;
+
+    /// Send a reaction to a message
+    async fn send_reaction(&self, chat_id: &str, message_id: &str, emoji: &str) -> Result<()>;
+
+    /// Send a reply to a message
+    async fn send_reply(&self, chat_id: &str, quoted_message_id: &str, text: &str) -> Result<()>;
 }
 
 // ============================================================================
