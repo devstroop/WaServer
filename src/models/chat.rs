@@ -1,21 +1,28 @@
 use crate::models::message as db;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 // ============================================================================
 // Request/Response Models
 // ============================================================================
 
-/// Request for sending a message (multipart/form-data).
-/// The recipient is identified by chat_id in the URL path.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct SendMessageRequest {
-    /// Message text (optional if sending file)
-    #[schema(nullable = true)]
+/// Query parameters for sending a message
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct SendMessageParams {
+    /// Recipient phone number (e.g., 919876543210)
+    pub phone: String,
+    /// Message text or caption for file attachment (optional if sending file only)
+    #[serde(default)]
     pub text: Option<String>,
-    /// File attachment (optional if sending text)
-    #[schema(value_type = Option<String>, format = "binary", nullable = true)]
+}
+
+/// Request body for file upload (multipart/form-data).
+/// Use this to upload file attachments.
+#[derive(Debug, ToSchema)]
+pub struct SendMessageRequest {
+    /// File attachment (image, video, document, etc.)
+    #[schema(format = Binary, nullable = true)]
     pub file: Option<String>,
 }
 
