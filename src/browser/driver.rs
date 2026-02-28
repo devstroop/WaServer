@@ -203,8 +203,8 @@ impl BrowserService {
                 let browser_guard = self.browser.lock().await;
                 let browser = browser_guard.as_ref().unwrap();
 
-                // Wait a moment for Chrome's default tab to be ready
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                // Brief wait for Chrome's default tab to be ready
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
                 // Get the default page that Chrome creates on startup and navigate it
                 let whatsapp_page = match browser.pages().await {
@@ -291,11 +291,12 @@ impl BrowserService {
         }
     }
 
-    /// Clean up any existing Chrome processes
+    /// Clean up any existing Chrome processes (optimized - only kills if processes found)
     async fn cleanup_existing_chrome_processes(&self) {
         debug!("Checking for existing Chrome processes...");
 
         if cfg!(target_os = "windows") {
+            // On Windows, just attempt kill without checking first (fast fail)
             let chrome_processes = ["chrome.exe", "msedge.exe", "chromium.exe"];
             for process in chrome_processes {
                 let _ = tokio::process::Command::new("taskkill")
@@ -304,31 +305,42 @@ impl BrowserService {
                     .await;
             }
         } else {
-            let chrome_processes = [
-                "Google Chrome",
-                "chromium-browser",
-                "chrome",
-                "google-chrome",
-                "Chromium",
-            ];
-            for process in chrome_processes {
-                let _ = tokio::process::Command::new("pkill")
-                    .args(["-f", process])
-                    .output()
-                    .await;
-            }
+            // On Unix, check if any Chrome processes exist first
+            let check = tokio::process::Command::new("pgrep")
+                .args(["-f", "chrom"])
+                .output()
+                .await;
+            
+            let has_chrome = check.map(|o| o.status.success()).unwrap_or(false);
+            
+            if has_chrome {
+                debug!("Found existing Chrome processes, killing...");
+                let chrome_processes = [
+                    "Google Chrome",
+                    "chromium-browser",
+                    "chrome",
+                    "google-chrome",
+                    "Chromium",
+                ];
+                for process in chrome_processes {
+                    let _ = tokio::process::Command::new("pkill")
+                        .args(["-f", process])
+                        .output()
+                        .await;
+                }
+                // Brief wait only if we actually killed something
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-
-            for process in chrome_processes {
-                let _ = tokio::process::Command::new("pkill")
-                    .args(["-9", "-f", process])
-                    .output()
-                    .await;
+                for process in chrome_processes {
+                    let _ = tokio::process::Command::new("pkill")
+                        .args(["-9", "-f", process])
+                        .output()
+                        .await;
+                }
             }
         }
 
-        // Clean up temp directories
+        // Clean up temp directories (non-blocking, no sleep needed)
         let temp_dir = if cfg!(target_os = "windows") {
             std::env::var("TEMP").unwrap_or_else(|_| {
                 std::env::var("TMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string())
@@ -347,7 +359,6 @@ impl BrowserService {
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         debug!("Chrome cleanup completed");
     }
 
