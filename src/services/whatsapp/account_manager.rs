@@ -90,14 +90,13 @@ impl AccountManager {
         let idle_timeout = request.idle_timeout.unwrap_or(300);
 
         // Persist to database first
-        self.db
-            .create_account(
-                &account_id.to_string(),
-                &phone_number,
-                &account_name,
-                &account_dir.to_string_lossy(),
-                idle_timeout,
-            )?;
+        self.db.create_account(
+            &account_id.to_string(),
+            &phone_number,
+            &account_name,
+            &account_dir.to_string_lossy(),
+            idle_timeout,
+        )?;
 
         // Create account config
         let setup_config = AccountSetupConfig {

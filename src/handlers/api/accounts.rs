@@ -204,8 +204,7 @@ pub async fn warmup_account(
         .into_response(),
         Err(e) => {
             let error_msg = e.to_string();
-            let status = if error_msg.contains("already warming up")
-            {
+            let status = if error_msg.contains("already warming up") {
                 StatusCode::CONFLICT
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -262,7 +261,8 @@ pub async fn screenshot(
                 "error": "warmup_failed",
                 "message": format!("Failed to warm up account: {}", e)
             })),
-        ).into_response();
+        )
+            .into_response();
     }
 
     match account.browser_service().screenshot().await {

@@ -307,7 +307,10 @@ impl WhatsAppAccount {
                     return Ok(());
                 }
                 // Browser died externally — clean up stale handles and re-warm
-                warn!("Account '{}' — browser dead while status=Active, re-warming", self.id);
+                warn!(
+                    "Account '{}' — browser dead while status=Active, re-warming",
+                    self.id
+                );
                 self.cancel_idle_timer().await;
                 // Close clears the dead browser/page handles so initialize() starts fresh
                 let _ = self.browser_service.close().await;
@@ -389,7 +392,10 @@ impl WhatsAppAccount {
             AccountStatus::Active => {
                 // Verify the browser is actually alive — it may have been closed externally
                 if !self.browser_service.is_responsive().await {
-                    warn!("Account '{}' — browser dead while status=Active, re-warming", self.id);
+                    warn!(
+                        "Account '{}' — browser dead while status=Active, re-warming",
+                        self.id
+                    );
                     self.cancel_idle_timer().await;
                     let _ = self.browser_service.close().await;
                     *self.status.write().await = AccountStatus::Sleeping;
@@ -398,9 +404,7 @@ impl WhatsAppAccount {
                 self.touch_activity().await;
                 Ok(())
             }
-            AccountStatus::Sleeping | AccountStatus::Error(_) => {
-                self.warmup().await
-            }
+            AccountStatus::Sleeping | AccountStatus::Error(_) => self.warmup().await,
             AccountStatus::WarmingUp => {
                 // Wait for warmup to complete (poll with short interval)
                 drop(status);
@@ -421,7 +425,10 @@ impl WhatsAppAccount {
                         AccountStatus::WarmingUp => continue,
                     }
                 }
-                Err(anyhow!("Timeout waiting for account '{}' to warm up", self.id))
+                Err(anyhow!(
+                    "Timeout waiting for account '{}' to warm up",
+                    self.id
+                ))
             }
         }
     }
@@ -439,7 +446,10 @@ impl WhatsAppAccount {
 
         let idle_timeout_val = self.account_config.read().await.idle_timeout;
         if idle_timeout_val == 0 {
-            debug!("Account '{}' — idle auto-sleep disabled (timeout=0)", self.id);
+            debug!(
+                "Account '{}' — idle auto-sleep disabled (timeout=0)",
+                self.id
+            );
             return;
         }
 

@@ -100,7 +100,10 @@ pub async fn list_chats(
     if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
+            Json(ErrorResponse::new(format!(
+                "Failed to warm up account: {}",
+                e
+            ))),
         ));
     }
 
@@ -192,7 +195,10 @@ pub async fn get_chat_messages(
     if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
+            Json(ErrorResponse::new(format!(
+                "Failed to warm up account: {}",
+                e
+            ))),
         ));
     }
 
@@ -311,7 +317,10 @@ pub async fn send_message(
     if let Err(e) = account.ensure_warm().await {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse::new(format!("Failed to warm up account: {}", e))),
+            Json(ErrorResponse::new(format!(
+                "Failed to warm up account: {}",
+                e
+            ))),
         ));
     }
 

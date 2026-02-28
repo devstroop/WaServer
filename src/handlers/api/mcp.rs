@@ -311,10 +311,7 @@ async fn execute_tool(
             return McpToolResult {
                 content: vec![McpContent {
                     content_type: "text".to_string(),
-                    text: format!(
-                        "Account {} failed to warm up: {}",
-                        account.id, e
-                    ),
+                    text: format!("Account {} failed to warm up: {}", account.id, e),
                 }],
                 is_error: Some(true),
             };
