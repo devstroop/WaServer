@@ -22,7 +22,7 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, Semaphore};
@@ -151,7 +151,7 @@ impl WhatsAppAccount {
 
     /// Load or create account metadata
     async fn load_or_create_metadata(
-        data_dir: &PathBuf,
+        data_dir: &Path,
         config: &AccountSetupConfig,
     ) -> Result<AccountMetadata> {
         let metadata_path = data_dir.join(METADATA_FILE);
@@ -181,7 +181,7 @@ impl WhatsAppAccount {
         Self::save_metadata_to_path(&metadata_path, &metadata).await
     }
 
-    async fn save_metadata_to_path(path: &PathBuf, metadata: &AccountMetadata) -> Result<()> {
+    async fn save_metadata_to_path(path: &Path, metadata: &AccountMetadata) -> Result<()> {
         let content = serde_json::to_string_pretty(metadata)?;
         tokio::fs::write(path, content).await?;
         Ok(())
@@ -189,7 +189,7 @@ impl WhatsAppAccount {
 
     /// Load or create account runtime config
     async fn load_or_create_account_config(
-        data_dir: &PathBuf,
+        data_dir: &Path,
         config: &AccountSetupConfig,
     ) -> Result<AccountConfig> {
         let config_path = data_dir.join(ACCOUNT_CONFIG_FILE);

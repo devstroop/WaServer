@@ -317,10 +317,11 @@ pub struct AccountInfo {
 }
 
 /// Account runtime status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountStatus {
     /// Browser is not running; will auto-warm on demand
+    #[default]
     Sleeping,
     /// Browser is starting up (warming)
     WarmingUp,
@@ -328,12 +329,6 @@ pub enum AccountStatus {
     Active,
     /// Account has an error
     Error(String),
-}
-
-impl Default for AccountStatus {
-    fn default() -> Self {
-        Self::Sleeping
-    }
 }
 
 /// Persistent account metadata (stored in account.json)

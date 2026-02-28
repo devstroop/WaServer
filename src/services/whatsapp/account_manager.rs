@@ -77,7 +77,7 @@ impl AccountManager {
             .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
 
         // Check phone uniqueness via database
-        if let Some(_) = self.db.get_account_by_phone(&phone_number)? {
+        if self.db.get_account_by_phone(&phone_number)?.is_some() {
             return Err(anyhow!("Phone number '{}' already exists", phone_number));
         }
 
@@ -306,7 +306,7 @@ impl AccountManager {
         for record in records {
             let id_str = &record.id;
 
-            let account_id: AccountId = match Uuid::parse_str(&id_str) {
+            let account_id: AccountId = match Uuid::parse_str(id_str) {
                 Ok(uuid) => uuid,
                 Err(e) => {
                     error!("Invalid UUID '{}' in database: {}", id_str, e);

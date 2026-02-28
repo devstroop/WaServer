@@ -7,7 +7,7 @@ use anyhow::Result;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::page::Page;
 use futures_util::stream::StreamExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
@@ -40,7 +40,7 @@ pub struct BrowserServiceConfig {
 impl BrowserServiceConfig {
     /// Create config for a specific account account
     pub fn for_account(
-        account_data_dir: &PathBuf,
+        account_data_dir: &Path,
         headless: bool,
         timeout_ms: u64,
         extra_args: Vec<String>,

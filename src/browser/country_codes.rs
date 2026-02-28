@@ -1,7 +1,6 @@
 /// Country dial code dictionary.
 /// Maps dial codes to (country name, ISO 3166-1 alpha-2 code).
 /// Sorted longest-prefix-first for unambiguous phone number parsing.
-
 pub struct CountryInfo {
     pub dial_code: &'static str,
     pub name: &'static str,
