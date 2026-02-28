@@ -64,7 +64,8 @@ path = "/api-docs"
 # =============================================================================
 [mcp]
 # Enable MCP server (requires --features mcp at compile time)
-enabled = true
+# Disabled until read features are released
+enabled = false
 # MCP endpoint path
 endpoint = "/mcp"
 # Enable SSE (Server-Sent Events) transport
