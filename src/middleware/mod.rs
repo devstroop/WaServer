@@ -11,11 +11,11 @@ use tracing::Instrument;
 
 use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 
-// Re-export instance middleware
-pub use instance::{instance_middleware, CurrentInstance};
+// Re-export instance middleware and permission checking
+pub use instance::{check_instance_access, instance_middleware, CurrentInstance, InstanceAccessState};
 
 // Re-export auth middleware and types
-pub use auth::{auth_middleware, AuthState};
+pub use auth::{auth_middleware, hash_api_key, AuthState};
 
 // Re-export AuthenticatedUser from models for convenience
 pub use crate::models::auth::AuthenticatedUser;
