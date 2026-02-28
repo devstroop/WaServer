@@ -80,6 +80,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
 
+    // Clone db for auth middleware (RBAC user lookup)
+    let auth_db = db.clone();
+
     // Initialize InstanceManager for multi-instance support
     let instance_manager = Arc::new(InstanceManager::new(config.clone(), db));
 
@@ -98,12 +101,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🔑 Multi-instance support enabled (v{})", VERSION);
 
     // Run server
-    run_server(config, instance_manager).await
+    run_server(config, instance_manager, auth_db).await
 }
 
 async fn run_server(
     config: Arc<AppConfig>,
     instance_manager: Arc<InstanceManager>,
+    auth_db: Database,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use axum::{
         extract::DefaultBodyLimit,
@@ -123,12 +127,12 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{chat, health, instances, whatsapp},
+        api::{chat, health, instances, users, whatsapp},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
         },
-        models::{auth::*, chat::*, instance::*},
+        models::{auth::*, chat::*, instance::*, user::*},
     };
 
     // CORS
@@ -168,6 +172,18 @@ async fn run_server(
 
             // Chat (list_chats and get_chat_messages hidden from Swagger)
             chat::send_message,
+
+            // Users management
+            users::list_users,
+            users::create_user,
+            users::get_user,
+            users::update_user,
+            users::delete_user,
+            users::regenerate_api_key,
+            users::get_user_instances,
+            users::assign_instance,
+            users::remove_instance,
+            users::get_me,
         ),
         components(
             schemas(
@@ -186,6 +202,10 @@ async fn run_server(
                 // WhatsApp operations
                 WhatsAppStatusResponse, ProfileInfo,
                 UpdateProfileRequest,
+                // Users
+                UserRole, InstancePermission, UserInfo, InstanceOwnerRecord,
+                CreateUserRequest, CreateUserResponse, UpdateUserRequest,
+                AssignInstanceRequest, ListUsersResponse, RegenerateApiKeyResponse, UserInstancesResponse,
             )
         ),
         modifiers(&SecurityAddon),
@@ -193,7 +213,8 @@ async fn run_server(
             (name = "Health", description = "Server health and metrics endpoints"),
             (name = "Instances", description = "Instance lifecycle management (CRUD, start, stop, config)"),
             (name = "WhatsApp", description = "WhatsApp operations: linking, profile, privacy"),
-            (name = "Messaging", description = "Chat and message operations")
+            (name = "Messaging", description = "Chat and message operations"),
+            (name = "Users", description = "User management and RBAC (admin only)")
         ),
         info(
             title = "WhatsApp Server - API",
@@ -215,8 +236,8 @@ async fn run_server(
         }
     }
 
-    // Create auth state for middleware (secret key only)
-    let auth_state = AuthState::new(config.auth.secret_key.clone());
+    // Create auth state for middleware (secret key + RBAC)
+    let auth_state = AuthState::new(config.auth.secret_key.clone(), auth_db);
 
     // Start building the app
     let mut app = Router::new();
@@ -316,13 +337,37 @@ async fn run_server(
         ))
         .with_state(instance_manager.clone());
 
+    // User management routes (admin only for most)
+    let users_routes = Router::new()
+        // Self-info endpoint (must come before /:user_id to avoid conflict)
+        .route("/me", get(users::get_me))
+        // User CRUD
+        .route("/", get(users::list_users))
+        .route("/", post(users::create_user))
+        .route("/:user_id", get(users::get_user))
+        .route("/:user_id", axum::routing::patch(users::update_user))
+        .route("/:user_id", delete(users::delete_user))
+        // API key management
+        .route("/:user_id/regenerate-key", post(users::regenerate_api_key))
+        // Instance assignments
+        .route("/assign-instance", post(users::assign_instance))
+        .route("/:user_id/instances", get(users::get_user_instances))
+        .route("/:user_id/instances/:instance_id", delete(users::remove_instance))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ))
+        .with_state(auth_state.db.clone());
+
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
 
     // Mount all v1 routes
     app = app.nest("/api/v1/instances", instances_routes);
+    app = app.nest("/api/v1/users", users_routes);
 
     info!("📖 API at /api/v1/instances");
+    info!("👤 Users API at /api/v1/users");
 
     // Swagger UI documentation (configurable)
     if config.swagger.enabled {
