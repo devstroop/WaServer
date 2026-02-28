@@ -1,22 +1,87 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::user::{InstancePermission, UserRole};
+
 // =============================================================================
 // Authenticated User Context
 // =============================================================================
 
 /// Represents how a request was authenticated.
-/// With secret-key-only auth, all requests are authenticated via the static secret.
+/// Supports both static secret key (superadmin) and user API keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthenticatedUser {
     /// Authenticated via static secret key from config `[auth].secret_key`
+    /// Has full superadmin access to everything.
     Secret,
+    /// Authenticated via user API key from database.
+    User {
+        id: String,
+        username: String,
+        role: UserRole,
+    },
 }
 
 impl AuthenticatedUser {
     /// Get a display name for logging
     pub fn display_name(&self) -> String {
-        "secret".to_string()
+        match self {
+            AuthenticatedUser::Secret => "superadmin".to_string(),
+            AuthenticatedUser::User { username, .. } => username.clone(),
+        }
+    }
+
+    /// Check if this user has admin privileges (secret or admin role)
+    pub fn is_admin(&self) -> bool {
+        match self {
+            AuthenticatedUser::Secret => true,
+            AuthenticatedUser::User { role, .. } => role.is_admin(),
+        }
+    }
+
+    /// Check if this user is the superadmin (secret key)
+    pub fn is_superadmin(&self) -> bool {
+        matches!(self, AuthenticatedUser::Secret)
+    }
+
+    /// Get user ID if authenticated as a user
+    pub fn user_id(&self) -> Option<&str> {
+        match self {
+            AuthenticatedUser::Secret => None,
+            AuthenticatedUser::User { id, .. } => Some(id),
+        }
+    }
+
+    /// Get user role
+    pub fn role(&self) -> Option<&UserRole> {
+        match self {
+            AuthenticatedUser::Secret => None,
+            AuthenticatedUser::User { role, .. } => Some(role),
+        }
+    }
+
+    /// Check if user can access an instance with given permission requirement.
+    /// Superadmin and admin users can access everything.
+    pub fn can_access_instance(&self, permission: Option<InstancePermission>, required: InstancePermission) -> bool {
+        // Superadmin can do anything
+        if self.is_superadmin() {
+            return true;
+        }
+
+        // Admin role can do anything
+        if self.is_admin() {
+            return true;
+        }
+
+        // Check specific permission
+        match permission {
+            Some(perm) => match required {
+                InstancePermission::Viewer => true, // Any permission grants view access
+                InstancePermission::Operator => perm.can_send(),
+                InstancePermission::Owner => perm.can_modify(),
+            },
+            None => false, // No permission = no access
+        }
     }
 }
 
