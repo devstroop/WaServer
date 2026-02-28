@@ -7,7 +7,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Special constant for "self" - the logged-in WhatsApp account
+/// Special constant for "self" - the logged-in WhatsApp instance
 /// Used as sender for outgoing messages and recipient for incoming 1:1 messages
 pub const SELF_JID: &str = "me";
 

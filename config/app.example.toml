@@ -92,14 +92,14 @@ retry_delay_ms = 1000
 # headers = { "X-Custom-Header" = "value" }
 
 # =============================================================================
-# Accounts - Multi-account configuration
+# Instances - Multi-instance configuration
 # =============================================================================
-# [accounts]
-# Base directory for all account data (default: ~/.was/accounts)
-# base_directory = "/path/to/accounts"
+# [instances]
+# Base directory for all instance data (default: ~/.was/instances)
+# base_directory = "/path/to/instances"
 
-# [accounts.defaults]
+# [instances.defaults]
 # Default idle timeout in seconds before auto-sleep (0 = never, default 300)
 # idle_timeout = 300
-# Default headless mode for new accounts
+# Default headless mode for new instances
 # headless = true

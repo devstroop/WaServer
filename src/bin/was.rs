@@ -17,7 +17,7 @@ use tracing::info;
 
 use was::{
     config::AppConfig,
-    services::{AccountManager, Database},
+    services::{Database, InstanceManager},
     utils::logging,
 };
 
@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize embedded SQLite database
     let db_data_dir = config
-        .accounts
+        .instances
         .as_ref()
         .and_then(|ac| ac.base_directory.clone())
         .unwrap_or_else(|| {
@@ -80,30 +80,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
 
-    // Initialize AccountManager for multi-account support
-    let account_manager = Arc::new(AccountManager::new(config.clone(), db));
+    // Initialize InstanceManager for multi-instance support
+    let instance_manager = Arc::new(InstanceManager::new(config.clone(), db));
 
-    // Discover existing accounts from filesystem
-    match account_manager.discover_accounts().await {
+    // Discover existing instances from filesystem
+    match instance_manager.discover_instances().await {
         Ok((discovered, _)) => {
             if !discovered.is_empty() {
-                info!("📂 Discovered {} existing account(s)", discovered.len());
+                info!("📂 Discovered {} existing instance(s)", discovered.len());
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to discover existing accounts: {}", e);
+            tracing::warn!("Failed to discover existing instances: {}", e);
         }
     }
 
-    info!("🔑 Multi-account support enabled (v{})", VERSION);
+    info!("🔑 Multi-instance support enabled (v{})", VERSION);
 
     // Run server
-    run_server(config, account_manager).await
+    run_server(config, instance_manager).await
 }
 
 async fn run_server(
     config: Arc<AppConfig>,
-    account_manager: Arc<AccountManager>,
+    instance_manager: Arc<InstanceManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use axum::{
         extract::DefaultBodyLimit,
@@ -123,12 +123,12 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{accounts, chat, health, whatsapp},
+        api::{chat, health, instances, whatsapp},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
         },
-        models::{account::*, auth::*, chat::*},
+        models::{auth::*, chat::*, instance::*},
     };
 
     // CORS
@@ -149,27 +149,24 @@ async fn run_server(
         paths(
             // Health
             health::health_check,
-            // Accounts management
-            accounts::list_accounts,
-            accounts::create_account,
-            accounts::get_account,
-            accounts::delete_account,
-            accounts::warmup_account,
-            accounts::screenshot,
-            accounts::reset_account,
-            accounts::get_account_config,
-            accounts::update_account_config,
+            // Instances management
+            instances::list_instances,
+            instances::create_instance,
+            instances::get_instance,
+            instances::delete_instance,
+            instances::warmup_instance,
+            instances::screenshot,
+            instances::reset_instance,
+            instances::get_instance_config,
+            instances::update_instance_config,
             // WhatsApp operations (uses path param)
-            whatsapp::get_account_status,
+            whatsapp::get_instance_status,
             whatsapp::get_qr_code,
             whatsapp::link_phone,
             whatsapp::unlink,
-            whatsapp::get_profile,
-            whatsapp::update_profile,
+            // get_profile and update_profile hidden from Swagger (not yet implemented)
 
-            // Chat
-            chat::list_chats,
-            chat::get_chat_messages,
+            // Chat (list_chats and get_chat_messages hidden from Swagger)
             chat::send_message,
         ),
         components(
@@ -180,13 +177,13 @@ async fn run_server(
                 AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
                 // Chat
                 SendMessageRequest, SendMessageResponse, ChatListResponse, ChatInfo, Message, MessageInfo, MessageListResponse, MessageQueryParams,
-                // Account management
-                CreateAccountRequest, CreateAccountResponse, AccountListResponse, AccountInfo, AccountStatus,
-                DeleteAccountResponse, DeleteAccountQuery, AccountActionResponse, ListAccountsQuery, BrowserOverrides,
-                // Account configuration
-                AccountConfig, AccountBrowserConfig, AccountWebhookConfig, WebhookEndpoint, AccountRateLimits,
-                UpdateAccountConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,
-                // Account operations
+                // Instance management
+                CreateInstanceRequest, CreateInstanceResponse, InstanceListResponse, InstanceInfo, InstanceStatus,
+                DeleteInstanceResponse, DeleteInstanceQuery, InstanceActionResponse, ListInstancesQuery, BrowserOverrides,
+                // Instance configuration
+                InstanceConfig, InstanceBrowserConfig, InstanceWebhookConfig, WebhookEndpoint, InstanceRateLimits,
+                UpdateInstanceConfigRequest, UpdateBrowserConfig, UpdateWebhookConfig, UpdateRateLimits,
+                // WhatsApp operations
                 WhatsAppStatusResponse, ProfileInfo,
                 UpdateProfileRequest,
             )
@@ -194,14 +191,14 @@ async fn run_server(
         modifiers(&SecurityAddon),
         tags(
             (name = "Health", description = "Server health and metrics endpoints"),
-            (name = "Accounts", description = "Account lifecycle management (CRUD, start, stop, config)"),
-            (name = "Account", description = "Account operations: linking, profile, privacy"),
+            (name = "Instances", description = "Instance lifecycle management (CRUD, start, stop, config)"),
+            (name = "WhatsApp", description = "WhatsApp operations: linking, profile, privacy"),
             (name = "Messaging", description = "Chat and message operations")
         ),
         info(
             title = "WhatsApp Server - API",
             version = "0.3.0",
-            description = "REST API for WhatsApp Web automation with multi-account support.",
+            description = "REST API for WhatsApp Web automation with multi-instance support.",
         )
     )]
     struct ApiDoc;
@@ -231,7 +228,7 @@ async fn run_server(
         info!("🤖 MCP enabled at {}", config.mcp.endpoint);
         app = app.nest(
             &config.mcp.endpoint,
-            mcp::mcp_routes(account_manager.clone()),
+            mcp::mcp_routes(instance_manager.clone()),
         );
     }
 
@@ -249,79 +246,83 @@ async fn run_server(
         .route("/ready", get(health::readiness_check))
         .route("/live", get(health::liveness_check))
         .route("/metrics", get(health::get_metrics))
-        .with_state(account_manager.clone());
+        .with_state(instance_manager.clone());
 
-    // All account routes (management + WhatsApp ops) under one namespace
-    let accounts_routes = Router::new()
-        // Account CRUD
-        .route("/", get(accounts::list_accounts))
-        .route("/", post(accounts::create_account))
-        .route("/:account_id", get(accounts::get_account))
-        .route("/:account_id", delete(accounts::delete_account))
-        // Account lifecycle
-        .route("/:account_id/warmup", post(accounts::warmup_account))
-        .route("/:account_id/reset", delete(accounts::reset_account))
-        .route("/:account_id/screenshot", get(accounts::screenshot))
-        .route("/:account_id/config", get(accounts::get_account_config))
-        .route("/:account_id/config", put(accounts::update_account_config))
+    // All instance routes (management + WhatsApp ops) under one namespace
+    let instances_routes = Router::new()
+        // Instance CRUD
+        .route("/", get(instances::list_instances))
+        .route("/", post(instances::create_instance))
+        .route("/:instance_id", get(instances::get_instance))
+        .route("/:instance_id", delete(instances::delete_instance))
+        // Instance lifecycle
+        .route("/:instance_id/warmup", post(instances::warmup_instance))
+        .route("/:instance_id/reset", delete(instances::reset_instance))
+        .route("/:instance_id/screenshot", get(instances::screenshot))
+        .route("/:instance_id/config", get(instances::get_instance_config))
+        .route(
+            "/:instance_id/config",
+            put(instances::update_instance_config),
+        )
         // WhatsApp auth & linking
-        .route("/:account_id/status", get(whatsapp::get_account_status))
-        .route("/:account_id/link/qr", get(whatsapp::get_qr_code))
-        .route("/:account_id/link/phone", post(whatsapp::link_phone))
-        .route("/:account_id/unlink", delete(whatsapp::unlink))
+        .route("/:instance_id/status", get(whatsapp::get_instance_status))
+        .route("/:instance_id/link/qr", get(whatsapp::get_qr_code))
+        .route("/:instance_id/link/phone", post(whatsapp::link_phone))
+        .route("/:instance_id/unlink", delete(whatsapp::unlink))
         // Profile & privacy
         .route(
-            "/:account_id/profile",
+            "/:instance_id/profile",
             get(whatsapp::get_profile).put(whatsapp::update_profile),
         )
-        // Chats & messages
-        .route("/:account_id/chats", get(chat::list_chats))
+        // Messages
+        .route("/:instance_id/chats", get(chat::list_chats))
+        .route("/:instance_id/send", post(chat::send_message))
         .route(
-            "/:account_id/chats/:chat_id/messages",
-            get(chat::get_chat_messages).post(chat::send_message),
+            "/:instance_id/messages/:phone",
+            get(chat::get_chat_messages),
         )
         .route(
-            "/:account_id/chats/:chat_id/typing",
+            "/:instance_id/messages/:phone/typing",
             post(whatsapp::send_typing),
         )
         .route(
-            "/:account_id/chats/:chat_id/read",
+            "/:instance_id/messages/:phone/read",
             post(whatsapp::mark_read),
         )
         .route(
-            "/:account_id/chats/:chat_id/messages/:message_id/react",
+            "/:instance_id/messages/:phone/:message_id/react",
             post(whatsapp::send_reaction),
         )
         .route(
-            "/:account_id/chats/:chat_id/messages/:message_id/reply",
+            "/:instance_id/messages/:phone/:message_id/reply",
             post(whatsapp::send_reply),
         )
         // Contacts & Groups
         .route(
-            "/:account_id/contacts/:contact_id",
+            "/:instance_id/contacts/:contact_id",
             get(whatsapp::get_contact_info),
         )
         .route(
-            "/:account_id/contacts/:contact_id/presence",
+            "/:instance_id/contacts/:contact_id/presence",
             get(whatsapp::get_presence),
         )
         .route(
-            "/:account_id/groups/:group_id",
+            "/:instance_id/groups/:group_id",
             get(whatsapp::get_group_info),
         )
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
         ))
-        .with_state(account_manager.clone());
+        .with_state(instance_manager.clone());
 
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
 
     // Mount all v1 routes
-    app = app.nest("/api/v1/accounts", accounts_routes);
+    app = app.nest("/api/v1/instances", instances_routes);
 
-    info!("📖 API at /api/v1/accounts");
+    info!("📖 API at /api/v1/instances");
 
     // Swagger UI documentation (configurable)
     if config.swagger.enabled {

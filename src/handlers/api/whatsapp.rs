@@ -1,8 +1,8 @@
-//! WhatsApp Account Operations API
+//! WhatsApp Instance Operations API
 //!
-//! REST API endpoints for WhatsApp account operations (status, QR, logout, profile, privacy).
-//! Account ID is a UUID, phone number is the E.164 identifier.
-//! These endpoints use path parameter {account_id}.
+//! REST API endpoints for WhatsApp instance operations (status, QR, logout, profile, privacy).
+//! Instance ID is a UUID, phone number is the E.164 identifier.
+//! These endpoints use path parameter {instance_id}.
 
 use std::sync::Arc;
 
@@ -17,63 +17,63 @@ use serde_json::json;
 
 #[allow(unused_imports)]
 use crate::{
-    models::account::{ProfileInfo, UpdateProfileRequest, WhatsAppStatusResponse},
     models::chat::{
         ContactInfo, GroupInfo, MarkReadResponse, PresenceInfo, ReactionRequest,
         ReplyMessageRequest, TypingRequest, TypingResponse,
     },
-    services::AccountManager,
+    models::instance::{ProfileInfo, UpdateProfileRequest, WhatsAppStatusResponse},
+    services::InstanceManager,
 };
 
 // === API Handlers ===
 
 /// Get WhatsApp authentication status
 ///
-/// Returns the authentication status and bound phone number for the account.
+/// Returns the authentication status and bound phone number for the instance.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/status",
-    tag = "Account",
+    path = "/api/v1/instances/{instance_id}/status",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Account status", body = WhatsAppStatusResponse),
-        (status = 404, description = "Account not found"),
+        (status = 200, description = "Instance status", body = WhatsAppStatusResponse),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
-pub async fn get_account_status(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+pub async fn get_instance_status(
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
-    let info = account.info().await;
+    let info = instance.info().await;
 
-    // Convert AccountStatus enum to string
+    // Convert InstanceStatus enum to string
     let status_str = match &info.status {
-        crate::models::account::AccountStatus::Sleeping => "sleeping",
-        crate::models::account::AccountStatus::WarmingUp => "warming_up",
-        crate::models::account::AccountStatus::Active => "active",
-        crate::models::account::AccountStatus::Error(_) => "error",
+        crate::models::instance::InstanceStatus::Sleeping => "sleeping",
+        crate::models::instance::InstanceStatus::WarmingUp => "warming_up",
+        crate::models::instance::InstanceStatus::Active => "active",
+        crate::models::instance::InstanceStatus::Error(_) => "error",
     };
 
     Json(json!(WhatsAppStatusResponse {
-        account_id: info.id,
+        instance_id: info.id,
         phone_number: info.phone_number,
         status: status_str.to_string(),
         authorized: info.authorized,
@@ -86,14 +86,14 @@ pub async fn get_account_status(
 /// Returns a QR code as a PNG image for linking WhatsApp on mobile device.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/link/qr",
-    tag = "Account",
+    path = "/api/v1/instances/{instance_id}/link/qr",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "QR code PNG image", content_type = "image/png"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -101,17 +101,17 @@ pub async fn get_account_status(
     )
 )]
 pub async fn get_qr_code(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -119,25 +119,25 @@ pub async fn get_qr_code(
     };
 
     // Ensure browser is warm (auto-warms if sleeping)
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
     // Check if already authorized
-    match account.auth_service().is_authorized().await {
+    match instance.auth_service().is_authorized().await {
         Ok(true) => {
             return (
                 StatusCode::CONFLICT,
                 Json(json!({
                     "error": "already_authorized",
-                    "message": "Account is already authorized. Use /api/v1/accounts/{account_id}/unlink to disconnect first."
+                    "message": "Instance is already authorized. Use /api/v1/instances/{instance_id}/unlink to disconnect first."
                 })),
             )
                 .into_response();
@@ -155,7 +155,7 @@ pub async fn get_qr_code(
         Ok(false) => {} // Continue to QR code generation
     }
 
-    match account.auth_service().get_auth_qr_code().await {
+    match instance.auth_service().get_auth_qr_code().await {
         Ok(qr_base64) => match base64::engine::general_purpose::STANDARD.decode(&qr_base64) {
             Ok(png_bytes) => (
                 StatusCode::OK,
@@ -185,17 +185,17 @@ pub async fn get_qr_code(
 
 /// Link via phone number
 ///
-/// Initiates phone number linking flow using the account's stored phone number.
+/// Initiates phone number linking flow using the instance's stored phone number.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/link/phone",
-    tag = "Account",
+    path = "/api/v1/instances/{instance_id}/link/phone",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Phone linking initiated"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -203,17 +203,17 @@ pub async fn get_qr_code(
     )
 )]
 pub async fn link_phone(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
@@ -221,26 +221,26 @@ pub async fn link_phone(
     };
 
     // Ensure browser is warm (auto-warms if sleeping)
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    // Use the phone number stored on the account (set during creation)
-    let phone_number = match account.phone_number() {
+    // Use the phone number stored on the instance (set during creation)
+    let phone_number = match instance.phone_number() {
         Some(p) => p,
         None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
                     "error": "no_phone_number",
-                    "message": "Account has no phone number configured"
+                    "message": "Instance has no phone number configured"
                 })),
             )
                 .into_response();
@@ -248,13 +248,13 @@ pub async fn link_phone(
     };
 
     // Check if already authorized
-    match account.auth_service().is_authorized().await {
+    match instance.auth_service().is_authorized().await {
         Ok(true) => {
             return (
                 StatusCode::CONFLICT,
                 Json(json!({
                     "error": "already_authorized",
-                    "message": "Account is already authorized. Use /api/v1/accounts/{account_id}/unlink to disconnect first."
+                    "message": "Instance is already authorized. Use /api/v1/instances/{instance_id}/unlink to disconnect first."
                 })),
             )
                 .into_response();
@@ -272,7 +272,7 @@ pub async fn link_phone(
         Ok(false) => {} // Continue to phone linking
     }
 
-    match account
+    match instance
         .auth_service()
         .login_with_phone_number(&phone_number)
         .await
@@ -299,43 +299,43 @@ pub async fn link_phone(
 
 /// Unlink WhatsApp Web
 ///
-/// Disconnects the WhatsApp Web session for this account.
+/// Disconnects the WhatsApp Web session for this instance.
 #[utoipa::path(
     delete,
-    path = "/api/v1/accounts/{account_id}/unlink",
-    tag = "Account",
+    path = "/api/v1/instances/{instance_id}/unlink",
+    tag = "WhatsApp",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)")
     ),
     responses(
         (status = 200, description = "Unlinked"),
-        (status = 404, description = "Account not found"),
+        (status = 404, description = "Instance not found"),
     ),
     security(
         ("bearer_auth" = [])
     )
 )]
 pub async fn unlink(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    match account.auth_service().logout().await {
+    match instance.auth_service().logout().await {
         Ok(_) => {
-            account.invalidate_auth_cache().await;
+            instance.invalidate_auth_cache().await;
             Json(json!({
                 "success": true,
                 "message": "WhatsApp Web session unlinked"
@@ -358,46 +358,47 @@ pub async fn unlink(
 /// Get profile info
 ///
 /// Returns the WhatsApp profile information (name, about, picture).
-#[utoipa::path(
-    get,
-    path = "/api/v1/accounts/{account_id}/profile",
-    tag = "Account",
-    params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
-    ),
-    responses(
-        (status = 200, description = "Profile info", body = ProfileInfo),
-        (status = 404, description = "Account not found"),
-        (status = 503, description = "Browser not running"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
+// Hidden from Swagger - not yet implemented
+// #[utoipa::path(
+//     get,
+//     path = "/api/v1/instances/{instance_id}/profile",
+//     tag = "WhatsApp",
+//     params(
+//         ("instance_id" = String, Path, description = "Instance ID (UUID)")
+//     ),
+//     responses(
+//         (status = 200, description = "Profile info", body = ProfileInfo),
+//         (status = 404, description = "Instance not found"),
+//         (status = 503, description = "Browser not running"),
+//     ),
+//     security(
+//         ("bearer_auth" = [])
+//     )
+// )]
 pub async fn get_profile(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
@@ -416,49 +417,50 @@ pub async fn get_profile(
 /// Update profile
 ///
 /// Updates WhatsApp profile information. All fields are optional - only provided fields are updated.
-#[utoipa::path(
-    put,
-    path = "/api/v1/accounts/{account_id}/profile",
-    tag = "Account",
-    params(
-        ("account_id" = String, Path, description = "Account ID (UUID)")
-    ),
-    request_body = UpdateProfileRequest,
-    responses(
-        (status = 200, description = "Profile updated"),
-        (status = 400, description = "Invalid request"),
-        (status = 404, description = "Account not found"),
-        (status = 503, description = "Browser not running"),
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
+// Hidden from Swagger - not yet implemented
+// #[utoipa::path(
+//     put,
+//     path = "/api/v1/instances/{instance_id}/profile",
+//     tag = "WhatsApp",
+//     params(
+//         ("instance_id" = String, Path, description = "Instance ID (UUID)")
+//     ),
+//     request_body = UpdateProfileRequest,
+//     responses(
+//         (status = 200, description = "Profile updated"),
+//         (status = 400, description = "Invalid request"),
+//         (status = 404, description = "Instance not found"),
+//         (status = 503, description = "Browser not running"),
+//     ),
+//     security(
+//         ("bearer_auth" = [])
+//     )
+// )]
 pub async fn update_profile(
-    State(manager): State<Arc<AccountManager>>,
-    Path(account_id): Path<String>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path(instance_id): Path<String>,
     Json(request): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
@@ -492,16 +494,16 @@ pub async fn update_profile(
 /// Sends a typing state (composing/paused) to indicate the user is typing.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/typing",
+    path = "/api/v1/instances/{instance_id}/messages/{phone}/typing",
     tag = "Chat",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
-        ("chat_id" = String, Path, description = "Chat ID (phone number or group ID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
+        ("phone" = String, Path, description = "Phone number (e.g., 919876543210)")
     ),
     request_body = TypingRequest,
     responses(
         (status = 200, description = "Typing indicator sent", body = TypingResponse),
-        (status = 404, description = "Account or chat not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -509,40 +511,40 @@ pub async fn update_profile(
     )
 )]
 pub async fn send_typing(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, chat_id)): Path<(String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, phone)): Path<(String, String)>,
     Json(request): Json<TypingRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
-    match chat_service.send_typing(&chat_id, request.state).await {
+    let chat_service = instance.chat_service();
+    match chat_service.send_typing(&phone, request.state).await {
         Ok(()) => Json(TypingResponse {
             success: true,
-            chat_id: chat_id.clone(),
+            chat_id: phone.clone(),
             state: request.state,
         })
         .into_response(),
@@ -562,15 +564,15 @@ pub async fn send_typing(
 /// Marks all messages in the specified chat as read.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/read",
+    path = "/api/v1/instances/{instance_id}/messages/{phone}/read",
     tag = "Chat",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
-        ("chat_id" = String, Path, description = "Chat ID (phone number or group ID)")
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
+        ("phone" = String, Path, description = "Phone number (e.g., 919876543210)")
     ),
     responses(
         (status = 200, description = "Messages marked as read", body = MarkReadResponse),
-        (status = 404, description = "Account or chat not found"),
+        (status = 404, description = "Instance not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -578,39 +580,39 @@ pub async fn send_typing(
     )
 )]
 pub async fn mark_read(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, chat_id)): Path<(String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, phone)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
-    match chat_service.mark_read(&chat_id).await {
+    let chat_service = instance.chat_service();
+    match chat_service.mark_read(&phone).await {
         Ok(count) => Json(MarkReadResponse {
             success: true,
-            chat_id: chat_id.clone(),
+            chat_id: phone.clone(),
             messages_read: count,
         })
         .into_response(),
@@ -630,15 +632,15 @@ pub async fn mark_read(
 /// Returns the online status and last seen time for a contact.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/contacts/{contact_id}/presence",
+    path = "/api/v1/instances/{instance_id}/contacts/{contact_id}/presence",
     tag = "Contact",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
         ("contact_id" = String, Path, description = "Contact ID (phone number)")
     ),
     responses(
         (status = 200, description = "Presence information", body = PresenceInfo),
-        (status = 404, description = "Account or contact not found"),
+        (status = 404, description = "Instance or contact not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -646,35 +648,35 @@ pub async fn mark_read(
     )
 )]
 pub async fn get_presence(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, contact_id)): Path<(String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, contact_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
+    let chat_service = instance.chat_service();
     match chat_service.get_presence(&contact_id).await {
         Ok(presence) => Json(presence).into_response(),
         Err(e) => (
@@ -693,15 +695,15 @@ pub async fn get_presence(
 /// Returns detailed information about a WhatsApp group including participants.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/groups/{group_id}",
+    path = "/api/v1/instances/{instance_id}/groups/{group_id}",
     tag = "Group",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
         ("group_id" = String, Path, description = "Group ID")
     ),
     responses(
         (status = 200, description = "Group information", body = GroupInfo),
-        (status = 404, description = "Account or group not found"),
+        (status = 404, description = "Instance or group not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -709,35 +711,35 @@ pub async fn get_presence(
     )
 )]
 pub async fn get_group_info(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, group_id)): Path<(String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, group_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
+    let chat_service = instance.chat_service();
     match chat_service.get_group_info(&group_id).await {
         Ok(info) => Json(info).into_response(),
         Err(e) => (
@@ -756,15 +758,15 @@ pub async fn get_group_info(
 /// Returns detailed profile information for a contact.
 #[utoipa::path(
     get,
-    path = "/api/v1/accounts/{account_id}/contacts/{contact_id}",
+    path = "/api/v1/instances/{instance_id}/contacts/{contact_id}",
     tag = "Contact",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
         ("contact_id" = String, Path, description = "Contact ID (phone number)")
     ),
     responses(
         (status = 200, description = "Contact information", body = ContactInfo),
-        (status = 404, description = "Account or contact not found"),
+        (status = 404, description = "Instance or contact not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -772,35 +774,35 @@ pub async fn get_group_info(
     )
 )]
 pub async fn get_contact_info(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, contact_id)): Path<(String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, contact_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
+    let chat_service = instance.chat_service();
     match chat_service.get_contact_info(&contact_id).await {
         Ok(info) => Json(info).into_response(),
         Err(e) => (
@@ -819,17 +821,17 @@ pub async fn get_contact_info(
 /// Adds an emoji reaction to a specific message.
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/react",
+    path = "/api/v1/instances/{instance_id}/messages/{phone}/{message_id}/react",
     tag = "Message",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
-        ("chat_id" = String, Path, description = "Chat ID"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
+        ("phone" = String, Path, description = "Phone number"),
         ("message_id" = String, Path, description = "Message ID to react to")
     ),
     request_body = ReactionRequest,
     responses(
         (status = 200, description = "Reaction sent"),
-        (status = 404, description = "Account, chat, or message not found"),
+        (status = 404, description = "Instance, chat, or message not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -837,43 +839,43 @@ pub async fn get_contact_info(
     )
 )]
 pub async fn send_reaction(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, chat_id, message_id)): Path<(String, String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, phone, message_id)): Path<(String, String, String)>,
     Json(request): Json<ReactionRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
+    let chat_service = instance.chat_service();
     match chat_service
-        .send_reaction(&chat_id, &message_id, &request.emoji)
+        .send_reaction(&phone, &message_id, &request.emoji)
         .await
     {
         Ok(()) => Json(json!({
             "success": true,
-            "chat_id": chat_id,
+            "phone": phone,
             "message_id": message_id,
             "emoji": request.emoji
         }))
@@ -894,17 +896,17 @@ pub async fn send_reaction(
 /// Sends a reply to a specific message (quoted reply).
 #[utoipa::path(
     post,
-    path = "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/reply",
+    path = "/api/v1/instances/{instance_id}/messages/{phone}/{message_id}/reply",
     tag = "Message",
     params(
-        ("account_id" = String, Path, description = "Account ID (UUID)"),
-        ("chat_id" = String, Path, description = "Chat ID"),
+        ("instance_id" = String, Path, description = "Instance ID (UUID)"),
+        ("phone" = String, Path, description = "Phone number"),
         ("message_id" = String, Path, description = "Message ID to reply to")
     ),
     request_body = ReplyMessageRequest,
     responses(
         (status = 200, description = "Reply sent"),
-        (status = 404, description = "Account, chat, or message not found"),
+        (status = 404, description = "Instance, chat, or message not found"),
         (status = 503, description = "Browser not running"),
     ),
     security(
@@ -912,43 +914,43 @@ pub async fn send_reaction(
     )
 )]
 pub async fn send_reply(
-    State(manager): State<Arc<AccountManager>>,
-    Path((account_id, chat_id, message_id)): Path<(String, String, String)>,
+    State(manager): State<Arc<InstanceManager>>,
+    Path((instance_id, phone, message_id)): Path<(String, String, String)>,
     Json(request): Json<ReplyMessageRequest>,
 ) -> impl IntoResponse {
-    let account = match manager.get_account(&account_id).await {
+    let instance = match manager.get_instance(&instance_id).await {
         Some(acc) => acc,
         None => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "account_not_found",
-                    "message": format!("Account '{}' not found", account_id)
+                    "error": "instance_not_found",
+                    "message": format!("Instance '{}' not found", instance_id)
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Err(e) = account.ensure_warm().await {
+    if let Err(e) = instance.ensure_warm().await {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "error": "warmup_failed",
-                "message": format!("Failed to warm up account: {}", e)
+                "message": format!("Failed to warm up instance: {}", e)
             })),
         )
             .into_response();
     }
 
-    let chat_service = account.chat_service();
+    let chat_service = instance.chat_service();
     match chat_service
-        .send_reply(&chat_id, &message_id, &request.text)
+        .send_reply(&phone, &message_id, &request.text)
         .await
     {
         Ok(()) => Json(json!({
             "success": true,
-            "chat_id": chat_id,
+            "phone": phone,
             "quoted_message_id": message_id,
             "text": request.text
         }))

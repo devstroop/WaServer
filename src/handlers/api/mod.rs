@@ -2,10 +2,10 @@
 //!
 //! This module contains Axum handlers for the REST API endpoints.
 
-/// Account management API (create, list, delete accounts)
-pub mod accounts;
+/// Instance management API (create, list, delete instances)
+pub mod instances;
 
-/// WhatsApp account operations API (status, QR, profile, privacy)
+/// WhatsApp instance operations API (status, QR, profile, privacy)
 pub mod whatsapp;
 
 /// Chat/messaging API handlers (send message, get chats, message status)

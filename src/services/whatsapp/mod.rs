@@ -1,13 +1,13 @@
 //! WhatsApp Service Module
 //!
-//! Core WhatsApp automation services: account management and chat handling.
-//! Use AccountManager to create and manage WhatsAppAccount accounts.
+//! Core WhatsApp automation services: instance management and chat handling.
+//! Use InstanceManager to create and manage InstanceService accounts.
 
-pub mod account;
-pub mod account_manager;
 pub mod chat;
+pub mod instance;
+pub mod instance_manager;
 
 // Re-exports for convenience
-pub use account::WhatsAppAccount;
-pub use account_manager::AccountManager;
 pub use chat::{ChatService, ChatServiceTrait};
+pub use instance::InstanceService;
+pub use instance_manager::InstanceManager;

@@ -38,9 +38,9 @@ pub struct BrowserServiceConfig {
 }
 
 impl BrowserServiceConfig {
-    /// Create config for a specific account account
-    pub fn for_account(
-        account_data_dir: &Path,
+    /// Create config for a specific instance
+    pub fn for_instance(
+        instance_data_dir: &Path,
         headless: bool,
         timeout_ms: u64,
         extra_args: Vec<String>,
@@ -52,7 +52,7 @@ impl BrowserServiceConfig {
             }
         }
         Self {
-            user_data_dir: account_data_dir.join("chrome-profile"),
+            user_data_dir: instance_data_dir.join("chrome-profile"),
             headless,
             timeout_ms,
             args,
@@ -60,7 +60,7 @@ impl BrowserServiceConfig {
     }
 }
 
-/// Browser service for managing Chrome browser accounts
+/// Browser service for managing Chrome browser instances
 pub struct BrowserService {
     browser_config: BrowserServiceConfig,
     browser: Arc<Mutex<Option<Browser>>>,

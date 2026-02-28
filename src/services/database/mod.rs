@@ -1,6 +1,6 @@
 //! Database Service Module
 //!
-//! Embedded SQLite (file-based) for persistent account storage.
+//! Embedded SQLite (file-based) for persistent instance storage.
 
 pub mod schema;
 pub mod service;

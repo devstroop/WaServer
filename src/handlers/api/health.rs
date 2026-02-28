@@ -1,7 +1,7 @@
 // Health Check and Metrics Endpoints
 //
 // Production-ready health checking for monitoring and observability
-// Now uses AccountManager for multi-account status
+// Now uses InstanceManager for multi-instance status
 
 use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use std::{
 };
 use utoipa::ToSchema;
 
-use crate::services::AccountManager;
+use crate::services::InstanceManager;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
@@ -20,7 +20,7 @@ pub struct HealthResponse {
     pub timestamp: u64,
     pub version: String,
     pub uptime_seconds: u64,
-    pub accounts_count: usize,
+    pub instances_count: usize,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -37,12 +37,12 @@ pub struct MetricsResponse {
     pub timestamp: u64,
     pub uptime_seconds: u64,
     pub memory_usage_bytes: u64,
-    pub accounts_count: usize,
-    pub accounts: Vec<AccountMetrics>,
+    pub instances_count: usize,
+    pub instances: Vec<InstanceMetrics>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct AccountMetrics {
+pub struct InstanceMetrics {
     pub id: String,
     pub status: String,
     pub authorized: bool,
@@ -78,7 +78,7 @@ fn uptime_secs() -> u64 {
     tag = "Health"
 )]
 pub async fn health_check(
-    State(manager): State<Arc<AccountManager>>,
+    State(manager): State<Arc<InstanceManager>>,
 ) -> Result<Json<HealthResponse>, StatusCode> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -87,9 +87,9 @@ pub async fn health_check(
 
     let uptime = uptime_secs();
 
-    let accounts_count = manager.count().await;
+    let instances_count = manager.count().await;
 
-    // Server is healthy if it's running (accounts health is separate concern)
+    // Server is healthy if it's running (instances health is separate concern)
     let server_health = ServiceHealth {
         status: "healthy".to_string(),
         last_check: now,
@@ -105,7 +105,7 @@ pub async fn health_check(
         timestamp: now,
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
-        accounts_count,
+        instances_count,
         services,
     };
 
@@ -167,7 +167,7 @@ pub async fn liveness_check() -> Json<StatusResponse> {
     ),
     tag = "Health"
 )]
-pub async fn get_metrics(State(manager): State<Arc<AccountManager>>) -> Json<MetricsResponse> {
+pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<MetricsResponse> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -177,22 +177,22 @@ pub async fn get_metrics(State(manager): State<Arc<AccountManager>>) -> Json<Met
 
     let memory_usage = get_memory_usage();
 
-    // Get metrics from all accounts
-    let account_list = manager.list_accounts().await;
-    let mut account_metrics = Vec::new();
+    // Get metrics from all instances
+    let account_list = manager.list_instances().await;
+    let mut instance_metrics = Vec::new();
 
-    for info in account_list.accounts {
-        // Get the account to retrieve metrics
-        if let Some(account) = manager.get_account_by_id(info.id).await {
-            let metrics = account.get_metrics();
+    for info in account_list.instances {
+        // Get the instance to retrieve metrics
+        if let Some(instance) = manager.get_instance_by_id(info.id).await {
+            let metrics = instance.get_metrics();
             let status_str = match &info.status {
-                crate::models::account::AccountStatus::Sleeping => "sleeping",
-                crate::models::account::AccountStatus::WarmingUp => "warming_up",
-                crate::models::account::AccountStatus::Active => "active",
-                crate::models::account::AccountStatus::Error(_) => "error",
+                crate::models::instance::InstanceStatus::Sleeping => "sleeping",
+                crate::models::instance::InstanceStatus::WarmingUp => "warming_up",
+                crate::models::instance::InstanceStatus::Active => "active",
+                crate::models::instance::InstanceStatus::Error(_) => "error",
             };
 
-            account_metrics.push(AccountMetrics {
+            instance_metrics.push(InstanceMetrics {
                 id: info.id.to_string(),
                 status: status_str.to_string(),
                 authorized: info.authorized,
@@ -206,8 +206,8 @@ pub async fn get_metrics(State(manager): State<Arc<AccountManager>>) -> Json<Met
         timestamp: now,
         uptime_seconds: uptime,
         memory_usage_bytes: memory_usage,
-        accounts_count: account_metrics.len(),
-        accounts: account_metrics,
+        instances_count: instance_metrics.len(),
+        instances: instance_metrics,
     })
 }
 

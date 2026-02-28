@@ -11,4 +11,4 @@ pub mod whatsapp;
 pub use auth::{AuthCheckResult, AuthService, AuthServiceTrait};
 pub use database::Database;
 pub use webhook::{WebhookEvent, WebhookMessageData, WebhookService};
-pub use whatsapp::{AccountManager, ChatService, ChatServiceTrait, WhatsAppAccount};
+pub use whatsapp::{ChatService, ChatServiceTrait, InstanceManager, InstanceService};
