@@ -14,6 +14,9 @@ pub mod chat;
 /// Health check and metrics handlers (health, ready, live, metrics endpoints)
 pub mod health;
 
+/// User management API (create, list, update, delete users, RBAC)
+pub mod users;
+
 /// MCP (Model Context Protocol) server handlers over SSE transport
 #[cfg(feature = "mcp")]
 pub mod mcp;
