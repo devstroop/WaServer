@@ -1,7 +1,7 @@
 //! Database Service
 //!
 //! Manages an embedded SQLite database (file-based).
-//! Provides typed helpers for instance and user CRUD operations.
+//! Provides typed helpers for instance, user, and access token CRUD operations.
 
 use anyhow::{anyhow, Result};
 use rusqlite::Connection;
@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use tracing::info;
 
 use super::schema;
-use crate::models::user::{InstanceOwnerRecord, InstancePermission, UserRecord, UserRole};
+use crate::models::user::{AccessTokenRecord, InstanceOwnerRecord, InstancePermission, UserRecord, UserRole};
 
 /// Persistent instance record stored in SQLite.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,12 +225,13 @@ impl Database {
     // User CRUD
     // ========================================================================
 
-    /// Create a new user with generated API key.
+    /// Create a new user with password.
     pub fn create_user(
         &self,
         id: &str,
         username: &str,
-        api_key_hash: &str,
+        email: Option<&str>,
+        password_hash: &str,
         role: UserRole,
     ) -> Result<UserRecord> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
@@ -248,18 +249,34 @@ impl Database {
             return Err(anyhow!("Username '{}' already exists", username));
         }
 
+        // Check uniqueness of email if provided
+        if let Some(email_val) = email {
+            let existing_email: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM user WHERE email = ?1 LIMIT 1",
+                    rusqlite::params![email_val],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if existing_email.is_some() {
+                return Err(anyhow!("Email '{}' already exists", email_val));
+            }
+        }
+
         let now = chrono::Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT INTO user (id, username, api_key, role, is_active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)",
-            rusqlite::params![id, username, api_key_hash, role.to_string(), &now, &now],
+            "INSERT INTO user (id, username, email, password_hash, role, is_active, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)",
+            rusqlite::params![id, username, email, password_hash, role.to_string(), &now, &now],
         )
         .map_err(|e| anyhow!("Failed to create user: {}", e))?;
 
         Ok(UserRecord {
             id: id.to_string(),
             username: username.to_string(),
-            api_key: api_key_hash.to_string(),
+            email: email.map(|s| s.to_string()),
+            password_hash: password_hash.to_string(),
             role,
             is_active: true,
             created_at: Some(now.clone()),
@@ -272,20 +289,21 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, username, api_key, role, is_active, created_at, updated_at FROM user WHERE id = ?1")
+            .prepare("SELECT id, username, email, password_hash, role, is_active, created_at, updated_at FROM user WHERE id = ?1")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let record = stmt
             .query_row(rusqlite::params![id], |row| {
-                let role_str: String = row.get(3)?;
+                let role_str: String = row.get(4)?;
                 Ok(UserRecord {
                     id: row.get(0)?,
                     username: row.get(1)?,
-                    api_key: row.get(2)?,
+                    email: row.get(2)?,
+                    password_hash: row.get(3)?,
                     role: role_str.parse().unwrap_or(UserRole::User),
-                    is_active: row.get::<_, i64>(4)? != 0,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .ok();
@@ -298,20 +316,21 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, username, api_key, role, is_active, created_at, updated_at FROM user WHERE username = ?1 LIMIT 1")
+            .prepare("SELECT id, username, email, password_hash, role, is_active, created_at, updated_at FROM user WHERE username = ?1 LIMIT 1")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let record = stmt
             .query_row(rusqlite::params![username], |row| {
-                let role_str: String = row.get(3)?;
+                let role_str: String = row.get(4)?;
                 Ok(UserRecord {
                     id: row.get(0)?,
                     username: row.get(1)?,
-                    api_key: row.get(2)?,
+                    email: row.get(2)?,
+                    password_hash: row.get(3)?,
                     role: role_str.parse().unwrap_or(UserRole::User),
-                    is_active: row.get::<_, i64>(4)? != 0,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .ok();
@@ -319,25 +338,26 @@ impl Database {
         Ok(record)
     }
 
-    /// Get a user by API key hash.
-    pub fn get_user_by_api_key(&self, api_key_hash: &str) -> Result<Option<UserRecord>> {
+    /// Get a user by email.
+    pub fn get_user_by_email(&self, email: &str) -> Result<Option<UserRecord>> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, username, api_key, role, is_active, created_at, updated_at FROM user WHERE api_key = ?1 AND is_active = 1 LIMIT 1")
+            .prepare("SELECT id, username, email, password_hash, role, is_active, created_at, updated_at FROM user WHERE email = ?1 AND is_active = 1 LIMIT 1")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let record = stmt
-            .query_row(rusqlite::params![api_key_hash], |row| {
-                let role_str: String = row.get(3)?;
+            .query_row(rusqlite::params![email], |row| {
+                let role_str: String = row.get(4)?;
                 Ok(UserRecord {
                     id: row.get(0)?,
                     username: row.get(1)?,
-                    api_key: row.get(2)?,
+                    email: row.get(2)?,
+                    password_hash: row.get(3)?,
                     role: role_str.parse().unwrap_or(UserRole::User),
-                    is_active: row.get::<_, i64>(4)? != 0,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .ok();
@@ -350,20 +370,21 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, username, api_key, role, is_active, created_at, updated_at FROM user ORDER BY created_at DESC")
+            .prepare("SELECT id, username, email, password_hash, role, is_active, created_at, updated_at FROM user ORDER BY created_at DESC")
             .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
 
         let records = stmt
             .query_map([], |row| {
-                let role_str: String = row.get(3)?;
+                let role_str: String = row.get(4)?;
                 Ok(UserRecord {
                     id: row.get(0)?,
                     username: row.get(1)?,
-                    api_key: row.get(2)?,
+                    email: row.get(2)?,
+                    password_hash: row.get(3)?,
                     role: role_str.parse().unwrap_or(UserRole::User),
-                    is_active: row.get::<_, i64>(4)? != 0,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    is_active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .map_err(|e| anyhow!("Failed to list users: {}", e))?
@@ -378,6 +399,8 @@ impl Database {
         &self,
         id: &str,
         username: Option<&str>,
+        email: Option<Option<&str>>,
+        password_hash: Option<&str>,
         role: Option<UserRole>,
         is_active: Option<bool>,
     ) -> Result<()> {
@@ -385,69 +408,43 @@ impl Database {
         let now = chrono::Utc::now().to_rfc3339();
 
         // Build dynamic update query
-        let mut updates = vec!["updated_at = ?1"];
-        let mut param_idx = 2;
+        let mut updates = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        if username.is_some() {
-            updates.push("username = ?2");
-            param_idx = 3;
-        }
-        if role.is_some() {
-            updates.push(if param_idx == 2 { "role = ?2" } else { "role = ?3" });
-            param_idx += 1;
-        }
-        if is_active.is_some() {
-            let placeholder = match param_idx {
-                2 => "is_active = ?2",
-                3 => "is_active = ?3",
-                _ => "is_active = ?4",
-            };
-            updates.push(placeholder);
-        }
+        updates.push("updated_at = ?".to_string());
+        params.push(Box::new(now.clone()));
 
-        let query = format!("UPDATE user SET {} WHERE id = ?{}", updates.join(", "), param_idx);
-
-        // Build params - this is a bit verbose but type-safe
-        match (username, role, is_active) {
-            (Some(u), Some(r), Some(a)) => {
-                conn.execute(&query, rusqlite::params![&now, u, r.to_string(), a as i64, id])?;
-            }
-            (Some(u), Some(r), None) => {
-                conn.execute(&query, rusqlite::params![&now, u, r.to_string(), id])?;
-            }
-            (Some(u), None, Some(a)) => {
-                conn.execute(&query, rusqlite::params![&now, u, a as i64, id])?;
-            }
-            (Some(u), None, None) => {
-                conn.execute(&query, rusqlite::params![&now, u, id])?;
-            }
-            (None, Some(r), Some(a)) => {
-                conn.execute(&query, rusqlite::params![&now, r.to_string(), a as i64, id])?;
-            }
-            (None, Some(r), None) => {
-                conn.execute(&query, rusqlite::params![&now, r.to_string(), id])?;
-            }
-            (None, None, Some(a)) => {
-                conn.execute(&query, rusqlite::params![&now, a as i64, id])?;
-            }
-            (None, None, None) => {
-                conn.execute(&query, rusqlite::params![&now, id])?;
-            }
+        if let Some(u) = username {
+            updates.push("username = ?".to_string());
+            params.push(Box::new(u.to_string()));
+        }
+        if let Some(e) = email {
+            updates.push("email = ?".to_string());
+            params.push(Box::new(e.map(|s| s.to_string())));
+        }
+        if let Some(p) = password_hash {
+            updates.push("password_hash = ?".to_string());
+            params.push(Box::new(p.to_string()));
+        }
+        if let Some(r) = role {
+            updates.push("role = ?".to_string());
+            params.push(Box::new(r.to_string()));
+        }
+        if let Some(a) = is_active {
+            updates.push("is_active = ?".to_string());
+            params.push(Box::new(a as i64));
         }
 
-        Ok(())
-    }
+        params.push(Box::new(id.to_string()));
 
-    /// Update user's API key.
-    pub fn update_user_api_key(&self, id: &str, new_api_key_hash: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
-        let now = chrono::Utc::now().to_rfc3339();
+        let query = format!(
+            "UPDATE user SET {} WHERE id = ?",
+            updates.join(", ")
+        );
 
-        conn.execute(
-            "UPDATE user SET api_key = ?1, updated_at = ?2 WHERE id = ?3",
-            rusqlite::params![new_api_key_hash, &now, id],
-        )
-        .map_err(|e| anyhow!("Failed to update API key: {}", e))?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&query, params_refs.as_slice())
+            .map_err(|e| anyhow!("Failed to update user: {}", e))?;
 
         Ok(())
     }
@@ -458,6 +455,134 @@ impl Database {
 
         conn.execute("DELETE FROM user WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| anyhow!("Failed to delete user: {}", e))?;
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // Access Token CRUD
+    // ========================================================================
+
+    /// Create a new access token for a user.
+    pub fn create_access_token(
+        &self,
+        id: &str,
+        user_id: &str,
+        name: &str,
+        token_hash: &str,
+        expires_at: Option<&str>,
+    ) -> Result<AccessTokenRecord> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO access_token (id, user_id, name, token_hash, expires_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![id, user_id, name, token_hash, expires_at, &now],
+        )
+        .map_err(|e| anyhow!("Failed to create access token: {}", e))?;
+
+        Ok(AccessTokenRecord {
+            id: id.to_string(),
+            user_id: user_id.to_string(),
+            name: name.to_string(),
+            token_hash: token_hash.to_string(),
+            expires_at: expires_at.map(|s| s.to_string()),
+            last_used: None,
+            created_at: Some(now),
+        })
+    }
+
+    /// Get user by access token hash (for API authentication).
+    pub fn get_user_by_access_token(&self, token_hash: &str) -> Result<Option<(UserRecord, AccessTokenRecord)>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                r#"SELECT u.id, u.username, u.email, u.password_hash, u.role, u.is_active, u.created_at, u.updated_at,
+                          t.id, t.user_id, t.name, t.token_hash, t.expires_at, t.last_used, t.created_at
+                   FROM access_token t
+                   JOIN user u ON t.user_id = u.id
+                   WHERE t.token_hash = ?1 AND u.is_active = 1
+                     AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))
+                   LIMIT 1"#,
+            )
+            .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
+
+        let result = stmt
+            .query_row(rusqlite::params![token_hash], |row| {
+                let role_str: String = row.get(4)?;
+                let user = UserRecord {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    email: row.get(2)?,
+                    password_hash: row.get(3)?,
+                    role: role_str.parse().unwrap_or(UserRole::User),
+                    is_active: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                };
+                let token = AccessTokenRecord {
+                    id: row.get(8)?,
+                    user_id: row.get(9)?,
+                    name: row.get(10)?,
+                    token_hash: row.get(11)?,
+                    expires_at: row.get(12)?,
+                    last_used: row.get(13)?,
+                    created_at: row.get(14)?,
+                };
+                Ok((user, token))
+            })
+            .ok();
+
+        // Update last_used timestamp
+        if let Some((_, ref token)) = result {
+            let now = chrono::Utc::now().to_rfc3339();
+            let _ = conn.execute(
+                "UPDATE access_token SET last_used = ?1 WHERE id = ?2",
+                rusqlite::params![&now, &token.id],
+            );
+        }
+
+        Ok(result)
+    }
+
+    /// List all access tokens for a user.
+    pub fn list_user_access_tokens(&self, user_id: &str) -> Result<Vec<AccessTokenRecord>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, user_id, name, token_hash, expires_at, last_used, created_at FROM access_token WHERE user_id = ?1 ORDER BY created_at DESC")
+            .map_err(|e| anyhow!("Failed to prepare query: {}", e))?;
+
+        let records = stmt
+            .query_map(rusqlite::params![user_id], |row| {
+                Ok(AccessTokenRecord {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    name: row.get(2)?,
+                    token_hash: row.get(3)?,
+                    expires_at: row.get(4)?,
+                    last_used: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })
+            .map_err(|e| anyhow!("Failed to list access tokens: {}", e))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| anyhow!("Failed to collect access tokens: {}", e))?;
+
+        Ok(records)
+    }
+
+    /// Delete an access token.
+    pub fn delete_access_token(&self, id: &str, user_id: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+
+        conn.execute(
+            "DELETE FROM access_token WHERE id = ?1 AND user_id = ?2",
+            rusqlite::params![id, user_id],
+        )
+        .map_err(|e| anyhow!("Failed to delete access token: {}", e))?;
 
         Ok(())
     }

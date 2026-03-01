@@ -84,7 +84,7 @@ hex = "0.4"
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 
 # OpenAPI documentation
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }

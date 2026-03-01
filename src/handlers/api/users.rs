@@ -14,21 +14,22 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    middleware::auth::hash_api_key,
+    middleware::auth::{hash_password, hash_token},
     models::{
         auth::AuthenticatedUser,
         user::{
-            AssignInstanceRequest, CreateUserRequest, CreateUserResponse,
-            ListUsersResponse, RegenerateApiKeyResponse, UpdateUserRequest, UserInfo,
+            AccessTokenInfo, AssignInstanceRequest, CreateAccessTokenRequest,
+            CreateAccessTokenResponse, CreateUserRequest, CreateUserResponse,
+            ListAccessTokensResponse, ListUsersResponse, UpdateUserRequest, UserInfo,
             UserInstancesResponse,
         },
     },
     services::Database,
 };
 
-/// Generate a new API key (random UUID-based)
-fn generate_api_key() -> String {
-    Uuid::new_v4().to_string()
+/// Generate a new access token (random UUID-based)
+fn generate_access_token() -> String {
+    format!("was_{}", Uuid::new_v4().to_string().replace("-", ""))
 }
 
 // === User Management Handlers ===
@@ -127,15 +128,31 @@ pub async fn create_user(
             .into_response();
     }
 
-    let user_id = Uuid::new_v4().to_string();
-    let api_key = generate_api_key();
-    let api_key_hash = hash_api_key(&api_key);
+    // Validate password
+    if request.password.len() < 8 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "invalid_request",
+                "message": "Password must be at least 8 characters"
+            })),
+        )
+            .into_response();
+    }
 
-    match db.create_user(&user_id, &request.username, &api_key_hash, request.role) {
+    let user_id = Uuid::new_v4().to_string();
+    let password_hash = hash_password(&request.password);
+
+    match db.create_user(
+        &user_id,
+        &request.username,
+        request.email.as_deref(),
+        &password_hash,
+        request.role,
+    ) {
         Ok(user_record) => {
             let response = CreateUserResponse {
                 user: UserInfo::from(user_record),
-                api_key, // Return plaintext key only on creation
             };
             (StatusCode::CREATED, Json(response)).into_response()
         }
@@ -275,6 +292,8 @@ pub async fn update_user(
     if let Err(e) = db.update_user(
         &user_id,
         request.username.as_deref(),
+        None, // email not updated in this endpoint
+        None, // password_hash not updated in this endpoint
         request.role,
         request.is_active,
     ) {
@@ -378,25 +397,27 @@ pub async fn delete_user(
     }
 }
 
-/// Regenerate API key for a user (admin or self)
+/// Create an access token for a user (admin or self)
 #[utoipa::path(
     post,
-    path = "/api/v1/users/{user_id}/regenerate-key",
+    path = "/api/v1/users/{user_id}/tokens",
     tag = "Users",
     params(
         ("user_id" = String, Path, description = "User ID")
     ),
+    request_body = CreateAccessTokenRequest,
     responses(
-        (status = 200, description = "API key regenerated", body = RegenerateApiKeyResponse),
+        (status = 201, description = "Access token created", body = CreateAccessTokenResponse),
         (status = 403, description = "Access denied"),
         (status = 404, description = "User not found"),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn regenerate_api_key(
+pub async fn create_access_token(
     State(db): State<Database>,
     Extension(auth_user): Extension<AuthenticatedUser>,
     Path(user_id): Path<String>,
+    Json(request): Json<CreateAccessTokenRequest>,
 ) -> impl IntoResponse {
     // Check admin access or self-access
     let is_self = auth_user.user_id() == Some(&user_id);
@@ -436,21 +457,141 @@ pub async fn regenerate_api_key(
         Ok(Some(_)) => {}
     }
 
-    let new_api_key = generate_api_key();
-    let new_api_key_hash = hash_api_key(&new_api_key);
+    let token_id = Uuid::new_v4().to_string();
+    let token = generate_access_token();
+    let token_hash = hash_token(&token);
 
-    match db.update_user_api_key(&user_id, &new_api_key_hash) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(RegenerateApiKeyResponse {
-                api_key: new_api_key,
+    // Calculate expiration from days
+    let expires_at = request.expires_in_days.map(|days| {
+        let now = chrono::Utc::now();
+        let expiry = now + chrono::Duration::days(days as i64);
+        expiry.to_rfc3339()
+    });
+
+    match db.create_access_token(
+        &token_id,
+        &user_id,
+        &request.name,
+        &token_hash,
+        expires_at.as_deref(),
+    ) {
+        Ok(token_record) => (
+            StatusCode::CREATED,
+            Json(CreateAccessTokenResponse {
+                token_info: AccessTokenInfo::from(token_record),
+                access_token: token, // Return plaintext token only on creation
             }),
         )
             .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
-                "error": "regenerate_failed",
+                "error": "create_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// List access tokens for a user (admin or self)
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/{user_id}/tokens",
+    tag = "Users",
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "Access tokens list", body = ListAccessTokensResponse),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "User not found"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn list_access_tokens(
+    State(db): State<Database>,
+    Extension(auth_user): Extension<AuthenticatedUser>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    // Check admin access or self-access
+    let is_self = auth_user.user_id() == Some(&user_id);
+    if !auth_user.is_admin() && !is_self {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "forbidden",
+                "message": "Admin access or self-access required"
+            })),
+        )
+            .into_response();
+    }
+
+    match db.list_user_access_tokens(&user_id) {
+        Ok(tokens) => {
+            let token_infos: Vec<AccessTokenInfo> = tokens.into_iter().map(AccessTokenInfo::from).collect();
+            (
+                StatusCode::OK,
+                Json(ListAccessTokensResponse { tokens: token_infos }),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "list_failed",
+                "message": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Delete an access token (admin or self)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/users/{user_id}/tokens/{token_id}",
+    tag = "Users",
+    params(
+        ("user_id" = String, Path, description = "User ID"),
+        ("token_id" = String, Path, description = "Token ID")
+    ),
+    responses(
+        (status = 200, description = "Token deleted"),
+        (status = 403, description = "Access denied"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn delete_access_token(
+    State(db): State<Database>,
+    Extension(auth_user): Extension<AuthenticatedUser>,
+    Path((user_id, token_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    // Check admin access or self-access
+    let is_self = auth_user.user_id() == Some(&user_id);
+    if !auth_user.is_admin() && !is_self {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "forbidden",
+                "message": "Admin access or self-access required"
+            })),
+        )
+            .into_response();
+    }
+
+    match db.delete_access_token(&token_id, &user_id) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(json!({
+                "message": "Access token deleted successfully"
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "delete_failed",
                 "message": e.to_string()
             })),
         )

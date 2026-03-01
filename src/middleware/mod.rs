@@ -15,7 +15,7 @@ use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 pub use instance::{check_instance_access, instance_middleware, CurrentInstance, InstanceAccessState};
 
 // Re-export auth middleware and types
-pub use auth::{auth_middleware, hash_api_key, AuthState};
+pub use auth::{auth_middleware, hash_password, hash_token, verify_password, AuthState};
 
 // Re-export AuthenticatedUser from models for convenience
 pub use crate::models::auth::AuthenticatedUser;

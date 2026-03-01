@@ -2,6 +2,9 @@
 //!
 //! This module contains Axum handlers for the REST API endpoints.
 
+/// Authentication API (login, register, logout)
+pub mod auth;
+
 /// Instance management API (create, list, delete instances)
 pub mod instances;
 

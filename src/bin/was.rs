@@ -113,13 +113,13 @@ async fn run_server(
         extract::DefaultBodyLimit,
         http::Method,
         middleware,
-        response::Html,
         routing::{delete, get, post, put},
         Router,
     };
     use tower::ServiceBuilder;
     use tower_http::{
         cors::{Any, CorsLayer},
+        services::{ServeDir, ServeFile},
         trace::TraceLayer,
     };
     use utoipa::{
@@ -127,7 +127,7 @@ async fn run_server(
         Modify, OpenApi,
     };
     use was::{
-        api::{chat, health, instances, users, whatsapp},
+        api::{auth, chat, health, instances, users, whatsapp},
         middleware::{
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
@@ -179,11 +179,18 @@ async fn run_server(
             users::get_user,
             users::update_user,
             users::delete_user,
-            users::regenerate_api_key,
+            users::create_access_token,
+            users::list_access_tokens,
+            users::delete_access_token,
             users::get_user_instances,
             users::assign_instance,
             users::remove_instance,
             users::get_me,
+            // Authentication
+            auth::register,
+            auth::login,
+            auth::logout,
+            auth::validate,
         ),
         components(
             schemas(
@@ -205,7 +212,11 @@ async fn run_server(
                 // Users
                 UserRole, InstancePermission, UserInfo, InstanceOwnerRecord,
                 CreateUserRequest, CreateUserResponse, UpdateUserRequest,
-                AssignInstanceRequest, ListUsersResponse, RegenerateApiKeyResponse, UserInstancesResponse,
+                AssignInstanceRequest, ListUsersResponse, UserInstancesResponse,
+                // Access Tokens
+                AccessTokenInfo, CreateAccessTokenRequest, CreateAccessTokenResponse, ListAccessTokensResponse,
+                // Web Authentication
+                RegisterUserRequest, LoginRequest, LoginResponse,
             )
         ),
         modifiers(&SecurityAddon),
@@ -347,8 +358,10 @@ async fn run_server(
         .route("/:user_id", get(users::get_user))
         .route("/:user_id", axum::routing::patch(users::update_user))
         .route("/:user_id", delete(users::delete_user))
-        // API key management
-        .route("/:user_id/regenerate-key", post(users::regenerate_api_key))
+        // Access token management
+        .route("/:user_id/tokens", get(users::list_access_tokens))
+        .route("/:user_id/tokens", post(users::create_access_token))
+        .route("/:user_id/tokens/:token_id", delete(users::delete_access_token))
         // Instance assignments
         .route("/assign-instance", post(users::assign_instance))
         .route("/:user_id/instances", get(users::get_user_instances))
@@ -359,15 +372,25 @@ async fn run_server(
         ))
         .with_state(auth_state.db.clone());
 
+    // Auth routes (public, no auth required)
+    let auth_routes = Router::new()
+        .route("/register", post(auth::register))
+        .route("/login", post(auth::login))
+        .route("/logout", post(auth::logout))
+        .route("/validate", get(auth::validate))
+        .with_state(auth_state.db.clone());
+
     // Mount health routes at /api (no auth required)
     app = app.nest("/api", health_routes);
 
     // Mount all v1 routes
+    app = app.nest("/api/v1/auth", auth_routes);
     app = app.nest("/api/v1/instances", instances_routes);
     app = app.nest("/api/v1/users", users_routes);
 
     info!("📖 API at /api/v1/instances");
     info!("👤 Users API at /api/v1/users");
+    info!("🔐 Auth API at /api/v1/auth");
 
     // Swagger UI documentation (configurable)
     if config.swagger.enabled {
@@ -381,50 +404,21 @@ async fn run_server(
         info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
 
-    // Root landing page
-    let swagger_enabled = config.swagger.enabled;
-    let swagger_path = config.swagger.path.clone();
-    app = app.route("/", get(move || async move {
-        let swagger_link = if swagger_enabled {
-            format!(r#"<a href="{swagger_path}">API Documentation (Swagger UI)</a>"#)
-        } else {
-            "API Documentation (disabled)".to_string()
-        };
-        Html(format!(r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WAS — WhatsApp Server</title>
-<style>
-  *{{margin:0;padding:0;box-sizing:border-box}}
-  body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b141a;color:#e9edef;min-height:100vh;display:flex;align-items:center;justify-content:center}}
-  .card{{background:#1f2c34;border-radius:12px;padding:2.5rem;max-width:480px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,.4)}}
-  h1{{font-size:1.6rem;margin-bottom:.25rem;color:#00a884}}
-  .version{{font-size:.85rem;color:#8696a0;margin-bottom:1.5rem}}
-  .links{{display:flex;flex-direction:column;gap:.75rem}}
-  a{{color:#53bdeb;text-decoration:none;padding:.6rem .8rem;border-radius:8px;background:#182229;transition:background .15s}}
-  a:hover{{background:#233138}}
-  .sep{{border-top:1px solid #2a3942;margin:.5rem 0}}
-  .status{{font-size:.8rem;color:#8696a0;margin-top:1rem;text-align:center}}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>WAS</h1>
-  <div class="version">WhatsApp Server v{version}</div>
-  <div class="links">
-    {swagger_link}
-    <a href="/api/health">Health Check</a>
-    <a href="/api/metrics">Metrics</a>
-    <div class="sep"></div>
-    <a href="/api-docs/openapi.json">OpenAPI Spec (JSON)</a>
-  </div>
-  <div class="status">Ready</div>
-</div>
-</body>
-</html>"#, version = env!("CARGO_PKG_VERSION")))
-    }));
+    // Serve frontend from web/dist (SPA with fallback to index.html)
+    let web_dist_path = std::env::current_dir()
+        .unwrap_or_default()
+        .join("web")
+        .join("dist");
+    
+    if web_dist_path.exists() {
+        info!("🌐 Serving frontend from {}", web_dist_path.display());
+        let index_path = web_dist_path.join("index.html");
+        let serve_dir = ServeDir::new(&web_dist_path)
+            .not_found_service(ServeFile::new(&index_path));
+        app = app.fallback_service(serve_dir);
+    } else {
+        info!("📄 Frontend not found at {}, run 'npm run build' in web/ directory", web_dist_path.display());
+    }
 
     // Middleware
     let app = app.layer(
