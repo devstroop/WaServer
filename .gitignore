@@ -50,6 +50,20 @@ docker/volumes/
 config/app.toml
 config/local.toml
 
-
+# Database
 /data/*.db
+
+# Playwright
 .playwright-mcp
+
+# Node.js / Frontend
+node_modules/
+web/node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
+.npm
+.yarn
+
+# Build outputs
+*.local

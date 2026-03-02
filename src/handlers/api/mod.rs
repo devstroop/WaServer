@@ -2,6 +2,9 @@
 //!
 //! This module contains Axum handlers for the REST API endpoints.
 
+/// Authentication API (login, register, logout)
+pub mod auth;
+
 /// Instance management API (create, list, delete instances)
 pub mod instances;
 
@@ -13,6 +16,9 @@ pub mod chat;
 
 /// Health check and metrics handlers (health, ready, live, metrics endpoints)
 pub mod health;
+
+/// User management API (create, list, update, delete users, RBAC)
+pub mod users;
 
 /// MCP (Model Context Protocol) server handlers over SSE transport
 #[cfg(feature = "mcp")]
