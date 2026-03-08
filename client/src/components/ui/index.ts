@@ -14,3 +14,4 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { Toast, ToastAction, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport, type ToastProps, type ToastActionElement } from './Toast';
 export { Toaster } from './Toaster';
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator } from './Select';
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from './Table';

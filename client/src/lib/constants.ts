@@ -7,9 +7,17 @@ export const QR_REFRESH_INTERVAL = 20000;
 export const ROUTES = {
   LOGIN: '/login',
   DASHBOARD: '/dashboard',
-  INSTANCES: '/instances',
+  SERVERS: '/servers',
+  SESSIONS: '/sessions',
   MESSAGES: '/messages',
+  CAMPAIGNS: '/campaigns',
+  CONTACTS: '/contacts',
+  ANALYTICS: '/analytics',
+  API_KEYS: '/api-keys',
+  LOGS: '/logs',
   SETTINGS: '/settings',
+  // Legacy routes (kept for compatibility)
+  INSTANCES: '/instances',
 } as const;
 
 export const STORAGE_KEYS = {
