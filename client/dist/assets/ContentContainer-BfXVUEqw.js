@@ -1,0 +1,1 @@
+import{j as o}from"./query-B6ooDa0a.js";import{h as r}from"./index-DrL5miJA.js";function m({children:t,className:n}){return o.jsx("div",{className:r("w-full px-4 sm:px-6 lg:px-8 py-6",n),children:t})}export{m as C};

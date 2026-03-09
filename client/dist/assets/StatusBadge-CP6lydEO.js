@@ -1,0 +1,11 @@
+import{f as c,h as n}from"./index-DrL5miJA.js";import{j as s}from"./query-B6ooDa0a.js";/**
+ * @license lucide-react v0.359.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const g=c("EllipsisVertical",[["circle",{cx:"12",cy:"12",r:"1",key:"41hilf"}],["circle",{cx:"12",cy:"5",r:"1",key:"gxeob9"}],["circle",{cx:"12",cy:"19",r:"1",key:"lyex9k"}]]);/**
+ * @license lucide-react v0.359.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const p=c("Trash2",[["path",{d:"M3 6h18",key:"d0wm0j"}],["path",{d:"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6",key:"4alrt4"}],["path",{d:"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",key:"v07s0e"}],["line",{x1:"10",x2:"10",y1:"11",y2:"17",key:"1uufr5"}],["line",{x1:"14",x2:"14",y1:"11",y2:"17",key:"xtxkd"}]]),o={online:"success",offline:"error",maintenance:"warning",warning:"warning",connected:"success",disconnected:"error",connecting:"pending",qr_pending:"info",delivered:"success",read:"success",sent:"info",pending:"pending",failed:"error",completed:"success",running:"info",scheduled:"pending",paused:"warning",draft:"default",active:"success",revoked:"error",expired:"warning",blocked:"error",unsubscribed:"warning"},a={success:"bg-success/10 text-success border-success/20",warning:"bg-warning/10 text-warning border-warning/20",error:"bg-destructive/10 text-destructive border-destructive/20",info:"bg-primary/10 text-primary border-primary/20",pending:"bg-muted text-muted-foreground border-border",default:"bg-secondary text-secondary-foreground border-border"};function y({status:r,type:t,className:i}){const e=t||o[r.toLowerCase()]||"default",d=a[e];return s.jsxs("span",{className:n("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize",d,i),children:[s.jsx("span",{className:n("mr-1.5 h-1.5 w-1.5 rounded-full",e==="success"&&"bg-success",e==="warning"&&"bg-warning",e==="error"&&"bg-destructive",e==="info"&&"bg-primary",e==="pending"&&"bg-muted-foreground animate-pulse",e==="default"&&"bg-secondary-foreground")}),r.replace("_"," ")]})}export{g as E,y as S,p as T};

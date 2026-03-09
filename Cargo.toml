@@ -12,12 +12,12 @@ categories = ["api-bindings", "web-programming", "asynchronous"]
 # Library configuration
 [lib]
 name = "was"
-path = "src/lib.rs"
+path = "server/lib.rs"
 
 # Binary configuration
 [[bin]]
 name = "was"
-path = "src/bin/was.rs"
+path = "server/bin/was.rs"
 
 # ============================================================================
 # Features
@@ -80,6 +80,12 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+
+# Password hashing
+bcrypt = "0.15"
+
+# JWT authentication
+jsonwebtoken = "9.3"
 
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
