@@ -12,7 +12,7 @@ use tracing::Instrument;
 use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 
 // Re-export instance middleware
-pub use instance::{instance_middleware, CurrentInstance};
+pub use instance::{instance_middleware, check_instance_access, CurrentInstance, InstanceAccessState};
 
 // Re-export auth middleware and types
 pub use auth::{auth_middleware, AuthState};

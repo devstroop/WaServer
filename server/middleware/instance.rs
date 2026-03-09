@@ -1,7 +1,8 @@
-//! Instance Middleware
+//! Instance Middleware and Permission Checking
 //!
-//! Extracts X-Instance-Id header and adds the instance to request extensions.
-//! Currently unused — all routes use path parameters for account context.
+//! Provides utilities for instance permission checking with RBAC support.
+//! Includes middleware for X-Instance-Id header extraction (legacy, unused)
+//! and permission checking utilities for path-based instance access.
 
 use std::sync::Arc;
 
@@ -14,11 +15,95 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::services::{InstanceManager, InstanceService};
+use crate::{
+    models::{auth::AuthenticatedUser, user::InstancePermission},
+    services::{Database, InstanceManager, InstanceService},
+};
 
 /// Request extension for the current instance
 #[derive(Clone)]
 pub struct CurrentInstance(pub Arc<InstanceService>);
+
+/// Instance access state for permission checking
+#[derive(Clone)]
+pub struct InstanceAccessState {
+    pub db: Database,
+}
+
+/// Check if a user has permission to access an instance.
+/// Returns Ok(()) if access is granted, Err(Response) if denied.
+///
+/// Access rules:
+/// - Superadmin (secret key): full access to all instances
+/// - Admin role: full access to all instances
+/// - User role: must have explicit permission assigned
+pub fn check_instance_access(
+    auth_user: &AuthenticatedUser,
+    instance_id: &str,
+    required_permission: InstancePermission,
+    db: &Database,
+) -> Result<(), Response> {
+    // Superadmin has full access
+    if auth_user.is_superadmin() {
+        return Ok(());
+    }
+
+    // Admin role has full access
+    if auth_user.is_admin() {
+        return Ok(());
+    }
+
+    // For regular users, check instance_owner table
+    if let Some(user_id) = auth_user.user_id() {
+        match db.get_instance_permission(user_id, instance_id) {
+            Ok(Some(permission)) => {
+                if auth_user.can_access_instance(Some(permission), required_permission) {
+                    return Ok(());
+                }
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "insufficient_permission",
+                        "message": format!(
+                            "You need '{}' permission for instance '{}'",
+                            required_permission, instance_id
+                        )
+                    })),
+                )
+                    .into_response());
+            }
+            Ok(None) => {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "no_access",
+                        "message": format!("You don't have access to instance '{}'", instance_id)
+                    })),
+                )
+                    .into_response());
+            }
+            Err(_) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "permission_check_failed",
+                        "message": "Failed to check instance permissions"
+                    })),
+                )
+                    .into_response());
+            }
+        }
+    }
+
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(json!({
+            "error": "access_denied",
+            "message": "Access denied"
+        })),
+    )
+        .into_response())
+}
 
 /// Extract account from X-Instance-Id header
 /// Currently unused — all routes use path params with State<Arc<InstanceManager>>.

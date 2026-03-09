@@ -7,6 +7,7 @@ pub mod error;
 pub mod instance;
 pub mod message;
 pub mod session;
+pub mod user;
 
 // Re-export domain models for easier access
 pub use domain::*;
