@@ -8,36 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive documentation suite including CONTRIBUTING.md, TESTING.md, PERFORMANCE.md
-- Performance optimization framework with benchmarking tools
-- Advanced caching strategies with multi-level cache support
-- Memory pool management for efficient resource utilization
-- Browser instance pooling for better concurrency
-- Enhanced error tracking and observability features
+- Multi-instance support with isolated browser sessions
+- User management with RBAC and JWT authentication
+- Instance configuration API (browser settings, rate limits)
+- OpenAPI/Swagger documentation
 
 ### Changed
+- Refocused as minimal sending-only server
 - Improved async runtime configuration for better performance
-- Enhanced connection pooling for HTTP clients
 - Optimized browser automation with performance-focused Chrome flags
-- Refactored caching layer with TTL and size-based eviction
-- Updated health check endpoints with comprehensive component monitoring
-
-### Deprecated
-- Legacy authentication methods (will be removed in v0.3.0)
 
 ### Removed
-- None
+- MCP (Model Context Protocol) server
+- Webhook delivery service
+- Incoming message handling (listening, SSE events)
+- Chat list and message history retrieval
+- Contact and group management
+- Typing indicators, read receipts, presence
+- Reactions and reply functionality
+- Profile management
+- Frontend web dashboards (client/ and web/)
 
 ### Fixed
 - Memory leaks in browser automation components
 - Race conditions in concurrent message sending
-- Performance bottlenecks in authentication flow
 
 ### Security
 - Enhanced input validation across all endpoints
 - Improved rate limiting implementation
 - Strengthened CORS configuration
-- Added request signing validation support
 
 ## [0.2.0] - 2024-12-18
 

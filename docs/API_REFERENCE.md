@@ -238,8 +238,6 @@ GET /api/v1/instances/{instance_id}/config
 ```json
 {
   "idle_timeout_seconds": 300,
-  "warmup_timeout_seconds": 60,
-  "webhook_url": "https://example.com/webhook",
   "headless": true
 }
 ```
@@ -251,8 +249,7 @@ PUT /api/v1/instances/{instance_id}/config
 Content-Type: application/json
 
 {
-  "idle_timeout_seconds": 600,
-  "webhook_url": "https://example.com/new-webhook"
+  "idle_timeout_seconds": 600
 }
 ```
 
@@ -410,84 +407,6 @@ Content-Type: image/jpeg
 - `401` - Instance not authorized (scan QR first)
 - `503` - Instance busy or browser unavailable
 
-### List Chats
-
-```http
-GET /api/v1/instances/{instance_id}/chats
-```
-
-**Response:**
-```json
-{
-  "chats": [
-    {
-      "name": "John Doe",
-      "phone": "+1234567890",
-      "last_message": "Thanks!",
-      "timestamp": "2026-03-01T12:00:00Z",
-      "unread_count": 2
-    }
-  ],
-  "total": 1
-}
-```
-
-### Get Messages
-
-```http
-GET /api/v1/instances/{instance_id}/messages/{phone}?limit=50&load_more=false
-```
-
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| limit | integer | 50 | Max messages to retrieve |
-| load_more | boolean | false | Load older messages by scrolling |
-
-**Response:**
-```json
-{
-  "messages": [
-    {
-      "id": "3EB0ABC123",
-      "from": "+1234567890",
-      "to": "me",
-      "text": "Hello there!",
-      "timestamp": "2026-03-01T12:00:00Z",
-      "is_outgoing": false,
-      "status": "read"
-    }
-  ],
-  "total": 1,
-  "phone": "+1234567890"
-}
-```
-
----
-
-## Server-Sent Events (SSE)
-
-Subscribe to real-time events from an instance.
-
-```http
-GET /api/v1/instances/{instance_id}/events
-Accept: text/event-stream
-```
-
-**Event types:**
-- `message` - New incoming message
-- `status` - Instance status change
-- `qr_updated` - New QR code available
-- `authorized` - Successfully linked
-
-**Example event:**
-```
-event: message
-data: {"from": "+1234567890", "text": "Hello!", "timestamp": "2026-03-01T12:00:00Z"}
-
-```
-
 ---
 
 ## Error Responses
@@ -609,14 +528,4 @@ await fetch(`${BASE}/api/v1/instances/${instance_id}/send?phone=+1234567890&text
   method: "POST",
   headers: { "Authorization": "Bearer secret" }
 });
-
-// Subscribe to events
-const events = new EventSource(
-  `${BASE}/api/v1/instances/${instance_id}/events`,
-  { headers: { "Authorization": "Bearer secret" } }
-);
-
-events.onmessage = (e) => {
-  console.log("Event:", JSON.parse(e.data));
-};
 ```

@@ -15,10 +15,6 @@ We welcome contributions to WhatsApp Engine Rust! This document provides guideli
 - [Issue Reporting](#-issue-reporting)
 - [Documentation](#-documentation)
 - [Security](#-security)
-- [Production Readiness Assessment](docs/PRODUCTION_READINESS_ASSESSMENT.md)
-- [Implementation Issues & Development Tasks](docs/IMPLEMENTATION_ISSUES.md)
-- [Development Iteration Plan](docs/ITERATION_PLAN.md)
-- [Architecture Review](docs/ARCHITECTURE_REVIEW.md)
 
 ## 📜 Code of Conduct
 
@@ -64,7 +60,7 @@ cargo build
 cargo test
 
 # Start development server
-cargo run --bin whatsapp-server --features api-server
+cargo run
 
 # Generate documentation
 cargo doc --open
@@ -102,33 +98,28 @@ Install these extensions:
 
 ```
 src/
-├── lib.rs              # Main library entry point & WhatsAppEngine
+├── lib.rs              # Library entry point
 ├── error.rs            # Error types and handling
-├── main.rs            # Binary crate entry point (for CLI tools)
-├── auth/              # Authentication middleware
-├── bin/               # Binary targets (servers, CLI tools)
+├── bin/               # Binary targets
 ├── config/            # Configuration management
 ├── handlers/          # HTTP request handlers (API endpoints)
 ├── middleware/        # Request/response middleware
 ├── models/            # Domain models and data structures
 ├── services/          # Core business logic services
-├── locators/          # UI element locators for browser automation
+├── browser/           # Browser automation (Chromium)
 └── utils/             # Utilities and helpers
 
 tests/                 # Integration tests
-examples/              # Usage examples
 docs/                  # Documentation
 config/               # Configuration files
-docker/               # Docker configurations
-scripts/              # Utility scripts
 ```
 
 ### Service Architecture
 
 - **AuthService**: Authentication and session management
-- **ChatService**: Messaging operations and chat management
+- **ChatService**: Message sending via browser automation
 - **BrowserService**: Browser lifecycle and WhatsApp Web integration
-- **WhatsAppEngine**: Main orchestrator and public API
+- **InstanceManager**: Multi-instance orchestration
 
 ## 🔄 Development Workflow
 
@@ -556,38 +547,9 @@ We will respond within 48 hours and provide a timeline for fixes.
 
 ### Current Development Status
 
-⚠️ **Important**: This project has critical code-level issues that prevent basic functionality. **Start with concrete code fixes** before architecture work:
-
-- **[🔥 Critical Code Issues](docs/CRITICAL_CODE_ISSUES.md)** - 10 immediate code fixes with exact locations
-- **[Implementation Issues](docs/IMPLEMENTATION_ISSUES.md)** - Complete list of known issues and development tasks
-- **[Production Readiness Assessment](docs/PRODUCTION_READINESS_ASSESSMENT.md)** - Current production readiness status
-- **[Roadmap](ROADMAP.md)** - Development timeline and priorities
-
-### 🔥 **URGENT: Focus on Code-Level Issues First**
-
-**Start here for immediate impact:**
-- **[Critical Code Issues](docs/CRITICAL_CODE_ISSUES.md)** - 10 specific code fixes with exact file locations and implementation details
-
-### Priority Contribution Areas
-
-**Immediate Code Fixes Needed** (Start Week 1):
-1. **🔥 Session Management** - `src/lib.rs:633-634` - Hardcoded None values
-2. **� File Sending** - `src/lib.rs:706` - Not implemented, returns placeholder
-3. **🔥 Data Retrieval** - `src/lib.rs:728,744` - Returns fake hardcoded data
-4. **🔥 Health Checks** - `src/lib.rs:757-758` - Hardcoded true, no real status
-
-**Core Implementation Gaps** (Week 2-3):
-5. **🔥 Browser Service Methods** - Missing core methods called by main engine
-6. **🔥 Input Validation** - No validation on any endpoints (security risk)
-7. **🔥 Graceful Shutdown** - Server doesn't handle signals, data loss risk
-8. **🔥 Authentication Integration** - New phone auth not integrated
-
-See [Critical Code Issues](docs/CRITICAL_CODE_ISSUES.md) for exact fixes needed.
-
 ### Resources
 
 - **Documentation**: [docs/](docs/)
-- **Examples**: [examples/](examples/)
 - **Discussions**: GitHub Discussions
 - **Issues**: GitHub Issues (for bugs and features)
 

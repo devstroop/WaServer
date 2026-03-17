@@ -3,21 +3,21 @@ name = "was"
 version = "0.3.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
-description = "WAS (WhatsAppServer) - A high-performance WhatsApp Web automation server built in Rust with REST API and MCP support"
+description = "WAS (WhatsAppServer) - A minimal WhatsApp Web automation server built in Rust with REST API for sending messages"
 license = "MIT"
 repository = "https://github.com/devstroop/was"
-keywords = ["whatsapp", "automation", "messaging", "api", "mcp", "server"]
+keywords = ["whatsapp", "automation", "messaging", "api", "server"]
 categories = ["api-bindings", "web-programming", "asynchronous"]
 
 # Library configuration
 [lib]
 name = "was"
-path = "server/lib.rs"
+path = "src/lib.rs"
 
 # Binary configuration
 [[bin]]
 name = "was"
-path = "server/bin/was.rs"
+path = "src/bin/was.rs"
 
 # ============================================================================
 # Features
@@ -25,9 +25,6 @@ path = "server/bin/was.rs"
 
 [features]
 default = []
-
-# MCP (Model Context Protocol) server - optional
-mcp = ["async-stream"]
 
 [dependencies]
 # ============================================================================
@@ -67,19 +64,14 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 base64 = "0.22"
 regex = "1.10"
 
-# HTTP client (for MCP client / external integrations)
-reqwest = { version = "0.11", default-features = false, features = ["json", "multipart", "rustls-tls"] }
-
 # MIME type detection for file uploads
 mime_guess = "2.0"
 
 # Embedded database (SQLite)
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# HMAC for webhook signatures
-hmac = "0.12"
+# Hashing
 sha2 = "0.10"
-hex = "0.4"
 
 # Password hashing
 bcrypt = "0.15"
@@ -90,18 +82,11 @@ jsonwebtoken = "9.3"
 # Web framework
 axum = { version = "0.7", features = ["multipart", "tokio"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # OpenAPI documentation
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
 utoipa-swagger-ui = { version = "7.0", features = ["axum"] }
-
-# ============================================================================
-# Optional Dependencies
-# ============================================================================
-
-# Async streaming (MCP SSE) - optional
-async-stream = { version = "0.3", optional = true }
 
 [dev-dependencies]
 tower-test = "0.4"

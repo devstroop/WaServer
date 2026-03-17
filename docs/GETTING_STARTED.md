@@ -52,13 +52,6 @@ cd was
 docker-compose up -d
 ```
 
-### Option 3: With MCP Support
-
-```bash
-cargo build --release --features mcp
-cargo run --release --features mcp
-```
-
 ## First Run
 
 Server starts at **http://localhost:3000**
@@ -142,4 +135,3 @@ curl -X DELETE http://localhost:3000/api/v1/instances/{instance_id} \
 
 - [API Reference](API_REFERENCE.md) - Full endpoint documentation
 - [Configuration](CONFIGURATION.md) - All config options
-- [MCP Integration](MCP_INTEGRATION.md) - AI agent setup

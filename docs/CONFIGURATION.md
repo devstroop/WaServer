@@ -76,29 +76,6 @@ enabled = true
 path = "/api-docs"
 ```
 
-## MCP
-
-```toml
-[mcp]
-enabled = false  # Requires --features mcp
-endpoint = "/mcp"
-sse_enabled = true
-heartbeat_interval_secs = 30
-```
-
-## Webhooks
-
-```toml
-[webhooks]
-enabled = false
-timeout_ms = 5000
-retry_count = 3
-
-[[webhooks.endpoints]]
-url = "https://your-server.com/webhook"
-secret = "hmac-secret"
-```
-
 ## Instances
 
 ```toml

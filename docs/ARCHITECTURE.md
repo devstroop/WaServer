@@ -5,12 +5,12 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      WAS Server                          │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐           │
-│  │  REST API │  │MCP Server │  │ Webhooks  │           │
-│  │  (Axum)   │  │  (SSE)    │  │  (HTTP)   │           │
-│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘           │
-│        └──────────────┼──────────────┘                  │
-│                       ▼                                  │
+│  ┌───────────┐                                          │
+│  │  REST API │                                          │
+│  │  (Axum)   │                                          │
+│  └─────┬─────┘                                          │
+│        │                                                │
+│        ▼                                                │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │              Instance Manager                      │  │
 │  │  ┌────────┐  ┌────────┐  ┌────────┐               │  │
@@ -59,21 +59,21 @@ src/
 ├── handlers/api/        # REST API handlers
 │   ├── instances.rs     # Instance management
 │   ├── whatsapp.rs      # WhatsApp operations
-│   ├── chat.rs          # Messaging
+│   ├── chat.rs          # Messaging (send)
 │   ├── health.rs        # Health checks
-│   └── mcp.rs           # MCP protocol
+│   ├── auth.rs          # Authentication
+│   └── users.rs         # User management
 ├── services/            # Business logic
 │   ├── whatsapp/        # WhatsApp service
 │   ├── auth/            # Authentication
-│   ├── database/        # SQLite operations
-│   └── webhook.rs       # Webhook delivery
+│   └── database/        # SQLite operations
 ├── browser/             # Browser automation
 │   ├── core.rs          # Browser lifecycle
 │   ├── driver.rs        # Chromium driver
 │   ├── session.rs       # Session management
 │   └── locators.rs      # Element selectors
 ├── models/              # Data types
-├── middleware/          # HTTP middleware
+├── middleware/           # HTTP middleware
 ├── config.rs            # Configuration
 └── error.rs             # Error types
 ```

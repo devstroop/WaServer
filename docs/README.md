@@ -4,12 +4,11 @@ Welcome to the WAS (WhatsApp Server) documentation. This guide covers everything
 
 ## What is WAS?
 
-WAS is a high-performance WhatsApp Web automation server built in Rust. It provides:
+WAS is a minimal WhatsApp Web automation server built in Rust. It provides:
 
-- **REST API** for sending and receiving WhatsApp messages
-- **MCP Server** for AI agent integration (Claude, Cursor, etc.)
+- **REST API** for sending WhatsApp messages (text and file attachments)
 - **Multi-instance support** for managing multiple WhatsApp accounts
-- **Webhook support** for real-time message notifications
+- **OpenAPI/Swagger** documentation
 
 ## Documentation Index
 
@@ -19,7 +18,6 @@ WAS is a high-performance WhatsApp Web automation server built in Rust. It provi
 | [API Reference](API_REFERENCE.md) | Complete REST API documentation |
 | [Configuration](CONFIGURATION.md) | All configuration options |
 | [Deployment](DEPLOYMENT.md) | Production deployment guide |
-| [MCP Integration](MCP_INTEGRATION.md) | AI agent integration guide |
 | [Architecture](ARCHITECTURE.md) | System architecture overview |
 
 ## Quick Links

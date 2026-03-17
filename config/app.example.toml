@@ -60,39 +60,6 @@ enabled = true
 path = "/api-docs"
 
 # =============================================================================
-# MCP - Model Context Protocol for AI agent integration
-# =============================================================================
-[mcp]
-# Enable MCP server (requires --features mcp at compile time)
-# Disabled until read features are released
-enabled = false
-# MCP endpoint path
-endpoint = "/mcp"
-# Enable SSE (Server-Sent Events) transport
-sse_enabled = true
-# SSE heartbeat interval in seconds
-heartbeat_interval_secs = 30
-
-# =============================================================================
-# Webhooks - Fires HTTP callbacks on message.received events
-# =============================================================================
-[webhooks]
-# Enable webhook callbacks
-enabled = false
-# Request timeout in milliseconds
-timeout_ms = 5000
-# Number of retry attempts on failure
-retry_count = 3
-# Delay between retries in milliseconds
-retry_delay_ms = 1000
-
-# Example webhook endpoint:
-# [[webhooks.endpoints]]
-# url = "https://your-server.com/webhook/whatsapp"
-# secret = "your-hmac-secret-for-signature-verification"
-# headers = { "X-Custom-Header" = "value" }
-
-# =============================================================================
 # Instances - Multi-instance configuration
 # =============================================================================
 # [instances]

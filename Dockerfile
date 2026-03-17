@@ -15,18 +15,18 @@ COPY Cargo.toml Cargo.lock ./
 # Create dummy src to cache dependencies
 RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/main.rs && \
-    echo "fn main() {}" > src/bin/whatsapp-server.rs && \
+    echo "fn main() {}" > src/bin/was.rs && \
     echo "" > src/lib.rs
 
 # Build dependencies only
-RUN cargo build --release --features mcp || true
+RUN cargo build --release || true
 
 # Copy actual source
 COPY src ./src
 
 # Build the application
-RUN touch src/lib.rs src/bin/whatsapp-server.rs && \
-    cargo build --release --features mcp
+RUN touch src/lib.rs src/bin/was.rs && \
+    cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -62,10 +62,6 @@ COPY --from=builder /app/target/release/was /usr/local/bin/
 
 # Copy config
 COPY config/app.example.toml /app/config/app.toml
-
-# Copy templates and static assets
-COPY templates /app/templates
-COPY static /app/static
 
 # Create data directory for browser profile
 RUN mkdir -p /app/data
