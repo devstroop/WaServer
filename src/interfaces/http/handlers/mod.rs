@@ -1,4 +1,5 @@
 //! HTTP handlers — thin, map DTO ↔ domain → application → infra
-//! Each file <300 LOC per #9 acceptance.
+//! Each file <400 LOC per #7, #9, #10.
 
 pub mod identity;
+pub mod messaging;
