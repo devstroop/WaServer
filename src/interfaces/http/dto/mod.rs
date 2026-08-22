@@ -5,4 +5,6 @@
 pub mod health;
 pub mod identity;
 pub mod instance;
+pub mod mappers;
 pub mod messaging;
+pub mod snapshot;

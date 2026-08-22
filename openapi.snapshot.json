@@ -1,0 +1,312 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "WhatsApp Server - API",
+    "description": "DTO stability snapshot — change requires explicit DTO version bump",
+    "contact": {
+      "name": "Devstroop Technologies",
+      "email": "info@devstroop.com"
+    },
+    "license": {
+      "name": "MIT"
+    },
+    "version": "0.3.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "AccessTokenInfoDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAccessTokenRequestDto": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateInstanceRequestDto": {
+        "type": "object",
+        "description": "`POST /api/v1/instances` request — validated at DTO boundary",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Friendly name"
+          },
+          "phone_number": {
+            "type": "string",
+            "description": "Phone in E.164 (optional)",
+            "nullable": true
+          }
+        }
+      },
+      "CreateInstanceResponseDto": {
+        "type": "object",
+        "description": "`POST /api/v1/instances` response",
+        "required": [
+          "instance_id",
+          "name",
+          "message"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateUserRequestDto": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "role"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorEnvelopeDto": {
+        "type": "object",
+        "description": "Standard error envelope — `{error, message, correlation_id}` (reuse `middleware/correlation_id`)",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "correlation_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "HealthResponseDto": {
+        "type": "object",
+        "description": "`GET /api/health` response — mirrors `handlers/api/health::HealthResponse`",
+        "required": [
+          "status",
+          "timestamp",
+          "version",
+          "uptime_seconds",
+          "instances_count"
+        ],
+        "properties": {
+          "instances_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "uptime_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "InstanceInfoDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "authorized",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "authorized": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "InstanceListResponseDto": {
+        "type": "object",
+        "description": "`GET /api/v1/instances` list envelope",
+        "required": [
+          "instances",
+          "total"
+        ],
+        "properties": {
+          "instances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstanceInfoDto"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SendMessageRequestDto": {
+        "type": "object",
+        "description": "Query params for `POST /api/v1/instances/:id/send?phone=&text=`",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "Recipient phone E.164"
+          },
+          "text": {
+            "type": "string",
+            "description": "Message text or caption (at least one of text/file required)",
+            "nullable": true
+          }
+        }
+      },
+      "SendMessageResponseDto": {
+        "type": "object",
+        "description": "Response for successful send",
+        "required": [
+          "success",
+          "message_id",
+          "phone",
+          "timestamp"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "StatusResponseDto": {
+        "type": "object",
+        "description": "`GET /api/ready|live` — simple status envelope",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "UserInfoDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "role",
+          "is_active",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
