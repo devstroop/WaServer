@@ -213,6 +213,20 @@ impl Database {
         Ok(())
     }
 
+    /// Update idle_timeout for an instance (part of #6 — config updates without full row rewrite).
+    pub fn update_idle_timeout(&self, id: &str, idle_timeout: u64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "UPDATE instance SET idle_timeout = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![idle_timeout as i64, &now, id],
+        )
+        .map_err(|e| anyhow!("Failed to update idle_timeout: {}", e))?;
+
+        Ok(())
+    }
+
     /// Delete an instance record.
     pub fn delete_instance(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
