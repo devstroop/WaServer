@@ -38,7 +38,7 @@ GET /api/health
 {
   "status": "healthy",
   "timestamp": 1709312400,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "uptime_seconds": 3600,
   "instances_count": 2,
   "services": {

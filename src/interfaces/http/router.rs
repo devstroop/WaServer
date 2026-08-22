@@ -134,7 +134,7 @@ pub fn build_full_router(
             (name = "Auth", description = "User authentication (register, login, logout)"),
             (name = "Users", description = "User management, access tokens, instance assignments")
         ),
-        info(title = "WhatsApp Server - API", version = "0.3.0", description = "Minimal REST API for WhatsApp Web automation — sending messages only.")
+        info(title = "WhatsApp Server - API", version = "0.4.0", description = "Minimal REST API for WhatsApp Web automation — sending messages only.")
     )]
     struct ApiDoc;
     struct SecurityAddon;

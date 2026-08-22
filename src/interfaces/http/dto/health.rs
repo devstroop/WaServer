@@ -36,12 +36,12 @@ mod tests {
         let dto = HealthResponseDto {
             status: "healthy".into(),
             timestamp: 1,
-            version: "0.3.0".into(),
+            version: "0.4.0".into(),
             uptime_seconds: 10,
             instances_count: 1,
         };
         let json = serde_json::to_string(&dto).unwrap();
         let back: HealthResponseDto = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.version, "0.3.0");
+        assert_eq!(back.version, "0.4.0");
     }
 }
