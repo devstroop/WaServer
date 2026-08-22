@@ -41,6 +41,7 @@
 
 pub mod browser;
 pub mod config;
+pub mod domain;
 pub mod error;
 pub mod models;
 pub mod services;
