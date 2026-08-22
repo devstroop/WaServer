@@ -2,6 +2,16 @@
 //!
 //! Pure domain, no DB/HTTP. `UserRecord`/`AccessTokenRecord` stay in infra persistence;
 //! domain holds only value objects and the `User` entity.
+//! Split into submodules per #9: `user`, `permission`, `token` (re-exported here).
+
+pub mod permission;
+pub mod token;
+pub mod user;
+
+// Re-export new domain types for convenience
+pub use permission::has_permission;
+pub use token::{generate_raw_token, TokenExpiry, TokenName};
+pub use user::{validate_password, validate_username, User as DomainUser};
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
