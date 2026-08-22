@@ -37,6 +37,7 @@ pub struct InstanceAccessState {
 /// - Superadmin (secret key): full access to all instances
 /// - Admin role: full access to all instances
 /// - User role: must have explicit permission assigned
+#[allow(clippy::result_large_err)]
 pub fn check_instance_access(
     auth_user: &AuthenticatedUser,
     instance_id: &str,

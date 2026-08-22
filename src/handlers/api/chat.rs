@@ -5,10 +5,7 @@
 use std::sync::Arc;
 
 use crate::{
-    models::chat::{
-        ErrorResponse,
-        SendMessageParams, SendMessageResponse,
-    },
+    models::chat::{ErrorResponse, SendMessageParams, SendMessageResponse},
     services::InstanceManager,
 };
 use axum::{

@@ -11,12 +11,9 @@ use crate::{
     models::auth::AuthStatusResponse,
     models::instance::{
         InstanceBrowserConfig, InstanceConfig, InstanceId, InstanceInfo, InstanceMetadata,
-        InstanceRateLimits, InstanceSetupConfig, InstanceStatus,
-        UpdateInstanceConfigRequest,
+        InstanceRateLimits, InstanceSetupConfig, InstanceStatus, UpdateInstanceConfigRequest,
     },
-    services::{
-        auth::{AuthService, AuthServiceTrait},
-    },
+    services::auth::{AuthService, AuthServiceTrait},
     utils::metrics::{MetricsSnapshot, ServiceMetrics},
 };
 use anyhow::{anyhow, Result};
@@ -344,18 +341,24 @@ impl InstanceService {
 
                 // Wait for WhatsApp Web UI to be ready (either logged in or showing QR)
                 // This prevents "Not authorized" errors when the UI hasn't loaded yet
-                debug!("Instance '{}' — waiting for WhatsApp UI to be ready...", self.id);
-                
+                debug!(
+                    "Instance '{}' — waiting for WhatsApp UI to be ready...",
+                    self.id
+                );
+
                 let max_wait = Duration::from_secs(10);
                 let poll_interval = Duration::from_millis(200);
                 let start = std::time::Instant::now();
-                
+
                 let ui_ready = loop {
                     if start.elapsed() > max_wait {
-                        warn!("Instance '{}' — UI ready check timed out, proceeding anyway", self.id);
+                        warn!(
+                            "Instance '{}' — UI ready check timed out, proceeding anyway",
+                            self.id
+                        );
                         break false;
                     }
-                    
+
                     // Check if either #pane-side (logged in) or QR canvas exists
                     if let Ok(page) = self.browser_service.get_whatsapp_page().await {
                         let check_script = r#"
@@ -369,10 +372,10 @@ impl InstanceService {
                             }
                         }
                     }
-                    
+
                     tokio::time::sleep(poll_interval).await;
                 };
-                
+
                 if ui_ready {
                     debug!("Instance '{}' — WhatsApp UI is ready", self.id);
                 }
@@ -503,7 +506,10 @@ impl InstanceService {
                     drop(init);
 
                     if let Err(e) = browser_service.close().await {
-                        warn!("Instance '{}' — error during auto-sleep: {}", instance_id, e);
+                        warn!(
+                            "Instance '{}' — error during auto-sleep: {}",
+                            instance_id, e
+                        );
                     }
 
                     info!("Instance '{}' — auto-slept", instance_id);

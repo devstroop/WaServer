@@ -19,9 +19,8 @@ pub use auth::AuthenticatedUser;
 pub use user::{
     AccessTokenInfo, AccessTokenRecord, AssignInstanceRequest, CreateAccessTokenRequest,
     CreateAccessTokenResponse, CreateUserRequest, CreateUserResponse, InstanceOwnerRecord,
-    InstancePermission, ListAccessTokensResponse, ListUsersResponse, LoginRequest,
-    LoginResponse, RegisterUserRequest, UpdateUserRequest, UserInfo, UserInstancesResponse,
-    UserRecord, UserRole,
+    InstancePermission, ListAccessTokensResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    RegisterUserRequest, UpdateUserRequest, UserInfo, UserInstancesResponse, UserRecord, UserRole,
 };
 
 // Re-export instance types

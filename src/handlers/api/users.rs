@@ -529,10 +529,13 @@ pub async fn list_access_tokens(
 
     match db.list_user_access_tokens(&user_id) {
         Ok(tokens) => {
-            let token_infos: Vec<AccessTokenInfo> = tokens.into_iter().map(AccessTokenInfo::from).collect();
+            let token_infos: Vec<AccessTokenInfo> =
+                tokens.into_iter().map(AccessTokenInfo::from).collect();
             (
                 StatusCode::OK,
-                Json(ListAccessTokensResponse { tokens: token_infos }),
+                Json(ListAccessTokensResponse {
+                    tokens: token_infos,
+                }),
             )
                 .into_response()
         }
@@ -635,11 +638,9 @@ pub async fn get_user_instances(
     }
 
     match db.list_user_instances(&user_id) {
-        Ok(instances) => (
-            StatusCode::OK,
-            Json(UserInstancesResponse { instances }),
-        )
-            .into_response(),
+        Ok(instances) => {
+            (StatusCode::OK, Json(UserInstancesResponse { instances })).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({

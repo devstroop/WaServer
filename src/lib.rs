@@ -43,8 +43,10 @@ pub mod browser;
 pub mod config;
 pub mod domain;
 pub mod error;
+pub mod infrastructure;
 pub mod models;
 pub mod services;
+pub mod shared;
 pub mod utils;
 
 // ============================================================================

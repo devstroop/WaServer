@@ -439,10 +439,7 @@ impl Database {
 
         params.push(Box::new(id.to_string()));
 
-        let query = format!(
-            "UPDATE user SET {} WHERE id = ?",
-            updates.join(", ")
-        );
+        let query = format!("UPDATE user SET {} WHERE id = ?", updates.join(", "));
 
         let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         conn.execute(&query, params_refs.as_slice())
@@ -496,7 +493,10 @@ impl Database {
     }
 
     /// Get user by access token hash (for API authentication).
-    pub fn get_user_by_access_token(&self, token_hash: &str) -> Result<Option<(UserRecord, AccessTokenRecord)>> {
+    pub fn get_user_by_access_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<(UserRecord, AccessTokenRecord)>> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn

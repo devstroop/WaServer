@@ -17,11 +17,7 @@ use axum::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    models::auth::AuthenticatedUser,
-    services::Database,
-    utils::logging::CorrelationId,
-};
+use crate::{models::auth::AuthenticatedUser, services::Database, utils::logging::CorrelationId};
 
 /// JWT secret for signing session tokens (should be from config in production)
 pub const JWT_SECRET: &[u8] = b"was-jwt-secret-change-in-production";
@@ -111,7 +107,9 @@ pub async fn auth_middleware(
 
             // 2. Check access tokens from database
             let token_hash = hash_token(token);
-            if let Ok(Some((user_record, _token_record))) = auth_state.db.get_user_by_access_token(&token_hash) {
+            if let Ok(Some((user_record, _token_record))) =
+                auth_state.db.get_user_by_access_token(&token_hash)
+            {
                 let authenticated_user = AuthenticatedUser::User {
                     id: user_record.id.clone(),
                     username: user_record.username.clone(),

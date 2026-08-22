@@ -15,10 +15,7 @@ use axum::{
 use base64::Engine;
 use serde_json::json;
 
-use crate::{
-    models::instance::WhatsAppStatusResponse,
-    services::InstanceManager,
-};
+use crate::{models::instance::WhatsAppStatusResponse, services::InstanceManager};
 
 // === API Handlers ===
 
