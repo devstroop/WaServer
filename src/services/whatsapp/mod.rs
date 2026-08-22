@@ -5,6 +5,8 @@
 
 pub mod chat;
 pub mod instance;
+pub mod instance_auth;
+pub mod instance_lifecycle;
 pub mod instance_manager;
 
 // Re-exports for convenience
