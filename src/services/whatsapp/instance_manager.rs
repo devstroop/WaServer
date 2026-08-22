@@ -33,6 +33,8 @@ pub struct InstanceManager {
     config: Arc<AppConfig>,
     /// Persistent database (SQLite)
     db: Database,
+    /// Per-instance metrics registry (#6 observability)
+    pub observability: Arc<crate::shared::observability::instance_metrics::InstanceMetricsRegistry>,
 }
 
 impl InstanceManager {
@@ -59,6 +61,9 @@ impl InstanceManager {
             base_dir,
             config,
             db,
+            observability: Arc::new(
+                crate::shared::observability::instance_metrics::InstanceMetricsRegistry::new(),
+            ),
         }
     }
 

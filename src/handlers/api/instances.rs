@@ -357,17 +357,18 @@ pub async fn update_instance_config(
         }
     };
 
-    match account.update_config(request).await {
-        Ok(config) => Json(json!({
+    // #6: typed config errors → 400 with stable error code; restart_required derived from diff
+    match account.update_config_typed(request).await {
+        Ok((config, restart_required)) => Json(json!({
             "message": "Configuration updated successfully",
             "config": config,
-            "restart_required": true
+            "restart_required": restart_required
         }))
         .into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({
-                "error": "config_update_failed",
+                "error": e.code(),
                 "message": e.to_string()
             })),
         )

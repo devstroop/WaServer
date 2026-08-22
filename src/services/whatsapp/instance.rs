@@ -225,51 +225,58 @@ impl InstanceService {
     }
 
     /// Update account configuration with partial updates
+    /// Delegates to `application::instance::config_validation::validated_apply_config_update`
+    /// (#6) — typed validation errors, `restart_required` derived here.
     pub async fn update_config(
         &self,
         update: UpdateInstanceConfigRequest,
     ) -> Result<InstanceConfig> {
+        use crate::application::instance::validated_apply_config_update;
+
         let mut config = self.instance_config.write().await;
 
-        // Apply partial updates
-        if let Some(instance_name) = update.instance_name {
-            config.instance_name = Some(instance_name);
-        }
-        if let Some(idle_timeout) = update.idle_timeout {
-            config.idle_timeout = idle_timeout;
-        }
-        if let Some(browser) = update.browser {
-            if let Some(headless) = browser.headless {
-                config.browser.headless = headless;
-            }
-            if let Some(timeout_ms) = browser.timeout_ms {
-                config.browser.timeout_ms = timeout_ms;
-            }
-            if let Some(extra_args) = browser.extra_args {
-                config.browser.extra_args = extra_args;
-            }
-        }
-        if let Some(rate_limits) = update.rate_limits {
-            if let Some(messages_per_minute) = rate_limits.messages_per_minute {
-                config.rate_limits.messages_per_minute = messages_per_minute;
-            }
-            if let Some(requests_per_minute) = rate_limits.requests_per_minute {
-                config.rate_limits.requests_per_minute = requests_per_minute;
-            }
-            if let Some(message_cooldown_ms) = rate_limits.message_cooldown_ms {
-                config.rate_limits.message_cooldown_ms = message_cooldown_ms;
-            }
-        }
+        // Validate + apply via application layer (typed ConfigError)
+        let (next, _restart_required) = validated_apply_config_update(&config, update)
+            .map_err(|e| anyhow!("Invalid configuration: {}", e))?;
 
         // Ensure instance_id is set
-        config.instance_id = Some(self.id);
+        let mut next = next;
+        next.instance_id = Some(self.id);
 
         // Save to disk
         let config_path = self.data_dir.join(ACCOUNT_CONFIG_FILE);
-        Self::save_instance_config_to_path(&config_path, &config).await?;
+        Self::save_instance_config_to_path(&config_path, &next).await?;
+
+        *config = next.clone();
 
         info!("Updated account config for account '{}'", self.id);
-        Ok(config.clone())
+        Ok(next)
+    }
+
+    /// Update config returning typed error + restart flag (per #6 — used by handler for 400 vs 500)
+    pub async fn update_config_typed(
+        &self,
+        update: UpdateInstanceConfigRequest,
+    ) -> Result<(InstanceConfig, bool), crate::application::instance::ConfigError> {
+        use crate::application::instance::validated_apply_config_update;
+
+        let mut config = self.instance_config.write().await;
+        let (next, restart_required) = validated_apply_config_update(&config, update)?;
+
+        let mut next = next;
+        next.instance_id = Some(self.id);
+
+        let config_path = self.data_dir.join(ACCOUNT_CONFIG_FILE);
+        Self::save_instance_config_to_path(&config_path, &next)
+            .await
+            .map_err(|_| {
+                crate::application::instance::ConfigError::InvalidBrowserTimeout(
+                    next.browser.timeout_ms,
+                )
+            })?;
+
+        *config = next.clone();
+        Ok((next, restart_required))
     }
 
     /// Warmup the instance (launch browser, navigate to WhatsApp)

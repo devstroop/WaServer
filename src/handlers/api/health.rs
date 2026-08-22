@@ -48,6 +48,9 @@ pub struct InstanceMetrics {
     pub authorized: bool,
     pub total_messages_sent: u64,
     pub error_count: u64,
+    /// Per-instance warmup count (#6 observability)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warmups: Option<u64>,
 }
 
 static START_INSTANT: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
@@ -177,8 +180,9 @@ pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<Me
 
     let memory_usage = get_memory_usage();
 
-    // Get metrics from all instances
+    // Get metrics from all instances, enriched with per-instance observability counters (#6)
     let account_list = manager.list_instances().await;
+    let obs_snapshots = manager.observability.snapshot_all().await;
     let mut instance_metrics = Vec::new();
 
     for info in account_list.instances {
@@ -198,6 +202,7 @@ pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<Me
                 authorized: info.authorized,
                 total_messages_sent: metrics.total_messages_sent,
                 error_count: metrics.error_count,
+                warmups: obs_snapshots.get(&info.id).map(|s| s.warmups),
             });
         }
     }
