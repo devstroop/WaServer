@@ -65,6 +65,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 /// 2. Access tokens from database (API access)
 ///
 /// On successful authentication, adds `AuthenticatedUser` to request extensions.
+#[allow(clippy::result_large_err)]
 pub async fn auth_middleware(
     State(auth_state): State<AuthState>,
     headers: HeaderMap,
