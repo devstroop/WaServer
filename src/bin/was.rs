@@ -110,16 +110,9 @@ async fn run_server(
     auth_db: Database,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use axum::{
-        extract::DefaultBodyLimit,
-        http::Method,
         middleware,
         routing::{delete, get, post, put},
         Router,
-    };
-    use tower::ServiceBuilder;
-    use tower_http::{
-        cors::{Any, CorsLayer},
-        trace::TraceLayer,
     };
     use utoipa::{
         openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
@@ -127,29 +120,14 @@ async fn run_server(
     };
     use was::{
         api::{auth, chat, health, instances, users, whatsapp},
-        middleware::{
-            auth_middleware, correlation_id_middleware, request_metrics_middleware,
-            security_headers_middleware, AuthState,
-        },
+        middleware::{auth_middleware, AuthState},
         models::{
             auth::*, chat::ErrorResponse, chat::SendMessageRequest, chat::SendMessageResponse,
             instance::*, user::*,
         },
     };
 
-    // CORS
-    let cors = CorsLayer::new()
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers(Any)
-        .allow_origin(Any);
-
-    // OpenAPI documentation
+    // OpenAPI documentation — will move to `interfaces::http::router` per #10 (next slice)
     #[derive(OpenApi)]
     #[openapi(
         paths(
@@ -357,15 +335,11 @@ async fn run_server(
         info!("📚 Swagger UI disabled (set swagger.enabled = true to enable)");
     }
 
-    // Middleware
-    let app = app.layer(
-        ServiceBuilder::new()
-            .layer(TraceLayer::new_for_http())
-            .layer(middleware::from_fn(correlation_id_middleware))
-            .layer(middleware::from_fn(request_metrics_middleware))
-            .layer(middleware::from_fn(security_headers_middleware))
-            .layer(cors)
-            .layer(DefaultBodyLimit::max(config.limits.max_upload_size)),
+    // Global middleware — extracted to `interfaces::http::middleware::stack.rs` per #10
+    // Keeps `bin/was.rs` thin; router unit-testable without browser/DB
+    let app = was::interfaces::http::middleware::http_middleware_stack(
+        app,
+        config.limits.max_upload_size,
     );
 
     // Listen
