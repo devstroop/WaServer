@@ -39,6 +39,7 @@
 // Core Modules (always included)
 // ============================================================================
 
+pub mod application;
 pub mod browser;
 pub mod config;
 pub mod domain;
