@@ -108,6 +108,7 @@ pub fn check_instance_access(
 
 /// Extract account from X-Instance-Id header
 /// Currently unused — all routes use path params with State<Arc<InstanceManager>>.
+#[allow(clippy::result_large_err)]
 pub async fn instance_middleware(
     State(manager): State<Arc<InstanceManager>>,
     headers: HeaderMap,
