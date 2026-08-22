@@ -3,20 +3,13 @@
 //! REST API endpoints for user authentication (login, register).
 //! These endpoints are public (no authentication required).
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
     middleware::auth::{hash_password, hash_token, verify_password},
-    models::user::{
-        LoginRequest, LoginResponse, RegisterUserRequest, UserInfo, UserRole,
-    },
+    models::user::{LoginRequest, LoginResponse, RegisterUserRequest, UserInfo, UserRole},
     services::Database,
 };
 

@@ -131,7 +131,10 @@ async fn run_server(
             auth_middleware, correlation_id_middleware, request_metrics_middleware,
             security_headers_middleware, AuthState,
         },
-        models::{auth::*, chat::SendMessageRequest, chat::SendMessageResponse, chat::ErrorResponse, instance::*, user::*},
+        models::{
+            auth::*, chat::ErrorResponse, chat::SendMessageRequest, chat::SendMessageResponse,
+            instance::*, user::*,
+        },
     };
 
     // CORS
@@ -237,11 +240,12 @@ async fn run_server(
 
     impl Modify for SecurityAddon {
         fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-            let components = openapi.components.as_mut().unwrap();
-            components.add_security_scheme(
-                "bearer_auth",
-                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Authorization"))),
-            );
+            if let Some(components) = openapi.components.as_mut() {
+                components.add_security_scheme(
+                    "bearer_auth",
+                    SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Authorization"))),
+                );
+            }
         }
     }
 
@@ -309,11 +313,17 @@ async fn run_server(
         // Access token management
         .route("/:user_id/tokens", get(users::list_access_tokens))
         .route("/:user_id/tokens", post(users::create_access_token))
-        .route("/:user_id/tokens/:token_id", delete(users::delete_access_token))
+        .route(
+            "/:user_id/tokens/:token_id",
+            delete(users::delete_access_token),
+        )
         // Instance assignments
         .route("/assign-instance", post(users::assign_instance))
         .route("/:user_id/instances", get(users::get_user_instances))
-        .route("/:user_id/instances/:instance_id", delete(users::remove_instance))
+        .route(
+            "/:user_id/instances/:instance_id",
+            delete(users::remove_instance),
+        )
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
@@ -370,9 +380,11 @@ async fn run_server(
 
     // Graceful shutdown
     let shutdown = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::warn!("Failed to install Ctrl+C handler: {}", e);
+            // Fall back to pending forever — server will run until killed
+            std::future::pending::<()>().await;
+        }
         info!("🛑 Shutting down...");
     };
 

@@ -217,7 +217,7 @@ impl InstanceManager {
         }
 
         // Sort by ID for consistent ordering
-        account_infos.sort_by(|a, b| a.id.cmp(&b.id));
+        account_infos.sort_by_key(|a| a.id);
 
         InstanceListResponse {
             total: account_infos.len(),

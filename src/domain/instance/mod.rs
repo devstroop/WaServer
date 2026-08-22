@@ -33,7 +33,11 @@ pub struct InstanceMetadata {
 }
 
 impl InstanceMetadata {
-    pub fn new(id: InstanceId, phone_number: Option<String>, instance_name: Option<String>) -> Self {
+    pub fn new(
+        id: InstanceId,
+        phone_number: Option<String>,
+        instance_name: Option<String>,
+    ) -> Self {
         Self {
             id,
             phone_number,

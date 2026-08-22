@@ -49,7 +49,10 @@ pub enum InstancePermission {
 
 impl InstancePermission {
     pub fn can_send(&self) -> bool {
-        matches!(self, InstancePermission::Owner | InstancePermission::Operator)
+        matches!(
+            self,
+            InstancePermission::Owner | InstancePermission::Operator
+        )
     }
     pub fn can_modify(&self) -> bool {
         matches!(self, InstancePermission::Owner)

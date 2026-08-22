@@ -9,10 +9,12 @@ use axum::{extract::Request, http::HeaderMap, middleware::Next, response::Respon
 use std::time::SystemTime;
 use tracing::Instrument;
 
-use crate::utils::logging::{log_request_metrics, CorrelationId, RequestMetrics};
+use crate::shared::observability::logging::{log_request_metrics, CorrelationId, RequestMetrics};
 
 // Re-export instance middleware
-pub use instance::{instance_middleware, check_instance_access, CurrentInstance, InstanceAccessState};
+pub use instance::{
+    check_instance_access, instance_middleware, CurrentInstance, InstanceAccessState,
+};
 
 // Re-export auth middleware and types
 pub use auth::{auth_middleware, AuthState};
@@ -87,8 +89,8 @@ pub async fn request_metrics_middleware(request: Request, next: Next) -> Respons
 
     let duration = SystemTime::now()
         .duration_since(start_time)
-        .unwrap()
-        .as_millis() as u64;
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
 
     let metrics = RequestMetrics {
         method,
@@ -110,21 +112,30 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
 
     let headers = response.headers_mut();
 
-    // Add security headers
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
-    headers.insert("x-frame-options", "DENY".parse().unwrap());
-    headers.insert("x-xss-protection", "1; mode=block".parse().unwrap());
+    // Add security headers — use from_static where possible to avoid parse unwrap
+    headers.insert(
+        "x-content-type-options",
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        "x-frame-options",
+        axum::http::HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        "x-xss-protection",
+        axum::http::HeaderValue::from_static("1; mode=block"),
+    );
     headers.insert(
         "referrer-policy",
-        "strict-origin-when-cross-origin".parse().unwrap(),
+        axum::http::HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     // CSP: allow self, data: for QR code images, unsafe-inline for React styles
     // Also allow cdn.jsdelivr.net for Scalar API docs
     headers.insert(
         "content-security-policy",
-        "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; connect-src 'self'"
-            .parse()
-            .unwrap(),
+        axum::http::HeaderValue::from_static(
+            "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; connect-src 'self'",
+        ),
     );
 
     response

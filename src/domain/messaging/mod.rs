@@ -171,7 +171,12 @@ impl NewMessage {
             message_timestamp: None,
         }
     }
-    pub fn outgoing_media(recipient: &str, media_type: MediaType, media_path: &str, caption: Option<&str>) -> Self {
+    pub fn outgoing_media(
+        recipient: &str,
+        media_type: MediaType,
+        media_path: &str,
+        caption: Option<&str>,
+    ) -> Self {
         Self {
             sender: SELF_JID.to_string(),
             recipient: recipient.to_string(),
@@ -189,7 +194,13 @@ impl NewMessage {
             message_timestamp: None,
         }
     }
-    pub fn incoming(sender: &str, recipient: &str, text: Option<&str>, is_group: bool, timestamp: Option<DateTime<Utc>>) -> Self {
+    pub fn incoming(
+        sender: &str,
+        recipient: &str,
+        text: Option<&str>,
+        is_group: bool,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Self {
         Self {
             sender: sender.to_string(),
             recipient: recipient.to_string(),
