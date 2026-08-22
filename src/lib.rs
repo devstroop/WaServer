@@ -60,6 +60,9 @@ pub mod handlers;
 /// HTTP middleware
 pub mod middleware;
 
+/// Interfaces layer — identity handlers split (#9)
+pub mod interfaces;
+
 // Re-export api at crate root for convenience
 pub use handlers::api;
 

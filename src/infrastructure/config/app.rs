@@ -179,19 +179,17 @@ impl AppConfig {
     }
 
     /// Validate configuration values
+    /// Delegates secret checks to `application::auth::SecretValidator` so prod boot fails on default/weak secrets
     pub fn validate(&self) -> Result<(), String> {
         if self.server.port == 0 {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static secret key
-        if self.auth.secret_key == "change-this-secret-key-in-production" {
-            return Err("Please change the default secret_key in configuration".to_string());
-        }
-
-        if self.auth.secret_key.len() < 16 {
-            return Err("secret_key must be at least 16 characters long".to_string());
-        }
+        // Validate static secret key — allow default only in development (see `application::auth::SecretValidator`)
+        crate::application::auth::SecretValidator::validate(
+            &self.auth.secret_key,
+            self.environment.is_development(),
+        )?;
 
         if self.limits.max_concurrent_requests == 0 {
             return Err("Max concurrent requests cannot be 0".to_string());

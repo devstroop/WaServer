@@ -17,7 +17,12 @@ use axum::{
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::{models::auth::AuthenticatedUser, services::Database, utils::logging::CorrelationId};
+use crate::{
+    application::auth::{hash_token as app_hash_token, SecretValidator},
+    models::auth::AuthenticatedUser,
+    services::Database,
+    utils::logging::CorrelationId,
+};
 
 /// JWT secret for signing session tokens (should be from config in production)
 pub const JWT_SECRET: &[u8] = b"was-jwt-secret-change-in-production";
@@ -39,10 +44,9 @@ impl AuthState {
 }
 
 /// Hash a token for secure comparison/storage.
+/// Delegates to `application::auth::hash_token` (SHA256) — keeps middleware free of crypto impl.
 pub fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    format!("{:x}", hasher.finalize())
+    app_hash_token(token)
 }
 
 /// Hash a password using SHA256 (for simplicity; use bcrypt/argon2 in production)
@@ -93,8 +97,8 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            // 1. Check static secret key (superadmin)
-            if token == auth_state.secret_key {
+            // 1. Check static secret key (superadmin) — constant-time compare to avoid timing leak
+            if SecretValidator::constant_time_eq(token, &auth_state.secret_key) {
                 let authenticated_user = AuthenticatedUser::Secret;
                 tracing::debug!(
                     correlation_id = %correlation_id.0,
