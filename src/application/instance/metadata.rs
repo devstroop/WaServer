@@ -32,3 +32,50 @@ pub async fn save_metadata(data_dir: &Path, metadata: &InstanceMetadata) -> anyh
     tokio::fs::write(path, content).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_load_or_create_metadata() {
+        let dir = TempDir::new().unwrap();
+        let id = uuid::Uuid::new_v4();
+        let cfg = InstanceSetupConfig {
+            id,
+            phone_number: Some("1234567890".into()),
+            instance_name: Some("test".into()),
+            data_dir: dir.path().to_path_buf(),
+            browser: Default::default(),
+        };
+        let meta = load_or_create_metadata(dir.path(), &cfg).await.unwrap();
+        assert_eq!(meta.id, id);
+        // second call loads from disk
+        let meta2 = load_or_create_metadata(dir.path(), &cfg).await.unwrap();
+        assert_eq!(meta2.id, id);
+        assert_eq!(meta2.phone_number, Some("1234567890".into()));
+    }
+
+    #[tokio::test]
+    async fn test_save_metadata() {
+        let dir = TempDir::new().unwrap();
+        let id = uuid::Uuid::new_v4();
+        let mut meta = InstanceMetadata::new(id, None, None);
+        meta.instance_name = Some("save-test".into());
+        save_metadata(dir.path(), &meta).await.unwrap();
+        let loaded = load_or_create_metadata(
+            dir.path(),
+            &InstanceSetupConfig {
+                id,
+                phone_number: None,
+                instance_name: None,
+                data_dir: dir.path().to_path_buf(),
+                browser: Default::default(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(loaded.instance_name, Some("save-test".into()));
+    }
+}
