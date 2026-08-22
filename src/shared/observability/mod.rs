@@ -1,3 +1,4 @@
+pub mod instance_metrics;
 pub mod logging;
 /// Utility functions and helpers
 pub mod metrics;
