@@ -233,6 +233,80 @@ pub fn phone_to_dir_name(phone: &str) -> String {
     phone.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
+// === API DTOs (temporary here, will move to interfaces/http/dto in feat/api) ===
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateInstanceRequest {
+    pub phone_number: String,
+    #[serde(default = "default_instance_name")]
+    pub instance_name: String,
+    #[serde(default)]
+    pub browser: Option<BrowserOverrides>,
+    #[serde(default)]
+    pub idle_timeout: Option<u64>,
+}
+
+fn default_instance_name() -> String {
+    "unknown".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateInstanceResponse {
+    #[schema(value_type = String, format = "uuid")]
+    pub id: InstanceId,
+    pub phone_number: String,
+    pub instance_name: String,
+    pub status: String,
+    pub data_directory: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateInstanceRequest {
+    pub instance_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceListResponse {
+    pub instances: Vec<InstanceInfo>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WhatsAppStatusResponse {
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
+    pub phone_number: Option<String>,
+    pub status: String,
+    pub authorized: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ListInstancesQuery {
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DeleteInstanceResponse {
+    pub message: String,
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
+    pub data_deleted: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct DeleteInstanceQuery {
+    #[serde(default)]
+    pub delete_data: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InstanceActionResponse {
+    pub message: String,
+    #[schema(value_type = String, format = "uuid")]
+    pub instance_id: InstanceId,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
