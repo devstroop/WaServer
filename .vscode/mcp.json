@@ -1,12 +1,5 @@
 {
     "servers": {
-        "was": {
-            "type": "sse",
-            "url": "http://localhost:3000/mcp",
-            "headers": {
-                "Authorization": "Bearer test-api-token-123456789"
-            }
-        },
         "playwright": {
             "command": "npx",
             "args": [

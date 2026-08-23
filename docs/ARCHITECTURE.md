@@ -133,4 +133,3 @@ CREATE TABLE sessions (
 | Feature | Description |
 |---------|-------------|
 | default | REST API only |
-| mcp | MCP server support |
