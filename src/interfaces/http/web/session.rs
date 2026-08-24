@@ -189,12 +189,14 @@ fn sanitize_next(next: Option<&str>) -> Option<&str> {
     }
 }
 
-pub async fn logout(State(db): State<Database>, headers: HeaderMap) -> Response {
+pub async fn logout(State(app): State<super::pages::AppState>, headers: HeaderMap) -> Response {
     if let Some(token) = read_session_token(&headers) {
         let hash = crate::middleware::auth::hash_token(&token);
         // Best-effort delete of the session record ("Web Session" tokens only)
-        if let Ok(Some((_, token_record))) = db.get_user_by_access_token(&hash) {
-            let _ = db.delete_access_token(&token_record.id, &token_record.user_id);
+        if let Ok(Some((_, token_record))) = app.db.get_user_by_access_token(&hash) {
+            let _ = app
+                .db
+                .delete_access_token(&token_record.id, &token_record.user_id);
         }
     }
     let mut resp = redirect(&headers, "/app/login");

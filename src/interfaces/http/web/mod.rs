@@ -15,6 +15,9 @@ use axum::Router;
 use crate::middleware::auth::AuthState;
 
 /// Mount points: `nest("/app", web::router(...))` + `nest("/assets/web", web::assets::router())`
-pub fn router(auth_state: AuthState) -> Router {
-    pages::router(auth_state)
+pub fn router(
+    auth_state: AuthState,
+    manager: std::sync::Arc<crate::services::InstanceManager>,
+) -> Router {
+    pages::router(auth_state, manager)
 }

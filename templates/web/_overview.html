@@ -1,0 +1,62 @@
+<section class="dt-stat-row">
+  <div class="dt-stat">
+    <div class="dt-stat-label">Instances</div>
+    <div class="dt-stat-value">{{ total }}</div>
+    <div class="dt-stat-hint">total registered</div>
+  </div>
+  <div class="dt-stat">
+    <div class="dt-stat-label">Active</div>
+    <div class="dt-stat-value">{{ active }}</div>
+    <div class="dt-stat-delta dt-stat-delta--success">running</div>
+  </div>
+  <div class="dt-stat">
+    <div class="dt-stat-label">Warming up</div>
+    <div class="dt-stat-value">{{ warming_up }}</div>
+    <div class="dt-stat-delta dt-stat-delta--neutral">starting</div>
+  </div>
+  <div class="dt-stat">
+    <div class="dt-stat-label">Sleeping</div>
+    <div class="dt-stat-value">{{ sleeping }}</div>
+    <div class="dt-stat-hint">idle</div>
+  </div>
+  <div class="dt-stat">
+    <div class="dt-stat-label">Errors</div>
+    <div class="dt-stat-value">{{ errored }}</div>
+    <div class="dt-stat-delta {% if errored > 0 %}dt-stat-delta--danger{% endif %}">failed</div>
+  </div>
+</section>
+
+<section class="dt-card">
+  <div class="dt-card-header"><h2>Server</h2></div>
+  <div class="dt-card-body">
+    <p class="dt-text-muted">
+      WAS v{{ version }} &middot; uptime {{ uptime }} &middot; {{ messages_sent }} message(s) sent
+    </p>
+  </div>
+</section>
+
+<section class="dt-card">
+  <div class="dt-card-header"><h2>Instances</h2></div>
+  <div class="dt-card-body">
+    {% if instances.is_empty() %}
+    <p class="dt-text-muted">No instances registered yet.</p>
+    {% else %}
+    <div class="dt-table-wrap">
+      <table class="dt-table">
+        <thead>
+          <tr><th>Name</th><th>Phone</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for row in instances %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td>{{ row.phone }}</td>
+            <td><span class="dt-badge {{ row.badge_class }}">{{ row.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</section>

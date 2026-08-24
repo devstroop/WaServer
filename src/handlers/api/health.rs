@@ -67,6 +67,11 @@ fn uptime_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Process uptime in seconds (shared with the web dashboard #30)
+pub fn uptime_seconds() -> u64 {
+    uptime_secs()
+}
+
 /// Health Check Endpoint
 ///
 /// Returns the overall health status of the WAS (WhatsApp Server) API.

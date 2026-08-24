@@ -31,13 +31,12 @@
               hx-swap="none">Sign out</button>
     </header>
     <main class="dt-layout-content" id="content">
-      <section class="dt-card">
-        <div class="dt-card-header"><h2>Overview</h2></div>
-        <div class="dt-card-body">
-          <p class="dt-text-muted">Signed in as <strong>{{ username }}</strong> ({{ role }}).</p>
-          <p class="dt-text-muted">Instance dashboard arrives in #30; instances management in #31.</p>
-        </div>
-      </section>
+      <div id="overview"
+           hx-get="/app/fragments/overview"
+           hx-trigger="load, every 5s"
+           hx-swap="innerHTML">
+        <p class="dt-text-muted">Loading…</p>
+      </div>
     </main>
   </div>
 </div>

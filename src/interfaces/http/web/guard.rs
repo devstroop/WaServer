@@ -9,13 +9,13 @@ use axum::{
 
 use super::{
     csrf::derive_csrf,
+    pages::AppState,
     session::{read_session_token, redirect, resolve_session, WebSession},
 };
-use crate::services::Database;
 
 #[allow(clippy::result_large_err)]
 pub async fn web_auth_middleware(
-    State(db): State<Database>,
+    State(app): State<AppState>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, Response> {
@@ -23,7 +23,7 @@ pub async fn web_auth_middleware(
     let Some(token) = read_session_token(request.headers()) else {
         return Err(unauthorized(&request, &path));
     };
-    let Some(user) = resolve_session(&db, &token) else {
+    let Some(user) = resolve_session(&app.db, &token) else {
         return Err(unauthorized(&request, &path));
     };
 

@@ -222,7 +222,10 @@ pub fn build_full_router(
     app = app.nest("/api/v1/instances", instances_routes);
     app = app.nest("/api/v1/auth", auth_routes);
     app = app.nest("/api/v1/users", users_routes);
-    app = app.nest("/app", crate::interfaces::http::web::router(web_auth_state));
+    app = app.nest(
+        "/app",
+        crate::interfaces::http::web::router(web_auth_state, instance_manager.clone()),
+    );
     app = app.nest(
         "/assets/web",
         crate::interfaces::http::web::assets::router(),
