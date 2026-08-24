@@ -175,11 +175,15 @@ pub async fn send_message(
         to: query.phone.clone(),
         text: query.text.clone(),
         media_type,
-        media_path,
+        media_path: media_path.clone(),
     };
 
     match service.send(cmd).await {
         Ok(message_id) => {
+            // staged attachment no longer needed once WhatsApp has it (#46)
+            if let Some(path) = &media_path {
+                let _ = tokio::fs::remove_file(path).await;
+            }
             let resp = SendMessageResponseDto {
                 status: MessageStatus::Sent.to_string(),
                 success: true,

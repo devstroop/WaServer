@@ -21,6 +21,8 @@ pub struct HealthResponse {
     pub version: String,
     pub uptime_seconds: u64,
     pub instances_count: usize,
+    /// Chrome/Chromium detected on this host (#47)
+    pub browser_available: bool,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -114,6 +116,7 @@ pub async fn health_check(
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
         instances_count,
+        browser_available: crate::services::maintenance::detect_browser().is_ok(),
         services,
     };
 

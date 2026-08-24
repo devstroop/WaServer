@@ -70,6 +70,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     info!("🔑 Multi-instance support enabled (v{})", VERSION);
+
+    // Ops: browser availability warning (#47) + staging janitor (#46)
+    match was::services::maintenance::detect_browser() {
+        Ok(path) => info!(path = %path.display(), "browser detected"),
+        Err(e) => tracing::warn!(
+            reason = %e,
+            "No Chrome/Chromium found — send/link/screenshot will fail. \
+             Install Chromium or set the CHROME env var to the executable path."
+        ),
+    }
+    was::services::maintenance::start_staging_janitor(
+        was::interfaces::http::handlers::messaging::STAGING_DIR.into(),
+        config.storage.effective_staging_ttl_hours(),
+    );
+
     run_server(config, instance_manager, auth_db).await
 }
 

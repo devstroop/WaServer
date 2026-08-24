@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod database;
+pub mod maintenance;
 pub mod messaging_ports;
 pub mod whatsapp;
 

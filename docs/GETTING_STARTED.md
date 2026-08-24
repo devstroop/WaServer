@@ -61,6 +61,21 @@ Server starts at **http://localhost:3000**
 - **Swagger UI**: http://localhost:3000/api-docs/
 - **Health**: http://localhost:3000/api/health
 
+### Browser requirement
+
+Sending, linking (QR) and screenshots require **Chrome or Chromium** on the server host.
+The server detects it at startup and logs a warning when missing; `GET /api/health`
+reports `browser_available` and the web dashboard shows a banner.
+
+```bash
+# macOS
+brew install --cask chromium
+# Debian/Ubuntu
+sudo apt install chromium-browser
+# Or point at any Chrome-compatible binary:
+export CHROME=/path/to/chrome
+```
+
 ### Authentication (opt-in)
 
 There is **no default API key**. Two ways to authenticate:

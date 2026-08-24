@@ -1,3 +1,11 @@
+{% if !browser_available %}
+<div class="dt-alert dt-alert--warning" role="status" style="margin-bottom:16px;">
+  <div class="dt-alert-content">
+    No Chrome/Chromium detected on the server — sending, linking and screenshots will fail until one is installed.
+  </div>
+</div>
+{% endif %}
+
 <section class="dt-stat-row">
   <div class="dt-stat">
     <div class="dt-stat-label">Instances</div>

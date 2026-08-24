@@ -34,6 +34,9 @@ level = "info"
 [cache]
 default_ttl_minutes = 15
 
+[storage]
+staging_ttl_hours = 24
+
 [cors]
 allow_origins = ["*"]
 allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
