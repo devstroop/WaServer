@@ -17,41 +17,34 @@ use crate::{
         policy::E164Validator,
         send::{SendMessageCommand, SendService},
     },
-    domain::{instance::InstanceId, messaging::MediaType},
+    domain::{instance::InstanceId, messaging::MediaType, shared::error::DomainError},
     interfaces::http::dto::messaging::{SendMessageRequestDto, SendMessageResponseDto},
-    services::{InstanceManager, ManagerBrowserAdapter, ManagerRateAdapter},
+    services::{InstanceManager, ManagerBrowserAdapter},
 };
 
-/// Categorize send errors → HTTP status (mirrors `handlers/api/chat.rs:27`)
-fn categorize_send_error(err: &str) -> StatusCode {
-    if err.contains("not found") {
-        StatusCode::NOT_FOUND
-    } else if err.contains("Not authorized") || err.contains("not authorized") {
-        StatusCode::UNAUTHORIZED
-    } else if err.contains("rate limited") {
-        StatusCode::TOO_MANY_REQUESTS
-    } else if err.contains("timed out")
-        || err.contains("unresponsive")
-        || err.contains("busy")
-        || err.contains("warmup failed")
-        || err.contains("Browser not")
-    {
-        StatusCode::SERVICE_UNAVAILABLE
-    } else if err.contains("no content") {
-        StatusCode::BAD_REQUEST
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR
+/// Categorize send errors → HTTP status (typed DomainError mapping)
+fn categorize_send_error(err: &DomainError) -> StatusCode {
+    match err {
+        DomainError::NotFound { .. } => StatusCode::NOT_FOUND,
+        DomainError::PermissionDenied { .. } => StatusCode::UNAUTHORIZED,
+        DomainError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+        DomainError::InvalidInput { .. } | DomainError::Validation(_) => StatusCode::BAD_REQUEST,
+        DomainError::Conflict { .. } | DomainError::Internal(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
 }
 
 /// Build a SendService wired to the manager via ports (#7)
+/// Rate limiter is the shared process-wide instance (`InstanceManager.rate_limiter`)
+/// so windows survive across requests.
 fn build_send_service(manager: Arc<InstanceManager>) -> SendService {
     SendService::new(
         Arc::new(E164Validator),
         Arc::new(ManagerBrowserAdapter {
             manager: manager.clone(),
         }),
-        Arc::new(ManagerRateAdapter::new(manager)),
+        manager.rate_limiter.clone(),
     )
 }
 
@@ -111,7 +104,11 @@ pub async fn send_message(
         }
         Err(e) => {
             let status = categorize_send_error(&e);
-            (status, Json(json!({"error": "send_failed", "message": e}))).into_response()
+            (
+                status,
+                Json(json!({"error": "send_failed", "message": e.to_string()})),
+            )
+                .into_response()
         }
     }
 }
@@ -138,24 +135,28 @@ mod tests {
     #[test]
     fn test_categorize_send_error() {
         assert_eq!(
-            categorize_send_error("instance 'x' not found"),
+            categorize_send_error(&DomainError::not_found("instance", "x")),
             StatusCode::NOT_FOUND
         );
         assert_eq!(
-            categorize_send_error("Not authorized"),
+            categorize_send_error(&DomainError::PermissionDenied {
+                operation: "send".into()
+            }),
             StatusCode::UNAUTHORIZED
         );
         assert_eq!(
-            categorize_send_error("rate limited: 60 msgs"),
+            categorize_send_error(&DomainError::RateLimited {
+                operation: "send".into(),
+                retry_after_seconds: 60
+            }),
             StatusCode::TOO_MANY_REQUESTS
         );
         assert_eq!(
-            categorize_send_error("is busy"),
-            StatusCode::SERVICE_UNAVAILABLE
+            categorize_send_error(&DomainError::Validation("bad".into())),
+            StatusCode::BAD_REQUEST
         );
-        assert_eq!(categorize_send_error("no content"), StatusCode::BAD_REQUEST);
         assert_eq!(
-            categorize_send_error("weird"),
+            categorize_send_error(&DomainError::Internal("boom".into())),
             StatusCode::INTERNAL_SERVER_ERROR
         );
     }
