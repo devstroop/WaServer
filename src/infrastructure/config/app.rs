@@ -114,7 +114,7 @@ pub struct CacheConfig {
 }
 
 /// CORS configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CorsConfig {
     pub allow_origins: Vec<String>,
     pub allow_methods: Vec<String>,

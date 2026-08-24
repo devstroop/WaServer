@@ -237,8 +237,13 @@ pub fn build_full_router(
             .merge(SwaggerUi::new(swagger_path).url("/api-docs/openapi.json", ApiDoc::openapi()));
     }
 
-    // Global middleware — same stack as `build_router` / `http_middleware_stack`
-    crate::interfaces::http::middleware::http_middleware_stack(app, config.limits.max_upload_size)
+    // Global middleware — CORS honors [cors] config (wildcard/empty = permissive)
+    let cors = crate::interfaces::http::middleware::stack::build_cors_layer(&config.cors);
+    crate::interfaces::http::middleware::stack::build_stack(
+        app,
+        cors,
+        config.limits.max_upload_size,
+    )
 }
 
 #[cfg(test)]
