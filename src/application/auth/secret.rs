@@ -10,17 +10,11 @@ pub fn hash_token(token: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Validate secret at boot — fails in prod if default or weak
+/// Validate secret at boot — enforced only when a secret is configured (opt-in)
 pub struct SecretValidator;
 
 impl SecretValidator {
-    pub fn validate(secret: &str, is_development: bool) -> Result<(), String> {
-        if secret == "change-this-secret-key-in-production" {
-            if is_development {
-                return Ok(());
-            }
-            return Err("Please change the default secret_key in configuration".into());
-        }
+    pub fn validate(secret: &str) -> Result<(), String> {
         if secret.len() < 16 {
             return Err("secret_key must be at least 16 characters".into());
         }
@@ -50,10 +44,8 @@ mod tests {
     }
     #[test]
     fn test_validate_secret() {
-        assert!(SecretValidator::validate("short", false).is_err());
-        assert!(SecretValidator::validate("change-this-secret-key-in-production", true).is_ok());
-        assert!(SecretValidator::validate("change-this-secret-key-in-production", false).is_err());
-        assert!(SecretValidator::validate("a-very-strong-secret-123", false).is_ok());
+        assert!(SecretValidator::validate("short").is_err());
+        assert!(SecretValidator::validate("a-very-strong-secret-123").is_ok());
     }
     #[test]
     fn test_constant_time_eq() {

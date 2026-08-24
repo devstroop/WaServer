@@ -80,11 +80,25 @@ pub struct ServerConfig {
 }
 
 /// Authentication configuration
-/// Static secret key for Bearer authentication
+///
+/// `secret_key` is **opt-in**: when set (≥16 chars), the static-key superadmin
+/// Bearer path is enabled; when absent/empty, that auth method is disabled and
+/// access works via user access tokens only. There is no default key.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
-    /// Static secret key for Bearer authentication
-    pub secret_key: String,
+    /// Static secret key for Bearer authentication (optional)
+    #[serde(default)]
+    pub secret_key: Option<String>,
+}
+
+impl AuthConfig {
+    /// Normalized key — trims and treats empty as unset
+    pub fn effective_secret_key(&self) -> Option<&str> {
+        match &self.secret_key {
+            Some(k) if !k.trim().is_empty() => Some(k.trim()),
+            _ => None,
+        }
+    }
 }
 
 /// Logging configuration
@@ -122,9 +136,7 @@ impl Default for AppConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
             },
-            auth: AuthConfig {
-                secret_key: "change-this-secret-key-in-production".to_string(),
-            },
+            auth: AuthConfig { secret_key: None },
             logging: LoggingConfig {
                 level: "info".to_string(),
             },
@@ -179,17 +191,16 @@ impl AppConfig {
     }
 
     /// Validate configuration values
-    /// Delegates secret checks to `application::auth::SecretValidator` so prod boot fails on default/weak secrets
+    /// Secret key is opt-in: when set it must be strong (≥16 chars); when
+    /// absent the static-key auth path is simply disabled.
     pub fn validate(&self) -> Result<(), String> {
         if self.server.port == 0 {
             return Err("Server port cannot be 0".to_string());
         }
 
-        // Validate static secret key — allow default only in development (see `application::auth::SecretValidator`)
-        crate::application::auth::SecretValidator::validate(
-            &self.auth.secret_key,
-            self.environment.is_development(),
-        )?;
+        if let Some(secret) = self.auth.effective_secret_key() {
+            crate::application::auth::SecretValidator::validate(secret)?;
+        }
 
         if self.limits.max_concurrent_requests == 0 {
             return Err("Max concurrent requests cannot be 0".to_string());
