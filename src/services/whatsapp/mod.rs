@@ -12,4 +12,4 @@ pub mod instance_manager;
 // Re-exports for convenience
 pub use chat::{ChatService, ChatServiceTrait};
 pub use instance::InstanceService;
-pub use instance_manager::InstanceManager;
+pub use instance_manager::{InstanceManager, StatusSnapshot};

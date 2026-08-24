@@ -7,7 +7,7 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     middleware::from_fn_with_state,
     response::{IntoResponse, Response},
-    Extension, Router,
+    Router,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -21,6 +21,84 @@ use super::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Flattened session view for templates
+#[derive(Clone)]
+pub struct SessionView {
+    pub csrf_token: String,
+    pub username: String,
+    pub role: String,
+    pub admin: bool,
+}
+
+/// Extractor: pulls `WebSession` from extensions and flattens for templates
+pub struct WebSessionExt(pub SessionView);
+
+impl std::ops::Deref for WebSessionExt {
+    type Target = SessionView;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[async_trait::async_trait]
+impl axum::extract::FromRequestParts<crate::services::Database> for WebSessionExt {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &crate::services::Database,
+    ) -> Result<Self, Self::Rejection> {
+        from_parts(parts)
+    }
+}
+
+#[async_trait::async_trait]
+impl axum::extract::FromRequestParts<crate::services::InstanceManager> for WebSessionExt {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &crate::services::InstanceManager,
+    ) -> Result<Self, Self::Rejection> {
+        from_parts(parts)
+    }
+}
+
+#[async_trait::async_trait]
+impl axum::extract::FromRequestParts<AppState> for WebSessionExt {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        from_parts(parts)
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn from_parts(parts: &mut axum::http::request::Parts) -> Result<WebSessionExt, Response> {
+    match parts.extensions.get::<WebSession>() {
+        Some(s) => {
+            let (username, role, admin) = match &s.user {
+                AuthenticatedUser::Secret => ("superadmin".to_string(), "admin".to_string(), true),
+                AuthenticatedUser::User { username, role, .. } => {
+                    let r = format!("{role:?}").to_lowercase();
+                    let admin = r == "admin";
+                    (username.clone(), r, admin)
+                }
+            };
+            Ok(WebSessionExt(SessionView {
+                csrf_token: s.csrf_token.clone(),
+                username,
+                role,
+                admin,
+            }))
+        }
+        None => Err(StatusCode::UNAUTHORIZED.into_response()),
+    }
+}
 
 #[derive(Template)]
 #[template(path = "web/login.html")]
@@ -89,7 +167,7 @@ pub async fn login_get(headers: HeaderMap) -> Response {
 }
 
 /// `GET /app` — guarded shell page (dashboard lands in #30)
-pub async fn shell(Extension(session): Extension<WebSession>) -> Response {
+pub async fn shell(session: WebSessionExt) -> Response {
     #[derive(Template)]
     #[template(path = "web/shell.html")]
     struct ShellTemplate {
@@ -100,21 +178,13 @@ pub async fn shell(Extension(session): Extension<WebSession>) -> Response {
         role: String,
         admin: bool,
     }
-    let (username, role, admin) = match &session.user {
-        AuthenticatedUser::Secret => ("superadmin".to_string(), "admin".to_string(), true),
-        AuthenticatedUser::User { username, role, .. } => {
-            let r = format!("{role:?}").to_lowercase();
-            let admin = r == "admin";
-            (username.clone(), r, admin)
-        }
-    };
     let tpl = ShellTemplate {
         title: "WAS Admin".into(),
         version: VERSION,
-        csrf: session.csrf_token,
-        username,
-        role,
-        admin,
+        csrf: session.csrf_token.clone(),
+        username: session.username.clone(),
+        role: session.role.clone(),
+        admin: session.admin,
     };
     (
         StatusCode::OK,
@@ -235,6 +305,59 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
         .route("/", axum::routing::get(shell))
         .route("/logout", axum::routing::post(logout))
         .route("/fragments/overview", axum::routing::get(overview_fragment))
+        // instances (#31)
+        .route(
+            "/instances",
+            axum::routing::get(super::instances::list_page),
+        )
+        .route(
+            "/instances",
+            axum::routing::post(super::instances::create_post),
+        )
+        .route(
+            "/fragments/instances",
+            axum::routing::get(super::instances::table_fragment),
+        )
+        .route(
+            "/instances/:id",
+            axum::routing::get(super::instances::detail_page),
+        )
+        .route(
+            "/fragments/instances/:id/status",
+            axum::routing::get(super::instances::status_fragment),
+        )
+        .route(
+            "/fragments/instances/:id/link",
+            axum::routing::get(super::instances::link_fragment),
+        )
+        .route(
+            "/fragments/instances/:id/qr.png",
+            axum::routing::get(super::instances::qr_png),
+        )
+        .route(
+            "/instances/:id/shot",
+            axum::routing::get(super::instances::shot_fragment),
+        )
+        .route(
+            "/fragments/instances/:id/screenshot.png",
+            axum::routing::get(super::instances::screenshot_png),
+        )
+        .route(
+            "/instances/:id/warmup",
+            axum::routing::post(super::instances::warmup_post),
+        )
+        .route(
+            "/instances/:id/reset",
+            axum::routing::post(super::instances::reset_post),
+        )
+        .route(
+            "/instances/:id/delete",
+            axum::routing::post(super::instances::delete_post),
+        )
+        .route(
+            "/instances/:id/config",
+            axum::routing::post(super::instances::config_post),
+        )
         .layer(axum::middleware::from_fn(csrf_middleware))
         .layer(from_fn_with_state(state.clone(), web_auth_middleware))
         .with_state(state);

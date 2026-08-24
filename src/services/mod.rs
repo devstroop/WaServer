@@ -11,4 +11,6 @@ pub mod whatsapp;
 pub use auth::{AuthCheckResult, AuthService, AuthServiceTrait};
 pub use database::Database;
 pub use messaging_ports::ManagerBrowserAdapter;
-pub use whatsapp::{ChatService, ChatServiceTrait, InstanceManager, InstanceService};
+pub use whatsapp::{
+    ChatService, ChatServiceTrait, InstanceManager, InstanceService, StatusSnapshot,
+};

@@ -6,8 +6,9 @@
 //! copies it onto every htmx request as `X-CSRF-Token`.
 
 use axum::{
+    body::Body,
     extract::Request,
-    http::StatusCode,
+    http::{header, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -20,9 +21,11 @@ pub fn derive_csrf(session_token: &str) -> String {
 }
 
 const CSRF_HEADER: &str = "x-csrf-token";
+const CSRF_FIELD: &str = "csrf=";
 
-/// Reject unsafe-method requests whose `X-CSRF-Token` does not match the
-/// token derived from the caller's session cookie. GET/HEAD/OPTIONS pass.
+/// Reject unsafe-method requests without a valid CSRF token. Accepted sources:
+/// `X-CSRF-Token` header (htmx shim) or a `csrf=` field in a small urlencoded
+/// body (no-JS fallback). GET/HEAD/OPTIONS pass.
 #[allow(clippy::result_large_err)]
 pub async fn csrf_middleware(request: Request, next: Next) -> Result<Response, Response> {
     let unsafe_method = !matches!(
@@ -43,23 +46,60 @@ pub async fn csrf_middleware(request: Request, next: Next) -> Result<Response, R
             .into_response());
     };
     let expected = derive_csrf(&token);
-    let provided = request
+    let provided_header = request
         .headers()
         .get(CSRF_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
 
-    if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
-        tracing::warn!("web request rejected — CSRF token mismatch");
-        return Err((
-            StatusCode::FORBIDDEN,
-            axum::response::Html(super::pages::error_fragment(
-                "Invalid or missing CSRF token.",
-            )),
-        )
-            .into_response());
+    if constant_time_eq(provided_header.as_bytes(), expected.as_bytes()) {
+        return Ok(next.run(request).await);
     }
-    Ok(next.run(request).await)
+
+    // Header mismatch/absent — try the form field (buffer small urlencoded bodies)
+    let is_form = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
+
+    if is_form {
+        let (parts, body) = request.into_parts();
+        match axum::body::to_bytes(body, 64 * 1024).await {
+            Ok(bytes) => {
+                let provided_field = extract_form_field(&bytes, CSRF_FIELD);
+                if constant_time_eq(provided_field.as_bytes(), expected.as_bytes()) {
+                    let request = Request::from_parts(parts, Body::from(bytes));
+                    return Ok(next.run(request).await);
+                }
+            }
+            Err(_) => return Err(csrf_reject()),
+        }
+    }
+
+    tracing::warn!("web request rejected — CSRF token mismatch");
+    Err(csrf_reject())
+}
+
+fn csrf_reject() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        axum::response::Html(super::pages::error_fragment(
+            "Invalid or missing CSRF token.",
+        )),
+    )
+        .into_response()
+}
+
+/// Scan urlencoded body bytes for a `name=value` pair (tokens are hex — no
+/// percent-decoding needed)
+fn extract_form_field(body: &[u8], prefix: &str) -> String {
+    for pair in body.split(|&b| b == b'&') {
+        if pair.starts_with(prefix.as_bytes()) {
+            return String::from_utf8_lossy(&pair[prefix.len()..]).into_owned();
+        }
+    }
+    String::new()
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {

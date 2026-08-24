@@ -7,6 +7,7 @@
 pub mod assets;
 pub mod csrf;
 pub mod guard;
+pub mod instances;
 pub mod pages;
 pub mod session;
 
