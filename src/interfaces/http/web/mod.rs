@@ -10,6 +10,7 @@ pub mod events;
 pub mod guard;
 pub mod instances;
 pub mod pages;
+pub mod send;
 pub mod session;
 pub mod users;
 

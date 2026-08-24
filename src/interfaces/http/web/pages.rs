@@ -384,6 +384,9 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
             "/instances/:id/send",
             axum::routing::post(super::instances::send_post),
         )
+        // global send console (#59)
+        .route("/send", axum::routing::get(super::send::page))
+        .route("/send", axum::routing::post(super::send::send_post))
         // users & tokens admin (#33)
         .route("/users", axum::routing::get(super::users::list_page))
         .route("/users", axum::routing::post(super::users::create_post))
