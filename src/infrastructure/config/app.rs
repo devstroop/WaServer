@@ -6,14 +6,21 @@ use super::env::EnvironmentConfig;
 /// Application configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
+    #[serde(default)]
     pub server: ServerConfig,
+    #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
     pub cache: CacheConfig,
+    #[serde(default)]
     pub cors: CorsConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+    #[serde(default)]
     pub limits: LimitsConfig,
+    #[serde(default = "default_environment")]
     pub environment: EnvironmentConfig,
     #[serde(default)]
     pub swagger: SwaggerConfig,
@@ -77,8 +84,18 @@ impl Default for SwaggerConfig {
 /// Server configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
+    #[serde(default = "default_host")]
     pub host: String,
+    #[serde(default = "default_port")]
     pub port: u16,
+}
+
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_port() -> u16 {
+    3000
 }
 
 /// Authentication configuration
@@ -134,13 +151,23 @@ impl AuthConfig {
 /// Logging configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LoggingConfig {
+    #[serde(default = "default_log_level")]
     pub level: String,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 /// Cache configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CacheConfig {
+    #[serde(default = "default_cache_ttl")]
     pub default_ttl_minutes: u64,
+}
+
+fn default_cache_ttl() -> u64 {
+    15
 }
 
 /// Storage/maintenance configuration
@@ -157,19 +184,105 @@ impl StorageConfig {
 }
 
 /// CORS configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CorsConfig {
+    #[serde(default = "default_cors_origins")]
     pub allow_origins: Vec<String>,
+    #[serde(default = "default_cors_methods")]
     pub allow_methods: Vec<String>,
+    #[serde(default = "default_cors_headers")]
     pub allow_headers: Vec<String>,
+}
+
+fn default_cors_origins() -> Vec<String> {
+    vec!["*".to_string()]
+}
+
+fn default_cors_methods() -> Vec<String> {
+    ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+fn default_cors_headers() -> Vec<String> {
+    vec!["authorization".to_string(), "content-type".to_string()]
 }
 
 /// Rate limiting and resource limits
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LimitsConfig {
+    #[serde(default = "default_max_concurrent")]
     pub max_concurrent_requests: usize,
+    #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
+    #[serde(default = "default_max_upload_size")]
     pub max_upload_size: usize,
+}
+
+fn default_max_concurrent() -> usize {
+    100
+}
+
+fn default_request_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_max_upload_size() -> usize {
+    10 * 1024 * 1024
+}
+
+// Section-level defaults (serde(default) on AppConfig fields)
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self { host: default_host(), port: default_port() }
+    }
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            secret_key: None,
+            session_ttl_hours: 168,
+            rate_limits: AuthRateLimits::default(),
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self { level: default_log_level() }
+    }
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self { default_ttl_minutes: default_cache_ttl() }
+    }
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            allow_origins: default_cors_origins(),
+            allow_methods: default_cors_methods(),
+            allow_headers: default_cors_headers(),
+        }
+    }
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_concurrent_requests: default_max_concurrent(),
+            request_timeout_ms: default_request_timeout_ms(),
+            max_upload_size: default_max_upload_size(),
+        }
+    }
+}
+
+fn default_environment() -> crate::infrastructure::config::env::EnvironmentConfig {
+    crate::infrastructure::config::env::EnvironmentConfig::default()
 }
 
 impl Default for AppConfig {
