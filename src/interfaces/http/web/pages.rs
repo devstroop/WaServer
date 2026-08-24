@@ -233,6 +233,7 @@ fn format_uptime(secs: u64) -> String {
 pub struct AppState {
     pub db: Database,
     pub manager: Arc<crate::services::InstanceManager>,
+    pub session_ttl_hours: u64,
 }
 
 /// `GET /app/fragments/overview` — polled dashboard fragment (#30)
@@ -292,18 +293,23 @@ pub async fn overview_fragment(State(app): State<AppState>) -> Response {
 /// `/app` router: public login + guarded shell/logout/fragments
 pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManager>) -> Router<()> {
     let state = AppState {
+        session_ttl_hours: auth_state.session_ttl_hours,
         db: auth_state.db.clone(),
         manager,
     };
 
     let public = Router::new()
         .route("/login", axum::routing::get(login_get).post(login_post))
-        .with_state(auth_state.db);
+        .with_state(auth_state);
 
     // Layer order: auth (outer) runs before csrf (inner); both wrap handlers.
     let protected = Router::new()
         .route("/", axum::routing::get(shell))
         .route("/logout", axum::routing::post(logout))
+        .route(
+            "/logout-all",
+            axum::routing::post(super::session::logout_all),
+        )
         .route("/fragments/overview", axum::routing::get(overview_fragment))
         // instances (#31)
         .route(

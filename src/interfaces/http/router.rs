@@ -110,7 +110,7 @@ pub fn build_full_router(
             messaging::send_message,
             users::list_users, users::create_user, users::get_user, users::update_user, users::delete_user,
             users::create_access_token, users::list_access_tokens, users::delete_access_token, users::get_user_instances, users::assign_instance, users::remove_instance, users::get_me,
-            auth::register, auth::login, auth::logout, auth::validate,
+            auth::register, auth::login, auth::logout, auth::logout_all, auth::validate,
         ),
         components(schemas(
             health::HealthResponse, health::ServiceHealth, health::StatusResponse,
@@ -148,7 +148,11 @@ pub fn build_full_router(
         }
     }
 
-    let auth_state = AuthState::new(config.auth.secret_key.clone(), auth_db.clone());
+    let auth_state = AuthState::new(
+        config.auth.secret_key.clone(),
+        auth_db.clone(),
+        config.auth.session_ttl_hours,
+    );
     let health_routes = Router::new()
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
@@ -209,12 +213,16 @@ pub fn build_full_router(
         .route("/register", post(auth::register))
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
+        .route("/logout-all", post(auth::logout_all))
         .route("/validate", get(auth::validate))
-        .with_state(auth_db.clone());
+        .with_state(auth_state.clone());
 
     // Web admin UI (#28) — cookie-session pages under /app + embedded assets
-    let web_auth_state =
-        crate::middleware::auth::AuthState::new(config.auth.secret_key.clone(), auth_db.clone());
+    let web_auth_state = crate::middleware::auth::AuthState::new(
+        config.auth.secret_key.clone(),
+        auth_db.clone(),
+        config.auth.session_ttl_hours,
+    );
 
     let mut app = Router::new();
     app = app.nest("/api", health_routes);
