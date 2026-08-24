@@ -1,37 +1,9 @@
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 
 // ============================================================================
-// Request/Response Models (send-only)
+// Shared chat models
 // ============================================================================
-
-/// Query parameters for sending a message
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct SendMessageParams {
-    /// Recipient phone number (e.g., 919876543210)
-    pub phone: String,
-    /// Message text or caption for file attachment (optional if sending file only)
-    #[serde(default)]
-    pub text: Option<String>,
-}
-
-/// Request body for file upload (multipart/form-data).
-/// Use this to upload file attachments.
-#[derive(Debug, ToSchema)]
-pub struct SendMessageRequest {
-    /// File attachment (image, video, document, etc.)
-    #[schema(format = Binary, nullable = true)]
-    pub file: Option<String>,
-}
-
-/// Response for sending a message
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct SendMessageResponse {
-    /// Status message
-    pub status: String,
-    /// Message ID for tracking
-    pub message_id: String,
-}
 
 /// Standardized error response returned by all API endpoints
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

@@ -90,11 +90,10 @@ pub fn build_full_router(
     instance_manager: Arc<InstanceManager>,
     auth_db: Database,
 ) -> Router {
-    use crate::api::{auth, chat, health, instances, users, whatsapp};
-    use crate::models::{
-        auth::*, chat::ErrorResponse, chat::SendMessageRequest, chat::SendMessageResponse,
-        instance::*, user::*,
-    };
+    use crate::api::{auth, health, instances, users, whatsapp};
+    use crate::interfaces::http::dto::messaging::{SendMessageRequestDto, SendMessageResponseDto};
+    use crate::interfaces::http::handlers::messaging;
+    use crate::models::{auth::*, chat::ErrorResponse, instance::*, user::*};
     use axum::routing::{delete, get, post, put};
     use utoipa::{
         openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
@@ -108,7 +107,7 @@ pub fn build_full_router(
             instances::list_instances, instances::create_instance, instances::get_instance, instances::delete_instance,
             instances::warmup_instance, instances::screenshot, instances::reset_instance, instances::get_instance_config, instances::update_instance_config,
             whatsapp::get_instance_status, whatsapp::get_qr_code, whatsapp::link_phone, whatsapp::unlink,
-            chat::send_message,
+            messaging::send_message,
             users::list_users, users::create_user, users::get_user, users::update_user, users::delete_user,
             users::create_access_token, users::list_access_tokens, users::delete_access_token, users::get_user_instances, users::assign_instance, users::remove_instance, users::get_me,
             auth::register, auth::login, auth::logout, auth::validate,
@@ -116,7 +115,7 @@ pub fn build_full_router(
         components(schemas(
             health::HealthResponse, health::ServiceHealth, health::StatusResponse,
             AuthStatusResponse, QrCodeResponse, PhoneLoginRequest, PhoneAuthResponse, SuccessResponse, ErrorResponse,
-            SendMessageRequest, SendMessageResponse,
+            SendMessageRequestDto, SendMessageResponseDto,
             CreateInstanceRequest, CreateInstanceResponse, InstanceListResponse, InstanceInfo, InstanceStatus,
             DeleteInstanceResponse, DeleteInstanceQuery, InstanceActionResponse, ListInstancesQuery, BrowserOverrides,
             InstanceConfig, InstanceBrowserConfig, InstanceRateLimits, UpdateInstanceConfigRequest, UpdateBrowserConfig, UpdateRateLimits,
@@ -175,7 +174,7 @@ pub fn build_full_router(
         .route("/:instance_id/link/qr", get(whatsapp::get_qr_code))
         .route("/:instance_id/link/phone", post(whatsapp::link_phone))
         .route("/:instance_id/unlink", delete(whatsapp::unlink))
-        .route("/:instance_id/send", post(chat::send_message))
+        .route("/:instance_id/send", post(messaging::send_message))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,

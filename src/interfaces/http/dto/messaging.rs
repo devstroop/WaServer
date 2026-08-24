@@ -18,9 +18,7 @@ impl SendMessageRequestDto {
         if self.phone.trim().is_empty() {
             return Err("phone is required".into());
         }
-        if !self.phone.starts_with('+') {
-            return Err("phone must be E.164".into());
-        }
+        // E.164 normalization/validation is owned by the SendService use-case
         Ok(())
     }
 }
@@ -28,6 +26,8 @@ impl SendMessageRequestDto {
 /// Response for successful send
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SendMessageResponseDto {
+    /// Legacy-compatible status ("sent")
+    pub status: String,
     pub success: bool,
     pub message_id: String,
     pub phone: String,
@@ -45,8 +45,15 @@ mod tests {
         }
         .validate()
         .is_ok());
+        // E164 enforcement lives in the use-case; DTO only requires non-empty
         assert!(SendMessageRequestDto {
             phone: "123".into(),
+            text: None
+        }
+        .validate()
+        .is_ok());
+        assert!(SendMessageRequestDto {
+            phone: "".into(),
             text: None
         }
         .validate()
