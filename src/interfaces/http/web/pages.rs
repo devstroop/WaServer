@@ -14,6 +14,8 @@ use uuid::Uuid;
 
 use crate::{middleware::auth::AuthState, models::auth::AuthenticatedUser, services::Database};
 
+const SSE_BUF: usize = 32;
+
 use super::{
     csrf::csrf_middleware,
     guard::web_auth_middleware,
@@ -241,11 +243,10 @@ pub struct AppState {
     pub db: Database,
     pub manager: Arc<crate::services::InstanceManager>,
     pub session_ttl_hours: u64,
+    pub events: tokio::sync::broadcast::Sender<String>,
 }
 
-/// `GET /app/fragments/overview` — polled dashboard fragment (#30)
-/// Cheap on purpose: in-memory locks + atomic counters, no browser round-trips.
-pub async fn overview_fragment(State(app): State<AppState>) -> Response {
+pub async fn render_overview_html(app: &AppState) -> String {
     use crate::models::instance::InstanceStatus;
 
     let snapshots = app.manager.list_status_snapshots().await;
@@ -291,20 +292,26 @@ pub async fn overview_fragment(State(app): State<AppState>) -> Response {
         errored,
         instances: rows,
     };
-    (
-        StatusCode::OK,
-        axum::response::Html(tpl.render().unwrap_or_default()),
-    )
-        .into_response()
+    tpl.render().unwrap_or_default()
+}
+
+/// `GET /app/fragments/overview` — polled fragment (kept for polling fallback; SSE is primary)
+pub async fn overview_fragment(State(app): State<AppState>) -> Response {
+    let html = render_overview_html(&app).await;
+    (StatusCode::OK, axum::response::Html(html)).into_response()
 }
 
 /// `/app` router: public login + guarded shell/logout/fragments
 pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManager>) -> Router<()> {
+    let (events, _) = tokio::sync::broadcast::channel(SSE_BUF);
     let state = AppState {
         session_ttl_hours: auth_state.session_ttl_hours,
         db: auth_state.db.clone(),
-        manager,
+        manager: manager.clone(),
+        events: events.clone(),
     };
+    // background broadcaster for SSE
+    super::events::spawn_overview_broadcaster(state.clone());
 
     let public = Router::new()
         .route("/login", axum::routing::get(login_get).post(login_post))
@@ -319,6 +326,7 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
             axum::routing::post(super::session::logout_all),
         )
         .route("/fragments/overview", axum::routing::get(overview_fragment))
+        .route("/events", axum::routing::get(super::events::events))
         // instances (#31)
         .route(
             "/instances",

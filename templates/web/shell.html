@@ -32,8 +32,8 @@
     </header>
     <main class="dt-layout-content" id="content">
       <div id="overview"
-           hx-get="/app/fragments/overview"
-           hx-trigger="load, every 5s"
+           hx-get="/app/fragments/overview" hx-trigger="load"
+           hx-sse="connect:/app/events" hx-sse:swap="overview"
            hx-swap="innerHTML">
         <p class="dt-text-muted">Loading…</p>
       </div>
