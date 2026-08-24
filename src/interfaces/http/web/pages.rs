@@ -358,6 +358,10 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
             "/instances/:id/config",
             axum::routing::post(super::instances::config_post),
         )
+        .route(
+            "/instances/:id/send",
+            axum::routing::post(super::instances::send_post),
+        )
         .layer(axum::middleware::from_fn(csrf_middleware))
         .layer(from_fn_with_state(state.clone(), web_auth_middleware))
         .with_state(state);
