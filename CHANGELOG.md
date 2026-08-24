@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-24
+
+### Fixed
+- Minimal configs (e.g. just `[server]` + `[auth]`) no longer fail boot with `missing field allow_methods` — every top-level section/field now carries serde defaults matching `AppConfig::default()` (#56)
+- `data/attachments/.staging` runtime working dir is now properly ignored via `.gitignore` (stray file removed)
+
 ## [0.5.0] - 2026-08-24
 
 Web admin UI release: single-binary server-rendered dashboard (htmx 4 + uikit), messaging hardening, and pre-production security posture.

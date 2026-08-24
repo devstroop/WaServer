@@ -67,3 +67,4 @@ web/.vite/
 
 # Build outputs
 *.localdata/
+data/
