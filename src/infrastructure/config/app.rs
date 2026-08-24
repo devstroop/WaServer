@@ -77,8 +77,18 @@ impl Default for SwaggerConfig {
 /// Server configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
+    #[serde(default = "default_host")]
     pub host: String,
+    #[serde(default = "default_port")]
     pub port: u16,
+}
+
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_port() -> u16 {
+    3000
 }
 
 /// Authentication configuration
@@ -134,13 +144,23 @@ impl AuthConfig {
 /// Logging configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LoggingConfig {
+    #[serde(default = "default_log_level")]
     pub level: String,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 /// Cache configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CacheConfig {
+    #[serde(default = "default_cache_ttl")]
     pub default_ttl_minutes: u64,
+}
+
+fn default_cache_ttl() -> u64 {
+    15
 }
 
 /// Storage/maintenance configuration
@@ -167,9 +187,24 @@ pub struct CorsConfig {
 /// Rate limiting and resource limits
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LimitsConfig {
+    #[serde(default = "default_max_concurrent")]
     pub max_concurrent_requests: usize,
+    #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
+    #[serde(default = "default_max_upload_size")]
     pub max_upload_size: usize,
+}
+
+fn default_max_concurrent() -> usize {
+    100
+}
+
+fn default_request_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_max_upload_size() -> usize {
+    10 * 1024 * 1024
 }
 
 impl Default for AppConfig {
