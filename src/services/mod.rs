@@ -10,5 +10,5 @@ pub mod whatsapp;
 // Re-exports for convenience
 pub use auth::{AuthCheckResult, AuthService, AuthServiceTrait};
 pub use database::Database;
-pub use messaging_ports::{ManagerBrowserAdapter, ManagerRateAdapter};
+pub use messaging_ports::ManagerBrowserAdapter;
 pub use whatsapp::{ChatService, ChatServiceTrait, InstanceManager, InstanceService};
