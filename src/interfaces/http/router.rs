@@ -213,11 +213,20 @@ pub fn build_full_router(
         .route("/validate", get(auth::validate))
         .with_state(auth_db.clone());
 
+    // Web admin UI (#28) — cookie-session pages under /app + embedded assets
+    let web_auth_state =
+        crate::middleware::auth::AuthState::new(config.auth.secret_key.clone(), auth_db.clone());
+
     let mut app = Router::new();
     app = app.nest("/api", health_routes);
     app = app.nest("/api/v1/instances", instances_routes);
     app = app.nest("/api/v1/auth", auth_routes);
     app = app.nest("/api/v1/users", users_routes);
+    app = app.nest("/app", crate::interfaces::http::web::router(web_auth_state));
+    app = app.nest(
+        "/assets/web",
+        crate::interfaces::http::web::assets::router(),
+    );
 
     if config.swagger.enabled {
         use utoipa_swagger_ui::SwaggerUi;
