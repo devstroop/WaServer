@@ -1,0 +1,26 @@
+<div class="dt-table-wrap">
+  <table class="dt-table">
+    <thead>
+      <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for row in users %}
+      <tr>
+        <td>{{ row.username }}</td>
+        <td>{{ row.email }}</td>
+        <td><span class="dt-badge {{ row.badge_class }}">{{ row.role }}</span></td>
+        <td>{% if row.is_active %}<span class="dt-badge dt-badge--success">active</span>{% else %}<span class="dt-badge dt-badge--danger">inactive</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a class="dt-button dt-button--ghost dt-button--sm" href="/app/users/{{ row.id }}">Manage</a>
+          <form style="display:inline;" hx-post="/app/users/{{ row.id }}/delete" hx-swap="none"
+                hx-confirm="Delete user '{{ row.username }}'? Their tokens stop working immediately."
+                hx-on::after-request="if (event.detail.successful) { htmx.ajax('GET','/app/fragments/users',{target:'#user-table',swap:'innerHTML'}); }">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="dt-button dt-button--ghost dt-button--sm" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

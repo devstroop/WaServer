@@ -21,18 +21,39 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+/// Cheap dashboard snapshot — metadata + runtime status, no browser calls (#30)
+#[derive(Debug, Clone)]
+pub struct StatusSnapshot {
+    pub id: Uuid,
+    pub phone: Option<String>,
+    pub name: Option<String>,
+    pub status: crate::models::instance::InstanceStatus,
+}
+
 /// Manages multiple WhatsApp instances
+///
+/// Facade over `application::instance::InstanceRegistry` (#5) — the registry owns
+/// metadata/config/phone-index state; this struct keeps `Arc<InstanceService>`
+/// handles (browser lifecycle) and delegates persistence to `SqliteInstanceStore`.
 pub struct InstanceManager {
     /// Active instance services (keyed by UUID)
     instances: Arc<RwLock<HashMap<InstanceId, Arc<InstanceService>>>>,
     /// Phone number to UUID mapping for lookups
     phone_to_id: Arc<RwLock<HashMap<String, InstanceId>>>,
+    /// Application registry — single source for metadata + config + phone index (#5)
+    pub registry: Arc<crate::application::instance::InstanceRegistry>,
+    /// SQLite store adapter implementing InstanceStore port (#5)
+    pub store: Arc<crate::infrastructure::persistence::SqliteInstanceStore>,
     /// Base directory for all account data
     base_dir: PathBuf,
     /// App configuration
     config: Arc<AppConfig>,
     /// Persistent database (SQLite)
     db: Database,
+    /// Per-instance metrics registry (#6 observability)
+    pub observability: Arc<crate::shared::observability::instance_metrics::InstanceMetricsRegistry>,
+    /// Shared send rate limiter — one instance for the whole process (#7)
+    pub rate_limiter: Arc<dyn crate::application::messaging::ports::RateLimitPort + Send + Sync>,
 }
 
 impl InstanceManager {
@@ -53,12 +74,31 @@ impl InstanceManager {
 
         info!("InstanceManager initialized with base_dir: {:?}", base_dir);
 
+        let registry = Arc::new(crate::application::instance::InstanceRegistry::new());
+        let rate_limiter = Arc::new(
+            crate::infrastructure::messaging::InMemoryRateLimiter::configured(
+                Arc::new(crate::infrastructure::messaging::RegistryRateLimits(
+                    registry.clone(),
+                )),
+                60,
+                1000,
+            ),
+        );
+
         Self {
             instances: Arc::new(RwLock::new(HashMap::new())),
             phone_to_id: Arc::new(RwLock::new(HashMap::new())),
+            registry,
+            store: Arc::new(crate::infrastructure::persistence::SqliteInstanceStore(
+                db.clone(),
+            )),
             base_dir,
             config,
             db,
+            observability: Arc::new(
+                crate::shared::observability::instance_metrics::InstanceMetricsRegistry::new(),
+            ),
+            rate_limiter,
         }
     }
 
@@ -68,6 +108,9 @@ impl InstanceManager {
     }
 
     /// Create a new account
+    ///
+    /// Delegates persistence to `SqliteInstanceStore::create_instance_row` and
+    /// state to `InstanceRegistry::register` (#5). Phone conflict → typed error.
     pub async fn create_instance(
         &self,
         request: CreateInstanceRequest,
@@ -76,7 +119,7 @@ impl InstanceManager {
         let phone_number = validate_phone_number(&request.phone_number)
             .map_err(|e| anyhow!("Invalid phone number: {}", e))?;
 
-        // Check phone uniqueness via database
+        // Check phone uniqueness via store (DB is source of truth)
         if self.db.get_instance_by_phone(&phone_number)?.is_some() {
             return Err(anyhow!("Phone number '{}' already exists", phone_number));
         }
@@ -89,14 +132,16 @@ impl InstanceManager {
         let instance_name = request.instance_name.clone();
         let idle_timeout = request.idle_timeout.unwrap_or(300);
 
-        // Persist to database first
-        self.db.create_instance(
-            &instance_id.to_string(),
-            &phone_number,
-            &instance_name,
-            &instance_dir.to_string_lossy(),
-            idle_timeout,
-        )?;
+        // Persist to database via store adapter (#5)
+        self.store
+            .create_instance_row(
+                instance_id,
+                &phone_number,
+                &instance_name,
+                instance_dir.clone(),
+                idle_timeout,
+            )
+            .await?;
 
         // Create account config
         let setup_config = InstanceSetupConfig {
@@ -119,6 +164,26 @@ impl InstanceManager {
             let mut phone_map = self.phone_to_id.write().await;
             phone_map.insert(phone_number.clone(), instance_id);
         }
+
+        // Register in application registry (metadata + config + phone index) (#5)
+        let mut metadata = crate::domain::instance::InstanceMetadata::new(
+            instance_id,
+            Some(phone_number.clone()),
+            Some(instance_name.clone()),
+        );
+        metadata.phone_number = Some(phone_number.clone());
+        let config = crate::domain::instance::InstanceConfig {
+            instance_id: Some(instance_id),
+            instance_name: Some(instance_name.clone()),
+            idle_timeout,
+            browser: Default::default(),
+            rate_limits: Default::default(),
+        };
+        if let Err(e) = self.registry.register(metadata, config).await {
+            warn!("Registry register failed for '{}': {}", instance_id, e);
+        }
+        // Track warmup metric for new instances (#6)
+        let _ = self.observability.for_instance(instance_id).await;
 
         info!(
             "Created account '{}' (phone: {})",
@@ -217,7 +282,7 @@ impl InstanceManager {
         }
 
         // Sort by ID for consistent ordering
-        account_infos.sort_by(|a, b| a.id.cmp(&b.id));
+        account_infos.sort_by_key(|a| a.id);
 
         InstanceListResponse {
             total: account_infos.len(),
@@ -226,6 +291,9 @@ impl InstanceManager {
     }
 
     /// Delete an instance
+    ///
+    /// Delegates DB removal to `SqliteInstanceStore::delete_instance_row` and
+    /// registry cleanup via `InstanceRegistry::remove` (#5).
     pub async fn delete_instance(&self, id: &str, delete_data: bool) -> Result<InstanceId> {
         // Find the instance (by UUID or phone)
         let account = self
@@ -236,8 +304,18 @@ impl InstanceManager {
         let instance_id = account.id;
         let phone_number = account.phone_number().map(|s| s.to_string());
 
-        // Remove from database
-        self.db.delete_instance(&instance_id.to_string())?;
+        // Remove from database via store adapter (#5)
+        self.store.delete_instance_row(instance_id).await?;
+
+        // Remove from registry (metadata + config + phone index) (#5)
+        if self.registry.remove(instance_id).await.is_none() {
+            warn!(
+                "Registry remove: instance '{}' was not registered",
+                instance_id
+            );
+        }
+        // Remove observability counters (#6)
+        self.observability.remove_instance(instance_id).await;
 
         // Remove from accounts map
         {
@@ -344,6 +422,16 @@ impl InstanceManager {
                         let mut phone_map = self.phone_to_id.write().await;
                         phone_map.insert(record.phone_number.clone(), instance_id);
                     }
+                    // Register in application registry (#5)
+                    let mut metadata = crate::domain::instance::InstanceMetadata::new(
+                        instance_id,
+                        Some(record.phone_number.clone()),
+                        Some(record.instance_name.clone()),
+                    );
+                    metadata.phone_number = Some(record.phone_number.clone());
+                    if let Err(e) = self.registry.register(metadata, Default::default()).await {
+                        warn!("Registry register failed for '{}': {}", instance_id, e);
+                    }
                     newly_loaded.push(instance_id);
                     info!(
                         "Loaded account '{}' (phone: {}) from database",
@@ -351,7 +439,11 @@ impl InstanceManager {
                     );
                 }
                 Err(e) => {
-                    error!("Failed to load account '{}': {}", instance_id, e);
+                    // #6: log with context but continue discovery (no silent swallow)
+                    error!(
+                        "Failed to load account '{}' (phone: {}): {}",
+                        instance_id, record.phone_number, e
+                    );
                 }
             }
         }
@@ -369,6 +461,28 @@ impl InstanceManager {
     /// Get account count
     pub async fn count(&self) -> usize {
         self.instances.read().await.len()
+    }
+
+    /// Cheap per-instance status snapshot for the web dashboard (#30).
+    /// Reads in-memory locks only — never touches the browser (unlike `list_instances`,
+    /// which performs auth checks per running instance).
+    pub async fn list_status_snapshots(&self) -> Vec<StatusSnapshot> {
+        let metas = self.registry.list().await;
+        let mut out = Vec::with_capacity(metas.len());
+        for m in metas {
+            let status = match self.instances.read().await.get(&m.id) {
+                Some(svc) => svc.status().await,
+                None => crate::models::instance::InstanceStatus::Sleeping,
+            };
+            out.push(StatusSnapshot {
+                id: m.id,
+                phone: m.phone_number,
+                name: m.instance_name,
+                status,
+            });
+        }
+        out.sort_by_key(|s| s.id);
+        out
     }
 
     /// Check if an instance exists (by UUID or phone)

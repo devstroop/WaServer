@@ -66,4 +66,4 @@ web/.vite/
 .yarn
 
 # Build outputs
-*.local
+*.localdata/

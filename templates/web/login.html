@@ -1,0 +1,34 @@
+{% extends "web/base.html" %}
+{% block body %}
+<main class="dt-login">
+  <form class="dt-card dt-card--elevated dt-login-card"
+        hx-post="/app/login{% if let Some(n) = next %}?next={{ n }}{% endif %}"
+        hx-target="#login-feedback"
+        hx-swap="innerHTML"
+        data-dt-form>
+    <div class="dt-card-header">
+      <h1 class="dt-login-title">WAS Admin</h1>
+      <p class="dt-login-subtitle">WhatsApp Server v{{ version }}</p>
+    </div>
+    <div class="dt-card-body">
+      <div id="login-feedback" aria-live="polite"></div>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="dt-field">
+        <label class="dt-field-label" for="username">Username or email</label>
+        <input class="dt-input" type="text" id="username" name="username"
+               autocomplete="username" required data-dt-required
+               data-dt-required-message="Username is required">
+      </div>
+      <div class="dt-field">
+        <label class="dt-field-label" for="password">Password</label>
+        <input class="dt-input" type="password" id="password" name="password"
+               autocomplete="current-password" required data-dt-required
+               data-dt-required-message="Password is required">
+      </div>
+      <button class="dt-button dt-button--primary dt-button--full-width" type="submit">
+        Sign in
+      </button>
+    </div>
+  </form>
+</main>
+{% endblock %}

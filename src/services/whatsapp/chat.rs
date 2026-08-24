@@ -842,7 +842,6 @@ impl ChatService {
             .first_or_octet_stream()
             .to_string()
     }
-
 }
 
 #[async_trait]

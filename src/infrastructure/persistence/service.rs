@@ -213,6 +213,20 @@ impl Database {
         Ok(())
     }
 
+    /// Update idle_timeout for an instance (part of #6 — config updates without full row rewrite).
+    pub fn update_idle_timeout(&self, id: &str, idle_timeout: u64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "UPDATE instance SET idle_timeout = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![idle_timeout as i64, &now, id],
+        )
+        .map_err(|e| anyhow!("Failed to update idle_timeout: {}", e))?;
+
+        Ok(())
+    }
+
     /// Delete an instance record.
     pub fn delete_instance(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
@@ -439,10 +453,7 @@ impl Database {
 
         params.push(Box::new(id.to_string()));
 
-        let query = format!(
-            "UPDATE user SET {} WHERE id = ?",
-            updates.join(", ")
-        );
+        let query = format!("UPDATE user SET {} WHERE id = ?", updates.join(", "));
 
         let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         conn.execute(&query, params_refs.as_slice())
@@ -496,7 +507,10 @@ impl Database {
     }
 
     /// Get user by access token hash (for API authentication).
-    pub fn get_user_by_access_token(&self, token_hash: &str) -> Result<Option<(UserRecord, AccessTokenRecord)>> {
+    pub fn get_user_by_access_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<(UserRecord, AccessTokenRecord)>> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let mut stmt = conn
@@ -574,6 +588,19 @@ impl Database {
             .map_err(|e| anyhow!("Failed to collect access tokens: {}", e))?;
 
         Ok(records)
+    }
+
+    /// Delete every "Web Session" token for a user (logout-all, #42).
+    /// Returns the number of sessions revoked.
+    pub fn delete_user_web_sessions(&self, user_id: &str) -> Result<usize> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let n = conn
+            .execute(
+                "DELETE FROM access_token WHERE user_id = ?1 AND name = 'Web Session'",
+                rusqlite::params![user_id],
+            )
+            .map_err(|e| anyhow!("Failed to delete web sessions: {}", e))?;
+        Ok(n)
     }
 
     /// Delete an access token.

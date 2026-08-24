@@ -39,7 +39,10 @@ fn migrate_user_table(conn: &Connection) -> Result<()> {
 
     if !has_password_hash {
         info!("Migrating user table: adding password_hash column");
-        conn.execute("ALTER TABLE user ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''", [])?;
+        conn.execute(
+            "ALTER TABLE user ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
     }
 
     // Create indexes after columns exist

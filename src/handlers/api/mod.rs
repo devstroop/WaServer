@@ -8,9 +8,6 @@ pub mod instances;
 /// WhatsApp instance operations API (status, QR, linking)
 pub mod whatsapp;
 
-/// Chat/messaging API handlers (send message)
-pub mod chat;
-
 /// Health check and metrics handlers (health, ready, live, metrics endpoints)
 pub mod health;
 

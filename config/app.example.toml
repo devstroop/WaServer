@@ -18,8 +18,14 @@ args = [
 ]
 
 [auth]
-# Static secret key for API authentication (CHANGE IN PRODUCTION)
-secret_key = "change-this-secret-key-in-production"
+# Static superadmin key — OPTIONAL. When set (≥16 chars), Bearer <key> grants
+# superadmin access. When omitted, static-key auth is disabled and access is
+# via user access tokens only. No default key exists.
+# secret_key = "set-a-long-random-secret-here"
+
+[auth.rate_limits]
+max_failures = 5
+window_minutes = 15
 
 [logging]
 level = "info"
@@ -27,6 +33,9 @@ level = "info"
 
 [cache]
 default_ttl_minutes = 15
+
+[storage]
+staging_ttl_hours = 24
 
 [cors]
 allow_origins = ["*"]

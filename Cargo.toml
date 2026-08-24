@@ -1,6 +1,6 @@
 [package]
 name = "was"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
 description = "WAS (WhatsAppServer) - A minimal WhatsApp Web automation server built in Rust with REST API for sending messages"
@@ -88,10 +88,16 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
 utoipa-swagger-ui = { version = "7.0", features = ["axum"] }
 
+# Web UI — server-rendered templates + embedded static assets (#28)
+askama = "0.12"
+rust-embed = "8"
+
 [dev-dependencies]
 tower-test = "0.4"
 tokio-test = "0.4"
 tempfile = "3.0"
+reqwest = { version = "0.11", features = ["json"] }
+anyhow = "1.0"
 
 # ============================================================================
 # Build Profiles

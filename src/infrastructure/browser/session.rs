@@ -202,7 +202,7 @@ impl SessionManager {
         }
 
         // Sort by authentication time (newest first)
-        session_files.sort_by(|a, b| b.1.cmp(&a.1));
+        session_files.sort_by_key(|(_, ts)| std::cmp::Reverse(*ts));
 
         // Delete old session files
         for (path, _) in session_files.into_iter().skip(keep_count) {

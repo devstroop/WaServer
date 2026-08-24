@@ -1,5 +1,2 @@
-#[allow(clippy::module_inception)]
-pub mod auth;
-
-// Re-export auth types for easier access
-pub use auth::{AuthCheckResult, AuthService, AuthServiceTrait};
+//! Auth — shim, canonical is `crate::infrastructure::security`
+pub use crate::infrastructure::security::*;
