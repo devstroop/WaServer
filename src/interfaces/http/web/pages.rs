@@ -381,6 +381,10 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
             axum::routing::post(super::users::delete_post),
         )
         .route(
+            "/users/:id/update",
+            axum::routing::post(super::users::update_post),
+        )
+        .route(
             "/users/:id/tokens",
             axum::routing::post(super::users::create_token_post),
         )

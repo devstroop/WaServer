@@ -206,6 +206,101 @@ pub async fn delete_post(
     }
 }
 
+/// `POST /app/users/:id/update` — role change, activate/deactivate, password reset (#45)
+pub async fn update_post(
+    State(app): State<super::pages::AppState>,
+    session: WebSessionExt,
+    Path(user_id): Path<String>,
+    Form(form): Form<UpdateUserForm>,
+) -> Response {
+    if require_admin(&session).is_err() {
+        return forbidden_fragment();
+    }
+    let Ok(Some(target)) = app.db.get_user(&user_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            axum::response::Html(error_fragment("User not found.")),
+        )
+            .into_response();
+    };
+
+    // Parse form fields
+    let new_role = match form.role.as_deref() {
+        Some("admin") => Some(crate::domain::identity::UserRole::Admin),
+        Some("user") => Some(crate::domain::identity::UserRole::User),
+        _ => None,
+    };
+    let is_active = match form.is_active.as_deref() {
+        Some("on") | Some("true") => Some(true),
+        Some("false") | Some("") => Some(false),
+        _ => None,
+    };
+    let password_hash = match form.password.as_deref() {
+        Some(p) if !p.is_empty() => {
+            if p.len() < 8 {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::response::Html(error_fragment("Password must be at least 8 characters.")),
+                )
+                    .into_response();
+            }
+            Some(crate::middleware::auth::hash_password(p))
+        }
+        _ => None,
+    };
+
+    // Self-demotion guard: an admin cannot strip their own admin role
+    if target.username == session.username {
+        if new_role == Some(crate::domain::identity::UserRole::User) && session.admin {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::response::Html(error_fragment("You cannot revoke your own admin role.")),
+            )
+                .into_response();
+        }
+        if is_active == Some(false) {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::response::Html(error_fragment("You cannot deactivate your own account.")),
+            )
+                .into_response();
+        }
+    }
+
+    match app.db.update_user(
+        &user_id,
+        None,
+        None,
+        password_hash.as_deref(),
+        new_role,
+        is_active,
+    ) {
+        Ok(()) => {
+            // Password change kills existing web sessions (#42 acceptance)
+            if password_hash.is_some() {
+                let revoked = app.db.delete_user_web_sessions(&user_id).unwrap_or(0);
+                tracing::info!(user_id = %user_id, revoked, "password reset — web sessions revoked");
+            }
+            toast("success", "User updated.")
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::response::Html(error_fragment(&format!("Update failed: {e}"))),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserForm {
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub is_active: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "web/_toast.html")]
 pub struct ToastFragment {

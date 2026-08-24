@@ -45,6 +45,42 @@
       </section>
 
       <section class="dt-card" style="margin-bottom:16px;">
+        <div class="dt-card-header"><h2>Manage</h2></div>
+        <div class="dt-card-body">
+          {% if user_name == username %}
+          <p class="dt-text-muted" style="margin-top:0;">You are viewing your own account — role and status changes are disabled.</p>
+          {% endif %}
+          <form hx-post="/app/users/{{ user_id }}/update"
+                hx-target="#edit-feedback" hx-swap="innerHTML">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <fieldset {% if user_name == username %}disabled{% endif %} style="border:0; padding:0; margin:0;">
+              <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="dt-field" style="margin:0;">
+                  <label class="dt-field-label" for="edit-role">Role</label>
+                  <select class="dt-input" id="edit-role" name="role">
+                    <option value="user" {% if user_role == "user" %}selected{% endif %}>user</option>
+                    <option value="admin" {% if user_role == "admin" %}selected{% endif %}>admin</option>
+                  </select>
+                </div>
+                <label class="dt-theme-row" style="margin-bottom:8px;">
+                  <input type="checkbox" name="is_active" value="on" {% if is_active %}checked{% endif %}>
+                  <span>Active</span>
+                </label>
+              </div>
+              <div class="dt-field" style="margin-top:12px; max-width:320px;">
+                <label class="dt-field-label" for="edit-password">Reset password (optional)</label>
+                <input class="dt-input" type="password" id="edit-password" name="password"
+                       minlength="8" placeholder="leave blank to keep current">
+                <p class="dt-field-hint">Resetting revokes all of the user's web sessions.</p>
+              </div>
+            </fieldset>
+            <div id="edit-feedback" aria-live="polite" style="margin:8px 0;"></div>
+            <button class="dt-button dt-button--primary" type="submit">Save changes</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="dt-card" style="margin-bottom:16px;">
         <div class="dt-card-header"><h2>Access tokens</h2></div>
         <div class="dt-card-body">
           <form style="display:flex; gap:8px; align-items:flex-end; margin-bottom:12px;"
