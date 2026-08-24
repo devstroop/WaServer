@@ -1,6 +1,6 @@
 [package]
 name = "was"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Devstroop Technologies <info@devstroop.com>"]
 description = "WAS (WhatsAppServer) - A minimal WhatsApp Web automation server built in Rust with REST API for sending messages"

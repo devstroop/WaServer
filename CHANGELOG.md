@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-24
+
+Web admin UI release: single-binary server-rendered dashboard (htmx 4 + uikit), messaging hardening, and pre-production security posture.
+
+### Added
+- **Web admin UI at `/app`** (#27–#33): login with inline errors, live dashboard (5s polling), instances management (CRUD, QR-link flow polling every 2s until linked, config editor), messaging console (text + multipart media through the hardened send path), users & access-tokens admin (one-time secret reveal)
+  - htmx 4.0.0-beta6 + uikit htmx dist + theme tokens vendored and embedded via rust-embed — **no Node toolchain**, release stays a single artifact
+  - Cookie sessions reusing the API token store (TTL'd, default 7 days); stateless per-session CSRF on every mutation; swap-friendly error fragments throughout
+- **Opt-in static secret key** (#39): no default key ships anywhere; when `[auth] secret_key` is set (≥16 chars) the superadmin Bearer path works, otherwise it is disabled and user tokens are the only path
+- **Admin bootstrap** (#40): the first registered user becomes Admin automatically
+- **Brute-force protection** (#44): sliding-window throttle on API + web login (per IP|username) and register (per IP) → 429 + Retry-After; `[auth.rate_limits]` configurable
+- **Session expiry + logout-all** (#42): `[auth] session_ttl_hours`; `POST /api/v1/auth/logout-all` and "Sign out everywhere"
+- **User editing** (#45): role change, activate/deactivate (rejected mid-session), password reset revoking web sessions; self-demotion/self-deactivation guards
+- **Staging janitor** (#46): hourly purge of stale uploads (`[storage] staging_ttl_hours`, default 24h); successful sends delete staged files immediately
+- **Browser visibility** (#47): boot warning when Chrome/Chromium missing, `browser_available` in `/api/health`, dashboard banner
+
+### Fixed
+- Rate limiter was constructed per-request (windows reset every call) — one shared limiter now lives on `InstanceManager` (#24)
+- `/api/v1/instances/:id/send` routed through `SendService` end-to-end incl. multipart media upload (#25)
+- CORS honors `[cors] allow_origins` instead of hardcoded wildcard (#43)
+
+### Removed
+- MCP surface (SSE endpoint, `mcp` cargo feature, docs rows) (#23)
+- Legacy `handlers/api/chat.rs` send path superseded by the thin handler
+
 ## [0.4.0] - 2026-08-22
 
 Architecture refactor release: clean layered architecture (domain → application → infrastructure → interfaces), hardened auth, decomposed god files, and wired messaging with rate limiting.
