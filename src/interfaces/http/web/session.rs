@@ -123,6 +123,19 @@ pub async fn login_post(
             .into_response();
     }
 
+    // Brute-force protection (#44) — check-only here; failures recorded below
+    let throttle_key = format!("login|{}|{}", peer.ip(), form.username.to_lowercase());
+    if let Some(remaining) = auth.throttle.is_blocked(&throttle_key) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::response::Html(login_error_fragment(&format!(
+                "Too many failed attempts — try again in {}s.",
+                remaining.as_secs()
+            ))),
+        )
+            .into_response();
+    }
+
     // Find user by username or email (mirrors api::auth::login)
     let user = auth
         .db
@@ -132,6 +145,7 @@ pub async fn login_post(
         .or_else(|| auth.db.get_user_by_email(&form.username).ok().flatten());
 
     let Some(user) = user else {
+        auth.throttle.hit(&throttle_key).ok();
         return (
             StatusCode::UNAUTHORIZED,
             axum::response::Html(login_error_fragment("Invalid username/email or password.")),
@@ -139,6 +153,7 @@ pub async fn login_post(
             .into_response();
     };
     if !crate::middleware::auth::verify_password(&form.password, &user.password_hash) {
+        auth.throttle.hit(&throttle_key).ok();
         return (
             StatusCode::UNAUTHORIZED,
             axum::response::Html(login_error_fragment("Invalid username/email or password.")),
@@ -154,6 +169,8 @@ pub async fn login_post(
         )
             .into_response();
     }
+
+    auth.throttle.clear(&throttle_key);
 
     // Mint session token stored hashed as a "Web Session" access token
     let token = format!("session_{}", Uuid::new_v4().simple());
