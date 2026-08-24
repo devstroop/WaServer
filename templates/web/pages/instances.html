@@ -1,0 +1,82 @@
+{% extends "web/base.html" %}
+{% block body %}
+<div class="dt-layout">
+  <aside class="dt-sidebar" id="app-sidebar">
+    <div class="dt-sidebar-header">
+      <span class="dt-sidebar-title">WAS Admin <span class="dt-badge">v{{ version }}</span></span>
+    </div>
+    <nav class="dt-sidebar-nav">
+      <a class="dt-sidebar-link" href="/app">Overview</a>
+      <a class="dt-sidebar-link dt-sidebar-link--active" href="/app/instances" aria-current="page">Instances</a>
+      {% if admin %}
+      <a class="dt-sidebar-link" href="/app/users">Users</a>
+      {% endif %}
+    </nav>
+    <div class="dt-sidebar-footer">
+      <label class="dt-theme-row">
+        <span>Dark mode</span>
+        <input type="checkbox" class="dt-switch" data-dt-theme-switch>
+      </label>
+    </div>
+  </aside>
+  <div class="dt-layout-main">
+    <header class="dt-topbar">
+      <button class="dt-button dt-button--ghost dt-button--icon-only"
+              data-dt-sidebar-toggle="#app-sidebar"
+              aria-label="Toggle navigation">&#9776;</button>
+      <span class="dt-topbar-spacer"></span>
+      <span class="dt-topbar-user">{{ username }} &middot; {{ role }}</span>
+      <button class="dt-button dt-button--ghost" type="button"
+              hx-post="/app/logout" hx-swap="none">Sign out</button>
+    </header>
+    <main class="dt-layout-content" id="content">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <h1 style="margin:0;">Instances</h1>
+        <button class="dt-button dt-button--primary" type="button"
+                data-dt-dialog-open="#create-dialog">New instance</button>
+      </div>
+
+      <dialog id="create-dialog" class="dt-dialog" data-dt-dialog>
+        <form class="dt-dialog-body"
+              hx-post="/app/instances"
+              hx-target="#create-feedback"
+              hx-swap="innerHTML"
+              hx-on::after-request="if (event.detail.successful) { this.closest('dialog').close(); htmx.ajax('GET','/app/fragments/instances',{target:'#instance-table',swap:'innerHTML'}); }">
+          <h2>Create instance</h2>
+          <div id="create-feedback" aria-live="polite"></div>
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <div class="dt-field">
+            <label class="dt-field-label" for="phone_number">Phone (E.164)</label>
+            <input class="dt-input" type="text" id="phone_number" name="phone_number"
+                   placeholder="+15551234567" required data-dt-required
+                   data-dt-required-message="Phone is required">
+            <p class="dt-field-hint">Including country code, starting with +.</p>
+          </div>
+          <div class="dt-field">
+            <label class="dt-field-label" for="instance_name">Name (optional)</label>
+            <input class="dt-input" type="text" id="instance_name" name="instance_name"
+                   placeholder="support-inbox">
+          </div>
+          <div class="dt-field">
+            <label class="dt-field-label" for="idle_timeout">Idle timeout (seconds)</label>
+            <input class="dt-input" type="number" id="idle_timeout" name="idle_timeout"
+                   placeholder="300" min="30">
+          </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="dt-button dt-button--ghost" type="button"
+                    data-dt-dialog-close>Cancel</button>
+            <button class="dt-button dt-button--primary" type="submit">Create</button>
+          </div>
+        </form>
+      </dialog>
+
+      <div id="instance-table"
+           hx-get="/app/fragments/instances"
+           hx-trigger="load, every 5s"
+           hx-swap="innerHTML">
+        <p class="dt-text-muted">Loading…</p>
+      </div>
+    </main>
+  </div>
+</div>
+{% endblock %}
