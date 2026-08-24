@@ -34,8 +34,9 @@ FROM debian:bookworm-slim
 WORKDIR /app
 
 # Install runtime dependencies (Chrome/Chromium)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     chromium \
     chromium-sandbox \
     fonts-liberation \
@@ -69,12 +70,12 @@ RUN mkdir -p /app/data
 # Set environment variables
 ENV WHATSAPP_HOST=0.0.0.0
 ENV WAS__SERVER__PORT=3000
-ENV CHROME_PATH=/usr/bin/chromium
+ENV CHROME=/usr/bin/chromium
 
 EXPOSE 3000
 
-# Health check
+# Health check — verifies browser is detectable (not just HTTP 200)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+    CMD curl -fs http://localhost:3000/api/health | grep -q '"browser_available":true' || exit 1
 
 CMD ["was"]

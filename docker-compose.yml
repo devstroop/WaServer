@@ -1,5 +1,7 @@
 services:
   was:
+    # Prefer prebuilt image; fallback to local build: `docker compose build`
+    image: ghcr.io/devstroop/was:latest
     build: .
     container_name: was
     ports:
@@ -7,12 +9,13 @@ services:
     environment:
       - WAS__SERVER__HOST=0.0.0.0
       - WAS__SERVER__PORT=3000
-      - WAS__AUTH__SECRET_KEY=${WAS__AUTH__SECRET_KEY:-your-secure-secret}
+      - WAS__AUTH__SECRET_KEY=${WAS__AUTH__SECRET_KEY:-}
       - RUST_LOG=info
+      # Bundled Chromium is at /usr/bin/chromium (CHROME env set in Dockerfile)
     volumes:
-      # Persist browser session data
+      # Persist browser session data + SQLite DB
       - was-data:/app/data
-      # Optional: mount custom config
+      # Optional: mount custom config (ensure [cors] allow_origins etc. are set for your domain)
       # - ./config/app.toml:/app/config/app.toml:ro
     restart: unless-stopped
     # Required for Chrome to work in container
@@ -20,11 +23,25 @@ services:
       - seccomp=unconfined
     shm_size: '2gb'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health | grep -q '\"browser_available\":true'"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
+  # Optional: reverse proxy (uncomment to expose via HTTPS)
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data
+  #   depends_on:
+  #     was:
+  #       condition: service_healthy
+
 volumes:
   was-data:
+  # caddy-data:
