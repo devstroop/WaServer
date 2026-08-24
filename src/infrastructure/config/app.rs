@@ -89,6 +89,13 @@ pub struct AuthConfig {
     /// Static secret key for Bearer authentication (optional)
     #[serde(default)]
     pub secret_key: Option<String>,
+    /// Web-session lifetime in hours (default 168 = 7 days)
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_hours: u64,
+}
+
+fn default_session_ttl() -> u64 {
+    168
 }
 
 impl AuthConfig {
@@ -136,7 +143,10 @@ impl Default for AppConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
             },
-            auth: AuthConfig { secret_key: None },
+            auth: AuthConfig {
+                secret_key: None,
+                session_ttl_hours: 168,
+            },
             logging: LoggingConfig {
                 level: "info".to_string(),
             },

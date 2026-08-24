@@ -8,9 +8,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    middleware::auth::{hash_password, hash_token, verify_password},
+    middleware::auth::{hash_password, hash_token, verify_password, AuthState},
     models::user::{LoginRequest, LoginResponse, RegisterUserRequest, UserInfo, UserRole},
-    services::Database,
 };
 
 /// Generate a session token (for web UI auth)
@@ -31,7 +30,7 @@ fn generate_session_token() -> String {
     )
 )]
 pub async fn register(
-    State(db): State<Database>,
+    State(auth): State<AuthState>,
     Json(request): Json<RegisterUserRequest>,
 ) -> impl IntoResponse {
     // Validate username
@@ -77,14 +76,14 @@ pub async fn register(
 
     // Bootstrap: the FIRST registered user becomes admin so a fresh install
     // has an administrator even with the static secret key disabled (#41)
-    let first_user = db.list_users().map(|u| u.is_empty()).unwrap_or(false);
+    let first_user = auth.db.list_users().map(|u| u.is_empty()).unwrap_or(false);
     let role = if first_user {
         UserRole::Admin
     } else {
         UserRole::User
     };
 
-    match db.create_user(
+    match auth.db.create_user(
         &user_id,
         &request.username,
         request.email.as_deref(),
@@ -132,13 +131,13 @@ pub async fn register(
     )
 )]
 pub async fn login(
-    State(db): State<Database>,
+    State(auth): State<AuthState>,
     Json(request): Json<LoginRequest>,
 ) -> impl IntoResponse {
     // Try to find user by username or email
-    let user = if let Ok(Some(u)) = db.get_user_by_username(&request.username) {
+    let user = if let Ok(Some(u)) = auth.db.get_user_by_username(&request.username) {
         Some(u)
-    } else if let Ok(Some(u)) = db.get_user_by_email(&request.username) {
+    } else if let Ok(Some(u)) = auth.db.get_user_by_email(&request.username) {
         Some(u)
     } else {
         None
@@ -185,12 +184,13 @@ pub async fn login(
             let token_hash = hash_token(&session_token);
 
             // Create a session token (ephemeral access token)
-            if let Err(e) = db.create_access_token(
+            let expires_at = auth.session_expiry();
+            if let Err(e) = auth.db.create_access_token(
                 &token_id,
                 &user_record.id,
                 "Web Session",
                 &token_hash,
-                None, // Session tokens don't expire (for now)
+                Some(&expires_at),
             ) {
                 tracing::error!(
                     user_id = %user_record.id,
@@ -213,8 +213,7 @@ pub async fn login(
                 "User logged in successfully"
             );
 
-            // Session tokens don't expire for now
-            let expires_at = "never".to_string();
+            let expires_at = format!("{} (UTC)", expires_at);
 
             (
                 StatusCode::OK,
@@ -255,7 +254,7 @@ pub async fn login(
     security(("bearer_auth" = []))
 )]
 pub async fn validate(
-    State(db): State<Database>,
+    State(auth): State<AuthState>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     // Extract the Authorization header
@@ -267,7 +266,7 @@ pub async fn validate(
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
             let token_hash = hash_token(token);
 
-            if let Ok(Some((user, _))) = db.get_user_by_access_token(&token_hash) {
+            if let Ok(Some((user, _))) = auth.db.get_user_by_access_token(&token_hash) {
                 if user.is_active {
                     return (StatusCode::OK, Json(UserInfo::from(user))).into_response();
                 }
@@ -297,7 +296,7 @@ pub async fn validate(
     security(("bearer_auth" = []))
 )]
 pub async fn logout(
-    State(db): State<Database>,
+    State(auth): State<AuthState>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     // Extract the Authorization header
@@ -310,8 +309,8 @@ pub async fn logout(
             let token_hash = hash_token(token);
 
             // Find and delete the session token
-            if let Ok(Some((user, token_record))) = db.get_user_by_access_token(&token_hash) {
-                if let Err(e) = db.delete_access_token(&token_record.id, &user.id) {
+            if let Ok(Some((user, token_record))) = auth.db.get_user_by_access_token(&token_hash) {
+                if let Err(e) = auth.db.delete_access_token(&token_record.id, &user.id) {
                     tracing::error!(
                         user_id = %user.id,
                         error = %e,
@@ -329,6 +328,53 @@ pub async fn logout(
                     StatusCode::OK,
                     Json(json!({
                         "message": "Logged out successfully"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error": "invalid_token",
+            "message": "Invalid or expired token"
+        })),
+    )
+        .into_response()
+}
+
+/// Revoke all web sessions for the authenticated user (logout-all, #42)
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout-all",
+    tag = "Auth",
+    responses(
+        (status = 200, description = "All sessions revoked"),
+        (status = 401, description = "Invalid token"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn logout_all(
+    State(auth): State<AuthState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok());
+
+    if let Some(auth_value) = auth_header {
+        if let Some(token) = auth_value.strip_prefix("Bearer ") {
+            let token_hash = hash_token(token);
+            if let Ok(Some((user, _))) = auth.db.get_user_by_access_token(&token_hash) {
+                let revoked = auth.db.delete_user_web_sessions(&user.id).unwrap_or(0);
+                tracing::info!(user_id = %user.id, revoked, "revoked all web sessions");
+                return (
+                    StatusCode::OK,
+                    Json(json!({
+                        "message": "All web sessions revoked",
+                        "revoked": revoked
                     })),
                 )
                     .into_response();

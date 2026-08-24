@@ -32,15 +32,27 @@ pub struct AuthState {
     pub secret_key: Option<String>,
     /// Database for user/token lookup
     pub db: Database,
+    /// Web-session lifetime in hours
+    pub session_ttl_hours: u64,
 }
 
 impl AuthState {
     /// Create new auth state
-    pub fn new(secret_key: Option<String>, db: Database) -> Self {
+    pub fn new(secret_key: Option<String>, db: Database, session_ttl_hours: u64) -> Self {
         Self {
             secret_key: secret_key.filter(|k| !k.trim().is_empty()),
             db,
+            session_ttl_hours,
         }
+    }
+
+    /// Expiry timestamp for a fresh web session, formatted to compare exactly
+    /// against SQLite `datetime('now')` ("YYYY-MM-DD HH:MM:SS", UTC).
+    pub fn session_expiry(&self) -> String {
+        use chrono::Duration;
+        (chrono::Utc::now() + Duration::hours(self.session_ttl_hours as i64))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
     }
 }
 

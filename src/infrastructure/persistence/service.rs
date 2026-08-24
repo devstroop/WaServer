@@ -590,6 +590,19 @@ impl Database {
         Ok(records)
     }
 
+    /// Delete every "Web Session" token for a user (logout-all, #42).
+    /// Returns the number of sessions revoked.
+    pub fn delete_user_web_sessions(&self, user_id: &str) -> Result<usize> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let n = conn
+            .execute(
+                "DELETE FROM access_token WHERE user_id = ?1 AND name = 'Web Session'",
+                rusqlite::params![user_id],
+            )
+            .map_err(|e| anyhow!("Failed to delete web sessions: {}", e))?;
+        Ok(n)
+    }
+
     /// Delete an access token.
     pub fn delete_access_token(&self, id: &str, user_id: &str) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;

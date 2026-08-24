@@ -97,7 +97,7 @@ pub struct LoginForm {
 
 #[allow(clippy::result_large_err)]
 pub async fn login_post(
-    State(db): State<Database>,
+    State(auth): State<crate::middleware::auth::AuthState>,
     headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {
@@ -123,11 +123,12 @@ pub async fn login_post(
     }
 
     // Find user by username or email (mirrors api::auth::login)
-    let user = db
+    let user = auth
+        .db
         .get_user_by_username(&form.username)
         .ok()
         .flatten()
-        .or_else(|| db.get_user_by_email(&form.username).ok().flatten());
+        .or_else(|| auth.db.get_user_by_email(&form.username).ok().flatten());
 
     let Some(user) = user else {
         return (
@@ -156,7 +157,7 @@ pub async fn login_post(
     // Mint session token stored hashed as a "Web Session" access token
     let token = format!("session_{}", Uuid::new_v4().simple());
     let token_hash = crate::middleware::auth::hash_token(&token);
-    if let Err(e) = db.create_access_token(
+    if let Err(e) = auth.db.create_access_token(
         &Uuid::new_v4().to_string(),
         &user.id,
         "Web Session",
@@ -187,6 +188,25 @@ fn sanitize_next(next: Option<&str>) -> Option<&str> {
         Some(n) if n.starts_with('/') && !n.starts_with("//") => Some(n),
         _ => None,
     }
+}
+
+/// `POST /app/logout-all` — revoke every "Web Session" for the current user
+pub async fn logout_all(State(app): State<super::pages::AppState>, headers: HeaderMap) -> Response {
+    let mut revoked = 0usize;
+    if let Some(token) = read_session_token(&headers) {
+        let hash = crate::middleware::auth::hash_token(&token);
+        if let Ok(Some((user, _))) = app.db.get_user_by_access_token(&hash) {
+            revoked = app.db.delete_user_web_sessions(&user.id).unwrap_or(0);
+            tracing::info!(user_id = %user.id, revoked, "web logout-all");
+        }
+    }
+    let mut resp = redirect(&headers, "/app/login");
+    resp.headers_mut().append(
+        header::SET_COOKIE,
+        header::HeaderValue::from_str(&clear_session_cookie()).unwrap(),
+    );
+    let _ = revoked;
+    resp
 }
 
 pub async fn logout(State(app): State<super::pages::AppState>, headers: HeaderMap) -> Response {
