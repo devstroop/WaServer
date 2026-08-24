@@ -235,7 +235,10 @@ fn default_max_upload_size() -> usize {
 // Section-level defaults (serde(default) on AppConfig fields)
 impl Default for ServerConfig {
     fn default() -> Self {
-        Self { host: default_host(), port: default_port() }
+        Self {
+            host: default_host(),
+            port: default_port(),
+        }
     }
 }
 
@@ -251,13 +254,17 @@ impl Default for AuthConfig {
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        Self { level: default_log_level() }
+        Self {
+            level: default_log_level(),
+        }
     }
 }
 
 impl Default for CacheConfig {
     fn default() -> Self {
-        Self { default_ttl_minutes: default_cache_ttl() }
+        Self {
+            default_ttl_minutes: default_cache_ttl(),
+        }
     }
 }
 

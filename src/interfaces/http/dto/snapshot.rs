@@ -35,7 +35,7 @@ use super::{
     )),
     info(
         title = "WhatsApp Server - API",
-        version = "0.5.0",
+        version = "0.5.1",
         description = "DTO stability snapshot — change requires explicit DTO version bump"
     )
 )]
@@ -52,8 +52,8 @@ mod tests {
     fn test_openapi_snapshot_exists_and_versioned() {
         let json = snapshot_json();
         assert!(
-            json.contains("\"version\": \"0.5.0\""),
-            "version must be 0.5.0"
+            json.contains("\"version\": \"0.5.1\""),
+            "version must be 0.5.1"
         );
         assert!(
             json.contains("CreateInstanceRequestDto"),
