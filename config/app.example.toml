@@ -23,6 +23,10 @@ args = [
 # via user access tokens only. No default key exists.
 # secret_key = "set-a-long-random-secret-here"
 
+[auth.rate_limits]
+max_failures = 5
+window_minutes = 15
+
 [logging]
 level = "info"
 # Available levels: trace, debug, info, warn, error

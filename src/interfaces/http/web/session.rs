@@ -5,7 +5,7 @@
 //! cookie. Bearer API auth is untouched.
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Form,
@@ -98,6 +98,7 @@ pub struct LoginForm {
 #[allow(clippy::result_large_err)]
 pub async fn login_post(
     State(auth): State<crate::middleware::auth::AuthState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {

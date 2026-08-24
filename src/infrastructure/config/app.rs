@@ -92,6 +92,27 @@ pub struct AuthConfig {
     /// Web-session lifetime in hours (default 168 = 7 days)
     #[serde(default = "default_session_ttl")]
     pub session_ttl_hours: u64,
+    /// Brute-force protection for auth endpoints (#44)
+    #[serde(default)]
+    pub rate_limits: AuthRateLimits,
+}
+
+/// Auth endpoint throttling — sliding window of failures per key
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct AuthRateLimits {
+    /// Failures allowed within the window before blocking (0 = disabled)
+    pub max_failures: Option<u32>,
+    /// Window length in minutes (also drives Retry-After)
+    pub window_minutes: Option<u64>,
+}
+
+impl AuthRateLimits {
+    pub fn max_failures(&self) -> u32 {
+        self.max_failures.unwrap_or(5)
+    }
+    pub fn window_minutes(&self) -> u64 {
+        self.window_minutes.unwrap_or(15)
+    }
 }
 
 fn default_session_ttl() -> u64 {
@@ -146,6 +167,7 @@ impl Default for AppConfig {
             auth: AuthConfig {
                 secret_key: None,
                 session_ttl_hours: 168,
+                rate_limits: AuthRateLimits::default(),
             },
             logging: LoggingConfig {
                 level: "info".to_string(),

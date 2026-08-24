@@ -34,15 +34,29 @@ pub struct AuthState {
     pub db: Database,
     /// Web-session lifetime in hours
     pub session_ttl_hours: u64,
+    /// Brute-force throttle for auth endpoints (#44)
+    pub throttle: std::sync::Arc<crate::application::auth::throttle::AuthRateLimiter>,
 }
 
 impl AuthState {
     /// Create new auth state
-    pub fn new(secret_key: Option<String>, db: Database, session_ttl_hours: u64) -> Self {
+    pub fn new(
+        secret_key: Option<String>,
+        db: Database,
+        session_ttl_hours: u64,
+        max_failures: u32,
+        window_minutes: u64,
+    ) -> Self {
         Self {
             secret_key: secret_key.filter(|k| !k.trim().is_empty()),
             db,
             session_ttl_hours,
+            throttle: std::sync::Arc::new(
+                crate::application::auth::throttle::AuthRateLimiter::new(
+                    max_failures,
+                    window_minutes,
+                ),
+            ),
         }
     }
 
