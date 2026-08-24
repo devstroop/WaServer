@@ -1,7 +1,2 @@
-pub mod logging;
-/// Utility functions and helpers
-pub mod metrics;
-
-pub mod helpers {
-    // Add utility functions here as needed
-}
+//! Utils — shim, canonical is `crate::shared::observability`
+pub use crate::shared::observability::*;

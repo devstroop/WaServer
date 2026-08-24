@@ -7,36 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-24
+
+Web admin UI release: single-binary server-rendered dashboard (htmx 4 + uikit), messaging hardening, and pre-production security posture.
+
 ### Added
-- Multi-instance support with isolated browser sessions
-- User management with RBAC and JWT authentication
-- Instance configuration API (browser settings, rate limits)
-- OpenAPI/Swagger documentation
-
-### Changed
-- Refocused as minimal sending-only server
-- Improved async runtime configuration for better performance
-- Optimized browser automation with performance-focused Chrome flags
-
-### Removed
-- MCP (Model Context Protocol) server
-- Webhook delivery service
-- Incoming message handling (listening, SSE events)
-- Chat list and message history retrieval
-- Contact and group management
-- Typing indicators, read receipts, presence
-- Reactions and reply functionality
-- Profile management
-- Frontend web dashboards (client/ and web/)
+- **Web admin UI at `/app`** (#27–#33): login with inline errors, live dashboard (5s polling), instances management (CRUD, QR-link flow polling every 2s until linked, config editor), messaging console (text + multipart media through the hardened send path), users & access-tokens admin (one-time secret reveal)
+  - htmx 4.0.0-beta6 + uikit htmx dist + theme tokens vendored and embedded via rust-embed — **no Node toolchain**, release stays a single artifact
+  - Cookie sessions reusing the API token store (TTL'd, default 7 days); stateless per-session CSRF on every mutation; swap-friendly error fragments throughout
+- **Opt-in static secret key** (#39): no default key ships anywhere; when `[auth] secret_key` is set (≥16 chars) the superadmin Bearer path works, otherwise it is disabled and user tokens are the only path
+- **Admin bootstrap** (#40): the first registered user becomes Admin automatically
+- **Brute-force protection** (#44): sliding-window throttle on API + web login (per IP|username) and register (per IP) → 429 + Retry-After; `[auth.rate_limits]` configurable
+- **Session expiry + logout-all** (#42): `[auth] session_ttl_hours`; `POST /api/v1/auth/logout-all` and "Sign out everywhere"
+- **User editing** (#45): role change, activate/deactivate (rejected mid-session), password reset revoking web sessions; self-demotion/self-deactivation guards
+- **Staging janitor** (#46): hourly purge of stale uploads (`[storage] staging_ttl_hours`, default 24h); successful sends delete staged files immediately
+- **Browser visibility** (#47): boot warning when Chrome/Chromium missing, `browser_available` in `/api/health`, dashboard banner
 
 ### Fixed
-- Memory leaks in browser automation components
-- Race conditions in concurrent message sending
+- Rate limiter was constructed per-request (windows reset every call) — one shared limiter now lives on `InstanceManager` (#24)
+- `/api/v1/instances/:id/send` routed through `SendService` end-to-end incl. multipart media upload (#25)
+- CORS honors `[cors] allow_origins` instead of hardcoded wildcard (#43)
+
+### Removed
+- MCP surface (SSE endpoint, `mcp` cargo feature, docs rows) (#23)
+- Legacy `handlers/api/chat.rs` send path superseded by the thin handler
+
+## [0.4.0] - 2026-08-22
+
+Architecture refactor release: clean layered architecture (domain → application → infrastructure → interfaces), hardened auth, decomposed god files, and wired messaging with rate limiting.
+
+### Added
+- **Layered architecture**: `domain/` (pure entities, no axum/tokio/rusqlite), `application/` (use-cases + ports), `infrastructure/` (browser/persistence/config/security adapters), `interfaces/http/` (router, DTOs, middleware stack, thin handlers)
+- **Instance registry** (`application/instance::InstanceRegistry`): pure in-memory registry (metadata + config + phone index) with typed `RegistryError`; `SqliteInstanceStore` implements the `InstanceStore` port
+- **Typed config validation**: bounds-checked instance config (idle timeout, browser timeout, rate limits) with stable error codes (`invalid_idle_timeout`, …) mapped to HTTP 400; `restart_required` derived from actual browser-field diff on `PUT /api/v1/instances/:id/config`
+- **Per-instance observability**: atomic counters (messages sent / errors / warmups / last activity) via `shared::observability::instance_metrics`, exposed in `/api/metrics`
+- **Messaging ports wiring**: `SendService` (validator → rate limit → browser) behind `BrowserSendPort`/`RateLimitPort`; sliding-window rate limiter per instance from config (`messages_per_minute`, default 60/min) returning HTTP 429
+- **OpenAPI stability boundary**: versioned DTOs under `interfaces/http/dto` with DTO↔domain mappers (`TryFrom`/`From`) and committed `openapi.snapshot.json` — domain changes no longer break the API contract without an explicit DTO change
+- **Identity domain split**: `domain/identity/{user,token,permission}` value objects with validation (`validate_username`, `validate_password`, RBAC hierarchy Owner > Operator > Viewer)
+
+### Changed
+- **bin/was.rs thinned**: 418 → 116 LOC bootstrap; router + middleware stack extracted to `interfaces::http::{router::build_full_router, middleware::http_middleware_stack}` — unit-testable without browser/database
+- **God files decomposed** (no file in the verticals exceeds ~400 LOC):
+  - `services/whatsapp/instance.rs` 1221 → 554 LOC (lifecycle + auth watcher split into `instance_lifecycle.rs` 315 LOC / `instance_auth.rs` 390 LOC)
+  - `handlers/api/users.rs` 845 LOC split into `interfaces/http/handlers/identity/{users,tokens,assignments,me}` (<150 LOC each)
+  - `services/whatsapp/instance_manager.rs` now a facade over registry + store
+- **Secret handling hardened**: prod boot fails on default/weak secret (`SecretValidator::validate` env-aware); constant-time Bearer compare in auth middleware; single SHA256 token-hash source
+- **State machine formalized**: `SLEEPING → WARMING_UP → ACTIVE → ERROR` transitions validated by `application::instance::InstanceState` with tests
+- Test suite grown 29 → 95 unit tests (state machine, registry, repos, validators, mappers, snapshot)
 
 ### Security
-- Enhanced input validation across all endpoints
-- Improved rate limiting implementation
-- Strengthened CORS configuration
+- Default secret rejected outside development; weak secrets (<16 chars) rejected always
+- Timing-safe secret comparison prevents Bearer timing attacks
+- Config errors return typed codes instead of leaking internals via generic 500
+
+### Compatibility
+- REST API contracts unchanged: `/api/health|ready|live|metrics`, `/api/v1/instances/*`, `/api/v1/users/*`, `/api/v1/auth/*`
+- `restart_required` in config responses is now accurate instead of always `true`
+
+## [0.3.0] and earlier
+
+See git history for versions prior to the layered-architecture refactor.
 
 ## [0.2.0] - 2024-12-18
 

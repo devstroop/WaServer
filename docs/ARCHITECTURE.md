@@ -53,29 +53,38 @@
 
 ## Project Structure
 
+Layered architecture (v0.4.0) — dependencies point inward: `interfaces → application → domain`; `infrastructure` implements `application` ports.
+
 ```
 src/
-├── bin/was.rs           # Entry point
-├── handlers/api/        # REST API handlers
-│   ├── instances.rs     # Instance management
-│   ├── whatsapp.rs      # WhatsApp operations
-│   ├── chat.rs          # Messaging (send)
-│   ├── health.rs        # Health checks
-│   ├── auth.rs          # Authentication
-│   └── users.rs         # User management
-├── services/            # Business logic
-│   ├── whatsapp/        # WhatsApp service
-│   ├── auth/            # Authentication
-│   └── database/        # SQLite operations
-├── browser/             # Browser automation
-│   ├── core.rs          # Browser lifecycle
-│   ├── driver.rs        # Chromium driver
-│   ├── session.rs       # Session management
-│   └── locators.rs      # Element selectors
-├── models/              # Data types
-├── middleware/           # HTTP middleware
-├── config.rs            # Configuration
-└── error.rs             # Error types
+├── bin/was.rs               # ~116 LOC bootstrap (config, db, manager, run_server)
+├── domain/                  # Pure entities — no axum/tokio/rusqlite
+│   ├── instance/            # InstanceId, InstanceStatus, InstanceConfig, validation
+│   ├── messaging/           # Message, MediaType, MessageStatus
+│   ├── identity/            # User, UserRole, InstancePermission, TokenName/Expiry
+│   └── shared/error.rs      # DomainError/DomainResult
+├── application/             # Use-cases + ports (no infra deps)
+│   ├── instance/            # manager.rs registry, state machine, lifecycle ports,
+│   │                        #   config_validation, metadata, persistence port
+│   ├── auth/                # SecretValidator, AccessToken, UserStore/TokenStore ports
+│   ├── identity/            # user_service, token_service, rbac
+│   └── messaging/           # SendService (validator→rate→browser), policy, ports
+├── infrastructure/          # Adapters implementing application ports
+│   ├── browser/             # chromiumoxide driver, session store, locators
+│   ├── persistence/         # SQLite Database + user/token/instance repos
+│   ├── config/              # AppConfig (TOML + env)
+│   └── security/            # WhatsApp Web auth service
+├── interfaces/http/         # HTTP boundary
+│   ├── router.rs            # build_full_router (versioned nests + Swagger)
+│   ├── middleware/stack.rs  # Trace/correlation/metrics/security/CORS/body limit
+│   ├── dto/                 # Versioned ToSchema DTOs + mappers + openapi snapshot
+│   └── handlers/            # Thin handlers (identity/, messaging)
+├── handlers/api/            # Legacy facade handlers (instances, whatsapp, chat, users…)
+├── services/whatsapp/       # InstanceService (lifecycle/auth split into sibling modules),
+│                            #   InstanceManager facade, ChatService, messaging_ports adapters
+├── models/                  # Compat re-exports of domain types
+├── shared/observability/    # logging, service metrics, per-instance metrics
+└── middleware/              # auth_middleware, correlation_id, metrics, headers
 ```
 
 ## Instance Lifecycle
@@ -88,6 +97,8 @@ SLEEPING ──request──► WARMING UP ──ready──► ACTIVE
                                         error  ▼
                                             ERROR
 ```
+
+Transitions validated by `application::instance::InstanceState` (`can_transition`/`transition`).
 
 ## Request Flow
 
@@ -122,4 +133,3 @@ CREATE TABLE sessions (
 | Feature | Description |
 |---------|-------------|
 | default | REST API only |
-| mcp | MCP server support |

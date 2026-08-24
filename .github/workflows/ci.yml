@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, dev]
+    branches: [main, develop]
   pull_request:
-    branches: [master, dev]
+    branches: [main, develop]
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,9 +27,6 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Build with MCP
-        run: cargo build --features mcp
-
       - name: Run tests
         run: cargo test
 
@@ -50,7 +47,7 @@ jobs:
           shared-key: "ci"
 
       - name: Clippy
-        run: cargo clippy --features mcp -- -D warnings
+        run: cargo clippy -- -D warnings
 
   fmt:
     name: Format

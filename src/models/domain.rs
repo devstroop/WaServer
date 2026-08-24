@@ -4,8 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-// Re-export message types from models
-pub use crate::models::message::{MediaType, Message, MessageStatus, NewMessage, SELF_JID};
+// Re-export message types from domain (canonical)
+pub use crate::domain::messaging::{MediaType, Message, MessageStatus, NewMessage, SELF_JID};
 
 /// Authentication status for the library API
 #[derive(Debug, Clone, Serialize, Deserialize)]

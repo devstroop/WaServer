@@ -310,9 +310,9 @@ impl BrowserService {
                 .args(["-f", "chrom"])
                 .output()
                 .await;
-            
+
             let has_chrome = check.map(|o| o.status.success()).unwrap_or(false);
-            
+
             if has_chrome {
                 debug!("Found existing Chrome processes, killing...");
                 let chrome_processes = [

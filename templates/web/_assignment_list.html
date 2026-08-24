@@ -1,0 +1,24 @@
+{% if assignments.is_empty() %}
+<p class="dt-text-muted">No instances assigned.</p>
+{% else %}
+<div class="dt-table-wrap">
+  <table class="dt-table">
+    <thead><tr><th>Instance</th><th></th></tr></thead>
+    <tbody>
+      {% for a in assignments %}
+      <tr id="assignment-{{ a.instance_id }}">
+        <td>{{ a.label }}</td>
+        <td style="text-align:right;">
+          <form style="display:inline;" hx-post="/app/users/{{ user_id }}/unassign/{{ a.instance_id }}" hx-swap="none"
+                hx-confirm="Remove access to {{ a.label }}?"
+                hx-on::after-request="if (event.detail.successful) { document.getElementById('assignment-{{ a.instance_id }}').remove(); }">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="dt-button dt-button--ghost dt-button--sm" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

@@ -62,7 +62,11 @@ impl AuthenticatedUser {
 
     /// Check if user can access an instance with given permission requirement.
     /// Superadmin and admin users can access everything.
-    pub fn can_access_instance(&self, permission: Option<InstancePermission>, required: InstancePermission) -> bool {
+    pub fn can_access_instance(
+        &self,
+        permission: Option<InstancePermission>,
+        required: InstancePermission,
+    ) -> bool {
         // Superadmin can do anything
         if self.is_superadmin() {
             return true;

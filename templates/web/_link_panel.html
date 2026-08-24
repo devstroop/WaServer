@@ -1,0 +1,18 @@
+{% if linked %}
+<div class="dt-alert dt-alert--success" role="status">
+  <div class="dt-alert-content">Linked ✓ — this device is authorized.</div>
+</div>
+{% else %}
+<div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+  <img src="/app/fragments/instances/{{ id }}/qr.png"
+       alt="WhatsApp link QR code"
+       style="width:200px; height:200px; border-radius:8px; border:1px solid var(--dt-border);">
+  <div>
+    <p style="margin:0 0 8px;"><strong>{{ status }}</strong></p>
+    <p class="dt-text-muted" style="margin:0;">
+      Open WhatsApp on the phone → Settings → Linked devices → Link a device,
+      then scan this code. This panel refreshes automatically.
+    </p>
+  </div>
+</div>
+{% endif %}

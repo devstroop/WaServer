@@ -21,6 +21,8 @@ pub struct HealthResponse {
     pub version: String,
     pub uptime_seconds: u64,
     pub instances_count: usize,
+    /// Chrome/Chromium detected on this host (#47)
+    pub browser_available: bool,
     pub services: HashMap<String, ServiceHealth>,
 }
 
@@ -48,6 +50,9 @@ pub struct InstanceMetrics {
     pub authorized: bool,
     pub total_messages_sent: u64,
     pub error_count: u64,
+    /// Per-instance warmup count (#6 observability)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warmups: Option<u64>,
 }
 
 static START_INSTANT: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
@@ -62,6 +67,11 @@ fn uptime_secs() -> u64 {
         .get()
         .map(|t| t.elapsed().as_secs())
         .unwrap_or(0)
+}
+
+/// Process uptime in seconds (shared with the web dashboard #30)
+pub fn uptime_seconds() -> u64 {
+    uptime_secs()
 }
 
 /// Health Check Endpoint
@@ -106,6 +116,7 @@ pub async fn health_check(
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: uptime,
         instances_count,
+        browser_available: crate::services::maintenance::detect_browser().is_ok(),
         services,
     };
 
@@ -177,8 +188,9 @@ pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<Me
 
     let memory_usage = get_memory_usage();
 
-    // Get metrics from all instances
+    // Get metrics from all instances, enriched with per-instance observability counters (#6)
     let account_list = manager.list_instances().await;
+    let obs_snapshots = manager.observability.snapshot_all().await;
     let mut instance_metrics = Vec::new();
 
     for info in account_list.instances {
@@ -198,6 +210,7 @@ pub async fn get_metrics(State(manager): State<Arc<InstanceManager>>) -> Json<Me
                 authorized: info.authorized,
                 total_messages_sent: metrics.total_messages_sent,
                 error_count: metrics.error_count,
+                warmups: obs_snapshots.get(&info.id).map(|s| s.warmups),
             });
         }
     }

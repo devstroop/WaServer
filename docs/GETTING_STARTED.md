@@ -57,8 +57,39 @@ docker-compose up -d
 Server starts at **http://localhost:3000**
 
 - **API**: http://localhost:3000
+- **Web UI**: http://localhost:3000/app
 - **Swagger UI**: http://localhost:3000/api-docs/
 - **Health**: http://localhost:3000/api/health
+
+### Browser requirement
+
+Sending, linking (QR) and screenshots require **Chrome or Chromium** on the server host.
+The server detects it at startup and logs a warning when missing; `GET /api/health`
+reports `browser_available` and the web dashboard shows a banner.
+
+```bash
+# macOS
+brew install --cask chromium
+# Debian/Ubuntu
+sudo apt install chromium-browser
+# Or point at any Chrome-compatible binary:
+export CHROME=/path/to/chrome
+```
+
+### Authentication (opt-in)
+
+There is **no default API key**. Two ways to authenticate:
+
+1. **Static superadmin key** — set it in `config/app.toml` (`[auth] secret_key`, ≥16 chars),
+   then use `Authorization: Bearer <key>`:
+   ```bash
+   export WAS_API_KEY="set-a-long-random-secret-here"
+   ```
+2. **User access tokens** — register a user, log in (`POST /api/v1/auth/login`),
+   or mint tokens in the web UI under Users → Manage → Create token.
+
+If no `secret_key` is configured, the static-key path is disabled entirely and
+user tokens are the only way in.
 
 ## Your First WhatsApp Integration
 
@@ -66,7 +97,7 @@ Server starts at **http://localhost:3000**
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/instances \
-  -H "Authorization: Bearer change-this-secret-key-in-production" \
+  -H "Authorization: Bearer $WAS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-whatsapp"}'
 ```
@@ -77,7 +108,7 @@ Save the `instance_id` from the response.
 
 ```bash
 curl -X GET http://localhost:3000/api/v1/instances/{instance_id}/link/qr \
-  -H "Authorization: Bearer change-this-secret-key-in-production" \
+  -H "Authorization: Bearer $WAS_API_KEY" \
   --output qr.png
 ```
 
@@ -87,14 +118,14 @@ Scan the QR code with WhatsApp (Settings → Linked Devices → Link a Device).
 
 ```bash
 curl http://localhost:3000/api/v1/instances/{instance_id}/status \
-  -H "Authorization: Bearer change-this-secret-key-in-production"
+  -H "Authorization: Bearer $WAS_API_KEY"
 ```
 
 ### Step 4: Send a Message
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/instances/{instance_id}/messages \
-  -H "Authorization: Bearer change-this-secret-key-in-production" \
+  -H "Authorization: Bearer $WAS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"phone": "+1234567890", "message": "Hello from WAS!"}'
 ```
@@ -104,13 +135,13 @@ curl -X POST http://localhost:3000/api/v1/instances/{instance_id}/messages \
 ### List All Instances
 ```bash
 curl http://localhost:3000/api/v1/instances \
-  -H "Authorization: Bearer change-this-secret-key-in-production"
+  -H "Authorization: Bearer $WAS_API_KEY"
 ```
 
 ### Send a File
 ```bash
 curl -X POST http://localhost:3000/api/v1/instances/{instance_id}/messages \
-  -H "Authorization: Bearer change-this-secret-key-in-production" \
+  -H "Authorization: Bearer $WAS_API_KEY" \
   -F "phone=+1234567890" \
   -F "message=Check this out!" \
   -F "file=@/path/to/image.jpg"
@@ -119,7 +150,7 @@ curl -X POST http://localhost:3000/api/v1/instances/{instance_id}/messages \
 ### Delete an Instance
 ```bash
 curl -X DELETE http://localhost:3000/api/v1/instances/{instance_id} \
-  -H "Authorization: Bearer change-this-secret-key-in-production"
+  -H "Authorization: Bearer $WAS_API_KEY"
 ```
 
 ## Troubleshooting

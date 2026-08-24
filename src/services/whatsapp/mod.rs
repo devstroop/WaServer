@@ -5,9 +5,11 @@
 
 pub mod chat;
 pub mod instance;
+pub mod instance_auth;
+pub mod instance_lifecycle;
 pub mod instance_manager;
 
 // Re-exports for convenience
 pub use chat::{ChatService, ChatServiceTrait};
 pub use instance::InstanceService;
-pub use instance_manager::InstanceManager;
+pub use instance_manager::{InstanceManager, StatusSnapshot};

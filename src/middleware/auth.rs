@@ -18,35 +18,62 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::{
+    application::auth::{hash_token as app_hash_token, SecretValidator},
     models::auth::AuthenticatedUser,
     services::Database,
     utils::logging::CorrelationId,
 };
 
-/// JWT secret for signing session tokens (should be from config in production)
-pub const JWT_SECRET: &[u8] = b"was-jwt-secret-change-in-production";
-
 /// Authentication state for middleware
 #[derive(Clone)]
 pub struct AuthState {
-    /// Static secret key for superadmin authentication
-    pub secret_key: String,
+    /// Optional static secret key for superadmin authentication.
+    /// When `None`/empty, the static-key path is disabled entirely (opt-in auth).
+    pub secret_key: Option<String>,
     /// Database for user/token lookup
     pub db: Database,
+    /// Web-session lifetime in hours
+    pub session_ttl_hours: u64,
+    /// Brute-force throttle for auth endpoints (#44)
+    pub throttle: std::sync::Arc<crate::application::auth::throttle::AuthRateLimiter>,
 }
 
 impl AuthState {
     /// Create new auth state
-    pub fn new(secret_key: String, db: Database) -> Self {
-        Self { secret_key, db }
+    pub fn new(
+        secret_key: Option<String>,
+        db: Database,
+        session_ttl_hours: u64,
+        max_failures: u32,
+        window_minutes: u64,
+    ) -> Self {
+        Self {
+            secret_key: secret_key.filter(|k| !k.trim().is_empty()),
+            db,
+            session_ttl_hours,
+            throttle: std::sync::Arc::new(
+                crate::application::auth::throttle::AuthRateLimiter::new(
+                    max_failures,
+                    window_minutes,
+                ),
+            ),
+        }
+    }
+
+    /// Expiry timestamp for a fresh web session, formatted to compare exactly
+    /// against SQLite `datetime('now')` ("YYYY-MM-DD HH:MM:SS", UTC).
+    pub fn session_expiry(&self) -> String {
+        use chrono::Duration;
+        (chrono::Utc::now() + Duration::hours(self.session_ttl_hours as i64))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
     }
 }
 
 /// Hash a token for secure comparison/storage.
+/// Delegates to `application::auth::hash_token` (SHA256) — keeps middleware free of crypto impl.
 pub fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    format!("{:x}", hasher.finalize())
+    app_hash_token(token)
 }
 
 /// Hash a password using SHA256 (for simplicity; use bcrypt/argon2 in production)
@@ -69,6 +96,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 /// 2. Access tokens from database (API access)
 ///
 /// On successful authentication, adds `AuthenticatedUser` to request extensions.
+#[allow(clippy::result_large_err)]
 pub async fn auth_middleware(
     State(auth_state): State<AuthState>,
     headers: HeaderMap,
@@ -96,22 +124,27 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            // 1. Check static secret key (superadmin)
-            if token == auth_state.secret_key {
-                let authenticated_user = AuthenticatedUser::Secret;
-                tracing::debug!(
-                    correlation_id = %correlation_id.0,
-                    path = %path,
-                    auth_method = "secret",
-                    "Superadmin secret key authentication successful"
-                );
-                request.extensions_mut().insert(authenticated_user);
-                return Ok(next.run(request).await);
+            // 1. Static secret key (superadmin) — only when configured (opt-in).
+            //    Constant-time compare to avoid timing leak.
+            if let Some(secret) = &auth_state.secret_key {
+                if SecretValidator::constant_time_eq(token, secret) {
+                    let authenticated_user = AuthenticatedUser::Secret;
+                    tracing::debug!(
+                        correlation_id = %correlation_id.0,
+                        path = %path,
+                        auth_method = "secret",
+                        "Superadmin secret key authentication successful"
+                    );
+                    request.extensions_mut().insert(authenticated_user);
+                    return Ok(next.run(request).await);
+                }
             }
 
             // 2. Check access tokens from database
             let token_hash = hash_token(token);
-            if let Ok(Some((user_record, _token_record))) = auth_state.db.get_user_by_access_token(&token_hash) {
+            if let Ok(Some((user_record, _token_record))) =
+                auth_state.db.get_user_by_access_token(&token_hash)
+            {
                 let authenticated_user = AuthenticatedUser::User {
                     id: user_record.id.clone(),
                     username: user_record.username.clone(),

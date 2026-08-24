@@ -1,0 +1,51 @@
+/* WAS admin — layout glue on top of uikit (components live in uikit.css) */
+
+.dt-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--dt-space-6, 24px);
+}
+
+.dt-login-card { width: 100%; max-width: 380px; }
+
+.dt-login-title { margin: 0; font-size: 1.4rem; }
+.dt-login-subtitle { margin: 0; color: var(--dt-text-secondary); font-size: 0.875rem; }
+
+.dt-layout { display: flex; min-height: 100vh; }
+
+.dt-layout-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dt-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--dt-space-3, 12px);
+  padding: var(--dt-space-3, 12px) var(--dt-space-5, 20px);
+}
+
+.dt-topbar-spacer { flex: 1; }
+.dt-topbar-user { color: var(--dt-text-secondary); font-size: 0.875rem; }
+
+.dt-layout-content {
+  flex: 1;
+  padding: var(--dt-space-5, 20px);
+}
+
+.dt-sidebar-footer {
+  margin-top: auto;
+  padding: var(--dt-space-4, 16px);
+}
+
+.dt-theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dt-space-3, 12px);
+  font-size: 0.875rem;
+  cursor: pointer;
+}

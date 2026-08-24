@@ -39,11 +39,15 @@
 // Core Modules (always included)
 // ============================================================================
 
+pub mod application;
 pub mod browser;
 pub mod config;
+pub mod domain;
 pub mod error;
+pub mod infrastructure;
 pub mod models;
 pub mod services;
+pub mod shared;
 pub mod utils;
 
 // ============================================================================
@@ -55,6 +59,9 @@ pub mod handlers;
 
 /// HTTP middleware
 pub mod middleware;
+
+/// Interfaces layer — handlers, DTOs, router, middleware (#9 #10 #11)
+pub mod interfaces;
 
 // Re-export api at crate root for convenience
 pub use handlers::api;
