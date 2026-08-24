@@ -1,0 +1,73 @@
+{% extends "web/base.html" %}
+{% block body %}
+<div class="dt-layout">
+  <aside class="dt-sidebar" id="app-sidebar">
+    <div class="dt-sidebar-header">
+      <span class="dt-sidebar-title">WAS Admin <span class="dt-badge">v{{ version }}</span></span>
+    </div>
+    <nav class="dt-sidebar-nav">
+      <a class="dt-sidebar-link" href="/app">Overview</a>
+      <a class="dt-sidebar-link" href="/app/instances">Instances</a>
+      {% if admin %}
+      <a class="dt-sidebar-link" href="/app/users">Users</a>
+      {% endif %}
+    </nav>
+    <div class="dt-sidebar-footer">
+      <label class="dt-theme-row">
+        <span>Dark mode</span>
+        <input type="checkbox" class="dt-switch" data-dt-theme-switch>
+      </label>
+    </div>
+  </aside>
+  <div class="dt-layout-main">
+    <header class="dt-topbar">
+      <button class="dt-button dt-button--ghost dt-button--icon-only"
+              data-dt-sidebar-toggle="#app-sidebar"
+              aria-label="Toggle navigation">&#9776;</button>
+      <span class="dt-topbar-spacer"></span>
+      <span class="dt-topbar-user">{{ username }} &middot; {{ role }}</span>
+      <button class="dt-button dt-button--ghost" type="button"
+              hx-post="/app/logout" hx-swap="none">Sign out</button>
+    </header>
+    <main class="dt-layout-content" id="content">
+
+      <h1 style="margin-bottom:16px;">Profile</h1>
+
+      <section class="dt-card" style="margin-bottom:16px;">
+        <div class="dt-card-header"><h2>Identity</h2></div>
+        <div class="dt-card-body">
+          <p class="dt-text-muted">Username: <strong>{{ username }}</strong></p>
+          <p class="dt-text-muted">Email: {{ email }}</p>
+          <p class="dt-text-muted">Role: {{ role }}</p>
+        </div>
+      </section>
+
+      <section class="dt-card">
+        <div class="dt-card-header"><h2>My instances</h2></div>
+        <div class="dt-card-body">
+          {% if instances.is_empty() %}
+          <p class="dt-text-muted">No instances assigned to you.</p>
+          {% else %}
+          <div class="dt-table-wrap">
+            <table class="dt-table">
+              <thead><tr><th>Instance</th><th></th></tr></thead>
+              <tbody>
+                {% for a in instances %}
+                <tr>
+                  <td>{{ a.label }}</td>
+                  <td style="text-align:right;">
+                    <a class="dt-button dt-button--ghost dt-button--sm" href="/app/instances/{{ a.instance_id }}">Open</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+{% endblock %}
