@@ -67,7 +67,8 @@ impl RateLimitPort for InMemoryRateLimiter {
             if deque.len() as u32 >= self.max_per_minute {
                 return Err(DomainError::RateLimited {
                     operation: "send".to_string(),
-                    retry_after_seconds: 60 - now.duration_since(*deque.front().unwrap()).as_secs() as u32,
+                    retry_after_seconds: 60
+                        - now.duration_since(*deque.front().unwrap()).as_secs() as u32,
                 });
             }
             deque.push_back(now);

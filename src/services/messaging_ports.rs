@@ -69,12 +69,7 @@ impl ManagerBrowserAdapter {
 
 #[async_trait]
 impl BrowserSendPort for ManagerBrowserAdapter {
-    async fn send_text(
-        &self,
-        instance: InstanceId,
-        to: &str,
-        text: &str,
-    ) -> DomainResult<String> {
+    async fn send_text(&self, instance: InstanceId, to: &str, text: &str) -> DomainResult<String> {
         self.send_inner(instance, to, Some(text), None).await
     }
 

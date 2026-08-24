@@ -11,7 +11,8 @@ pub trait ValidatePhone {
 pub struct E164Validator;
 impl ValidatePhone for E164Validator {
     fn validate(&self, phone: &str) -> Result<String, DomainError> {
-        crate::domain::instance::validate_phone_number(phone).map_err(|e| DomainError::Validation(e.to_string()))
+        crate::domain::instance::validate_phone_number(phone)
+            .map_err(|e| DomainError::Validation(e.to_string()))
     }
 }
 
@@ -44,17 +45,35 @@ impl SendPolicy {
         Self {
             max_per_minute: 60,
             cooldown_ms: 1000,
-            allowed_media: vec![MediaType::None, MediaType::Image, MediaType::Video, MediaType::Voice, MediaType::Document],
+            allowed_media: vec![
+                MediaType::None,
+                MediaType::Image,
+                MediaType::Video,
+                MediaType::Voice,
+                MediaType::Document,
+            ],
             max_queue_depth: 100,
         }
     }
 
-    pub fn can_send(&self, media: MediaType, status: MessageStatus, queue_depth: usize, last_send_ms: Option<u64>, now_ms: u64) -> DomainResult<()> {
+    pub fn can_send(
+        &self,
+        media: MediaType,
+        status: MessageStatus,
+        queue_depth: usize,
+        last_send_ms: Option<u64>,
+        now_ms: u64,
+    ) -> DomainResult<()> {
         if !self.allowed_media.contains(&media) {
-            return Err(DomainError::Validation(format!("media not allowed: {media:?}")));
+            return Err(DomainError::Validation(format!(
+                "media not allowed: {media:?}"
+            )));
         }
         if matches!(status, MessageStatus::Processing) && queue_depth >= self.max_queue_depth {
-            return Err(DomainError::Validation(format!("queue full: {queue_depth} >= {}", self.max_queue_depth)));
+            return Err(DomainError::Validation(format!(
+                "queue full: {queue_depth} >= {}",
+                self.max_queue_depth
+            )));
         }
         if let Some(last) = last_send_ms {
             if now_ms < last + self.cooldown_ms {
@@ -84,23 +103,39 @@ mod tests {
     #[test]
     fn test_send_policy_ok() {
         let p = SendPolicy::default_for_instance();
-        assert!(p.can_send(MediaType::None, MessageStatus::Pending, 0, None, 0).is_ok());
+        assert!(p
+            .can_send(MediaType::None, MessageStatus::Pending, 0, None, 0)
+            .is_ok());
     }
     #[test]
     fn test_send_policy_media_not_allowed() {
         let mut p = SendPolicy::default_for_instance();
         p.allowed_media = vec![MediaType::None];
-        assert!(p.can_send(MediaType::Image, MessageStatus::Pending, 0, None, 0).is_err());
+        assert!(p
+            .can_send(MediaType::Image, MessageStatus::Pending, 0, None, 0)
+            .is_err());
     }
     #[test]
     fn test_send_policy_queue_full() {
-        let p = SendPolicy { max_queue_depth: 1, ..SendPolicy::default_for_instance() };
-        assert!(p.can_send(MediaType::None, MessageStatus::Processing, 1, None, 0).is_err());
+        let p = SendPolicy {
+            max_queue_depth: 1,
+            ..SendPolicy::default_for_instance()
+        };
+        assert!(p
+            .can_send(MediaType::None, MessageStatus::Processing, 1, None, 0)
+            .is_err());
     }
     #[test]
     fn test_send_policy_cooldown() {
-        let p = SendPolicy { cooldown_ms: 1000, ..SendPolicy::default_for_instance() };
-        assert!(p.can_send(MediaType::None, MessageStatus::Pending, 0, Some(1000), 1500).is_err());
-        assert!(p.can_send(MediaType::None, MessageStatus::Pending, 0, Some(1000), 2500).is_ok());
+        let p = SendPolicy {
+            cooldown_ms: 1000,
+            ..SendPolicy::default_for_instance()
+        };
+        assert!(p
+            .can_send(MediaType::None, MessageStatus::Pending, 0, Some(1000), 1500)
+            .is_err());
+        assert!(p
+            .can_send(MediaType::None, MessageStatus::Pending, 0, Some(1000), 2500)
+            .is_ok());
     }
 }

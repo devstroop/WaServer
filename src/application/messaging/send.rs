@@ -106,7 +106,10 @@ mod tests {
     #[async_trait]
     impl RateLimitPort for FailRate {
         async fn check_and_record(&self, _id: InstanceId) -> DomainResult<()> {
-            Err(crate::domain::shared::error::DomainError::RateLimited { operation: "send".into(), retry_after_seconds: 5 })
+            Err(crate::domain::shared::error::DomainError::RateLimited {
+                operation: "send".into(),
+                retry_after_seconds: 5,
+            })
         }
         async fn get_status(&self, _id: InstanceId) -> MessageStatus {
             MessageStatus::Pending
@@ -149,7 +152,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limited_blocks_send() {
-        let svc = SendService::new(Arc::new(E164Validator), Arc::new(OkBrowser), Arc::new(FailRate));
+        let svc = SendService::new(
+            Arc::new(E164Validator),
+            Arc::new(OkBrowser),
+            Arc::new(FailRate),
+        );
         let cmd = SendMessageCommand {
             instance: uuid::Uuid::nil(),
             to: "+1234567890".into(),
@@ -158,7 +165,10 @@ mod tests {
             media_path: None,
         };
         let err = svc.send(cmd).await.unwrap_err();
-        assert!(matches!(err, crate::domain::shared::error::DomainError::RateLimited { .. }));
+        assert!(matches!(
+            err,
+            crate::domain::shared::error::DomainError::RateLimited { .. }
+        ));
     }
 
     #[tokio::test]
@@ -167,7 +177,12 @@ mod tests {
             allowed_media: vec![MediaType::None],
             ..Default::default()
         };
-        let svc = SendService::new(Arc::new(E164Validator), Arc::new(OkBrowser), Arc::new(OkRate)).with_policy(policy);
+        let svc = SendService::new(
+            Arc::new(E164Validator),
+            Arc::new(OkBrowser),
+            Arc::new(OkRate),
+        )
+        .with_policy(policy);
         let cmd = SendMessageCommand {
             instance: uuid::Uuid::nil(),
             to: "+1234567890".into(),
@@ -180,17 +195,34 @@ mod tests {
 
     #[tokio::test]
     async fn test_browser_not_called_on_rate_limit() {
-        struct CountingBrowser { count: std::sync::Arc<tokio::sync::Mutex<usize>> }
+        struct CountingBrowser {
+            count: std::sync::Arc<tokio::sync::Mutex<usize>>,
+        }
         #[async_trait]
         impl BrowserSendPort for CountingBrowser {
             async fn send_text(&self, _i: InstanceId, _to: &str, _t: &str) -> DomainResult<String> {
                 *self.count.lock().await += 1;
                 Ok("x".into())
             }
-            async fn send_media(&self, _i: InstanceId, _to: &str, _t: MediaType, _p: &str, _c: Option<&str>) -> DomainResult<String> { Ok("x".into()) }
+            async fn send_media(
+                &self,
+                _i: InstanceId,
+                _to: &str,
+                _t: MediaType,
+                _p: &str,
+                _c: Option<&str>,
+            ) -> DomainResult<String> {
+                Ok("x".into())
+            }
         }
         let counter = std::sync::Arc::new(tokio::sync::Mutex::new(0usize));
-        let svc = SendService::new(Arc::new(E164Validator), Arc::new(CountingBrowser { count: counter.clone() }), Arc::new(FailRate));
+        let svc = SendService::new(
+            Arc::new(E164Validator),
+            Arc::new(CountingBrowser {
+                count: counter.clone(),
+            }),
+            Arc::new(FailRate),
+        );
         let cmd = SendMessageCommand {
             instance: uuid::Uuid::nil(),
             to: "+1234567890".into(),

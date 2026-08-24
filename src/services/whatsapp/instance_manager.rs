@@ -44,8 +44,7 @@ pub struct InstanceManager {
     /// Per-instance metrics registry (#6 observability)
     pub observability: Arc<crate::shared::observability::instance_metrics::InstanceMetricsRegistry>,
     /// Shared send rate limiter — one instance for the whole process (#7)
-    pub rate_limiter:
-        Arc<dyn crate::application::messaging::ports::RateLimitPort + Send + Sync>,
+    pub rate_limiter: Arc<dyn crate::application::messaging::ports::RateLimitPort + Send + Sync>,
 }
 
 impl InstanceManager {
