@@ -24,22 +24,23 @@ use crate::{
     utils::logging::CorrelationId,
 };
 
-/// JWT secret for signing session tokens (should be from config in production)
-pub const JWT_SECRET: &[u8] = b"was-jwt-secret-change-in-production";
-
 /// Authentication state for middleware
 #[derive(Clone)]
 pub struct AuthState {
-    /// Static secret key for superadmin authentication
-    pub secret_key: String,
+    /// Optional static secret key for superadmin authentication.
+    /// When `None`/empty, the static-key path is disabled entirely (opt-in auth).
+    pub secret_key: Option<String>,
     /// Database for user/token lookup
     pub db: Database,
 }
 
 impl AuthState {
     /// Create new auth state
-    pub fn new(secret_key: String, db: Database) -> Self {
-        Self { secret_key, db }
+    pub fn new(secret_key: Option<String>, db: Database) -> Self {
+        Self {
+            secret_key: secret_key.filter(|k| !k.trim().is_empty()),
+            db,
+        }
     }
 }
 
@@ -97,17 +98,20 @@ pub async fn auth_middleware(
 
     if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            // 1. Check static secret key (superadmin) — constant-time compare to avoid timing leak
-            if SecretValidator::constant_time_eq(token, &auth_state.secret_key) {
-                let authenticated_user = AuthenticatedUser::Secret;
-                tracing::debug!(
-                    correlation_id = %correlation_id.0,
-                    path = %path,
-                    auth_method = "secret",
-                    "Superadmin secret key authentication successful"
-                );
-                request.extensions_mut().insert(authenticated_user);
-                return Ok(next.run(request).await);
+            // 1. Static secret key (superadmin) — only when configured (opt-in).
+            //    Constant-time compare to avoid timing leak.
+            if let Some(secret) = &auth_state.secret_key {
+                if SecretValidator::constant_time_eq(token, secret) {
+                    let authenticated_user = AuthenticatedUser::Secret;
+                    tracing::debug!(
+                        correlation_id = %correlation_id.0,
+                        path = %path,
+                        auth_method = "secret",
+                        "Superadmin secret key authentication successful"
+                    );
+                    request.extensions_mut().insert(authenticated_user);
+                    return Ok(next.run(request).await);
+                }
             }
 
             // 2. Check access tokens from database

@@ -149,7 +149,6 @@ pub fn build_full_router(
     }
 
     let auth_state = AuthState::new(config.auth.secret_key.clone(), auth_db.clone());
-
     let health_routes = Router::new()
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
