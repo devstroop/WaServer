@@ -67,7 +67,7 @@ pub fn staging_path_for(filename: &str) -> String {
     format!("{}/{}.{}", STAGING_DIR, uuid::Uuid::new_v4(), ext)
 }
 
-async fn stage_upload(
+pub(crate) async fn stage_upload(
     field: axum::extract::multipart::Field<'_>,
 ) -> Result<(String, usize), String> {
     let filename = field
@@ -92,7 +92,7 @@ async fn stage_upload(
 /// Build a SendService wired to the manager via ports (#7)
 /// Rate limiter is the shared process-wide instance (`InstanceManager.rate_limiter`)
 /// so windows survive across requests; limits come from per-instance config.
-fn build_send_service(manager: Arc<InstanceManager>) -> SendService {
+pub(crate) fn build_send_service(manager: Arc<InstanceManager>) -> SendService {
     SendService::new(
         Arc::new(E164Validator),
         Arc::new(ManagerBrowserAdapter {

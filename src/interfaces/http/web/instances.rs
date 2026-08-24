@@ -5,7 +5,7 @@
 
 use askama::Template;
 use axum::{
-    extract::{Form, Path, State},
+    extract::{Form, Multipart, Path, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -13,7 +13,12 @@ use base64::Engine;
 use serde::Deserialize;
 
 use crate::{
-    domain::instance::{CreateInstanceRequest, UpdateInstanceConfigRequest},
+    application::messaging::send::SendMessageCommand,
+    domain::{
+        instance::{CreateInstanceRequest, UpdateInstanceConfigRequest},
+        messaging::MediaType,
+        shared::error::DomainError,
+    },
     models::instance::{validate_phone_number, InstanceStatus},
     services::StatusSnapshot,
 };
@@ -561,6 +566,124 @@ pub async fn config_post(
             axum::response::Html(error_fragment(&format!("Config error: {e}"))),
         )
             .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Messaging console — send text/media through SendService (#32)
+// ---------------------------------------------------------------------------
+
+#[derive(Template)]
+#[template(path = "web/_send_feedback.html")]
+pub struct SendFeedbackTemplate {
+    pub tone: &'static str,
+    pub message: String,
+}
+
+fn send_error_fragment(err: &DomainError) -> Response {
+    let (tone, message) = match err {
+        DomainError::RateLimited {
+            retry_after_seconds,
+            ..
+        } => (
+            "warning",
+            format!("Rate limited — try again in {retry_after_seconds}s."),
+        ),
+        DomainError::NotFound { .. } => ("danger", "Instance not found.".to_string()),
+        DomainError::Validation(msg) | DomainError::InvalidInput { reason: msg, .. } => {
+            ("danger", msg.clone())
+        }
+        DomainError::PermissionDenied { .. } => {
+            ("danger", "Not authorized for this instance.".to_string())
+        }
+        other => ("danger", other.to_string()),
+    };
+    let tpl = SendFeedbackTemplate { tone, message };
+    (
+        StatusCode::OK,
+        axum::response::Html(tpl.render().unwrap_or_default()),
+    )
+        .into_response()
+}
+
+/// `POST /app/instances/:id/send` — multipart form: phone, text, optional file.
+/// Delegates to the same SendService flow as the JSON API
+/// (validator → policy → rate limit → browser port).
+pub async fn send_post(
+    State(app): State<super::pages::AppState>,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Response {
+    // Resolve instance first so 404s are cheap
+    if app.manager.get_instance(&id).await.is_none() {
+        return send_error_fragment(&DomainError::not_found("instance", &id));
+    }
+
+    let mut phone = String::new();
+    let mut text: Option<String> = None;
+    let mut media_path: Option<String> = None;
+    let mut media_type = MediaType::None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.name() {
+            Some("phone") => {
+                phone = field.text().await.unwrap_or_default().trim().to_string();
+            }
+            Some("text") => match field.text().await {
+                Ok(t) if !t.trim().is_empty() => text = Some(t),
+                _ => {}
+            },
+            Some("file") => {
+                let has_content = field.file_name().map(|f| !f.is_empty()).unwrap_or(false);
+                if has_content {
+                    match super::super::handlers::messaging::stage_upload(field).await {
+                        Ok((path, len)) => {
+                            tracing::info!(path = %path, bytes = len, "web attachment staged");
+                            media_type =
+                                super::super::handlers::messaging::media_type_for_filename(&path);
+                            media_path = Some(path);
+                        }
+                        Err(e) => {
+                            return send_error_fragment(&DomainError::Internal(e));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if text.is_none() && media_path.is_none() {
+        return send_error_fragment(&DomainError::Validation(
+            "Either a message or a file attachment is required.".into(),
+        ));
+    }
+
+    let service = super::super::handlers::messaging::build_send_service(app.manager.clone());
+    let cmd = SendMessageCommand {
+        instance: match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return send_error_fragment(&DomainError::not_found("instance", &id)),
+        },
+        to: phone,
+        text,
+        media_type,
+        media_path,
+    };
+
+    match service.send(cmd).await {
+        Ok(message_id) => {
+            let tpl = SendFeedbackTemplate {
+                tone: "success",
+                message: format!("Sent ✓ (message {message_id})"),
+            };
+            (
+                StatusCode::OK,
+                axum::response::Html(tpl.render().unwrap_or_default()),
+            )
+                .into_response()
+        }
+        Err(e) => send_error_fragment(&e),
     }
 }
 
