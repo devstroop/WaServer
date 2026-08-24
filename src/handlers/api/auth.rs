@@ -3,8 +3,14 @@
 //! REST API endpoints for user authentication (login, register).
 //! These endpoints are public (no authentication required).
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{ConnectInfo, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use serde_json::json;
+use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::{
@@ -31,8 +37,23 @@ fn generate_session_token() -> String {
 )]
 pub async fn register(
     State(auth): State<AuthState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(request): Json<RegisterUserRequest>,
 ) -> impl IntoResponse {
+    // Anti account-spam: every registration attempt counts against the IP (#44)
+    let reg_key = format!("reg|{}", peer.ip());
+    if let Err(remaining) = auth.throttle.hit(&reg_key) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("retry-after", remaining.as_secs().to_string())],
+            Json(json!({
+                "error": "rate_limited",
+                "message": format!("Too many attempts — retry in {}s", remaining.as_secs())
+            })),
+        )
+            .into_response();
+    }
+
     // Validate username
     if request.username.trim().is_empty() {
         return (
@@ -132,8 +153,24 @@ pub async fn register(
 )]
 pub async fn login(
     State(auth): State<AuthState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(request): Json<LoginRequest>,
 ) -> impl IntoResponse {
+    // Brute-force protection: failures per (IP|username) within window (#44)
+    let throttle_key = format!("login|{}|{}", peer.ip(), request.username.to_lowercase());
+    if let Some(remaining) = auth.throttle.is_blocked(&throttle_key) {
+        tracing::warn!(%peer, "login throttled");
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("retry-after", remaining.as_secs().to_string())],
+            Json(json!({
+                "error": "rate_limited",
+                "message": format!("Too many failed attempts — retry in {}s", remaining.as_secs())
+            })),
+        )
+            .into_response();
+    }
+
     // Try to find user by username or email
     let user = if let Ok(Some(u)) = auth.db.get_user_by_username(&request.username) {
         Some(u)
@@ -147,6 +184,7 @@ pub async fn login(
         Some(user_record) => {
             // Verify password
             if !verify_password(&request.password, &user_record.password_hash) {
+                auth.throttle.hit(&throttle_key).ok();
                 tracing::warn!(
                     username = %request.username,
                     "Login failed - invalid password"
@@ -163,6 +201,7 @@ pub async fn login(
 
             // Check if user is active
             if !user_record.is_active {
+                auth.throttle.hit(&throttle_key).ok();
                 tracing::warn!(
                     user_id = %user_record.id,
                     username = %user_record.username,
@@ -226,6 +265,7 @@ pub async fn login(
                 .into_response()
         }
         None => {
+            auth.throttle.hit(&throttle_key).ok();
             tracing::warn!(
                 username = %request.username,
                 "Login failed - user not found"

@@ -1,5 +1,6 @@
 pub mod ports;
 pub mod secret;
+pub mod throttle;
 pub mod token;
 
 pub use ports::{TokenStore, UserStore};

@@ -152,6 +152,8 @@ pub fn build_full_router(
         config.auth.secret_key.clone(),
         auth_db.clone(),
         config.auth.session_ttl_hours,
+        config.auth.rate_limits.max_failures(),
+        config.auth.rate_limits.window_minutes(),
     );
     let health_routes = Router::new()
         .route("/health", get(health::health_check))
@@ -218,11 +220,7 @@ pub fn build_full_router(
         .with_state(auth_state.clone());
 
     // Web admin UI (#28) — cookie-session pages under /app + embedded assets
-    let web_auth_state = crate::middleware::auth::AuthState::new(
-        config.auth.secret_key.clone(),
-        auth_db.clone(),
-        config.auth.session_ttl_hours,
-    );
+    let web_auth_state = auth_state;
 
     let mut app = Router::new();
     app = app.nest("/api", health_routes);
