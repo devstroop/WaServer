@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub logging: LoggingConfig,
     pub cache: CacheConfig,
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
     pub limits: LimitsConfig,
     pub environment: EnvironmentConfig,
     #[serde(default)]
@@ -141,6 +143,19 @@ pub struct CacheConfig {
     pub default_ttl_minutes: u64,
 }
 
+/// Storage/maintenance configuration
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct StorageConfig {
+    /// Staged uploads older than this are purged hourly (#46)
+    pub staging_ttl_hours: Option<u64>,
+}
+
+impl StorageConfig {
+    pub fn effective_staging_ttl_hours(&self) -> u64 {
+        self.staging_ttl_hours.unwrap_or(24)
+    }
+}
+
 /// CORS configuration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CorsConfig {
@@ -175,6 +190,7 @@ impl Default for AppConfig {
             cache: CacheConfig {
                 default_ttl_minutes: 15,
             },
+            storage: StorageConfig::default(),
             cors: CorsConfig {
                 allow_origins: vec!["*".to_string()],
                 allow_methods: vec![

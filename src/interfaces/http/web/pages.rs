@@ -193,12 +193,19 @@ pub async fn shell(session: WebSessionExt) -> Response {
         .into_response()
 }
 
+static BROWSER_AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+fn browser_available() -> bool {
+    *BROWSER_AVAILABLE.get_or_init(|| crate::services::maintenance::detect_browser().is_ok())
+}
+
 #[derive(Template)]
 #[template(path = "web/_overview.html")]
 pub struct OverviewTemplate {
     pub version: &'static str,
     pub uptime: String,
     pub messages_sent: u64,
+    pub browser_available: bool,
     pub total: usize,
     pub active: usize,
     pub warming_up: usize,
@@ -276,6 +283,7 @@ pub async fn overview_fragment(State(app): State<AppState>) -> Response {
         version: VERSION,
         uptime: format_uptime(crate::handlers::api::health::uptime_seconds()),
         messages_sent,
+        browser_available: browser_available(),
         total: snapshots.len(),
         active,
         warming_up,
