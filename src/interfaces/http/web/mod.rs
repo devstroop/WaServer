@@ -10,6 +10,7 @@ pub mod guard;
 pub mod instances;
 pub mod pages;
 pub mod session;
+pub mod users;
 
 use axum::Router;
 

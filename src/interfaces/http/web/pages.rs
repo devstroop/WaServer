@@ -362,6 +362,39 @@ pub fn router(auth_state: AuthState, manager: Arc<crate::services::InstanceManag
             "/instances/:id/send",
             axum::routing::post(super::instances::send_post),
         )
+        // users & tokens admin (#33)
+        .route("/users", axum::routing::get(super::users::list_page))
+        .route("/users", axum::routing::post(super::users::create_post))
+        .route(
+            "/fragments/users",
+            axum::routing::get(super::users::table_fragment),
+        )
+        .route("/users/:id", axum::routing::get(super::users::detail_page))
+        .route(
+            "/users/:id/delete",
+            axum::routing::post(super::users::delete_post),
+        )
+        .route(
+            "/users/:id/tokens",
+            axum::routing::post(super::users::create_token_post),
+        )
+        .route(
+            "/users/:id/tokens/:token_id/revoke",
+            axum::routing::post(super::users::revoke_token_post),
+        )
+        .route(
+            "/users/:id/assign",
+            axum::routing::post(super::users::assign_post),
+        )
+        .route(
+            "/users/:id/unassign/:instance_id",
+            axum::routing::post(super::users::unassign_post),
+        )
+        .route(
+            "/fragments/users/:id/assignments",
+            axum::routing::get(super::users::assignments_fragment),
+        )
+        .route("/me", axum::routing::get(super::users::me_page))
         .layer(axum::middleware::from_fn(csrf_middleware))
         .layer(from_fn_with_state(state.clone(), web_auth_middleware))
         .with_state(state);
