@@ -3,5 +3,5 @@ pub mod ports;
 pub mod send;
 
 pub use policy::{SendPolicy, ValidatePhone};
-pub use ports::{BrowserSendPort, RateLimitPort};
+pub use ports::{BrowserSendPort, RateLimitConfig, RateLimitPort};
 pub use send::{SendMessageCommand, SendService};

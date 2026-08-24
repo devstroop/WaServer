@@ -65,10 +65,21 @@ impl InstanceManager {
 
         info!("InstanceManager initialized with base_dir: {:?}", base_dir);
 
+        let registry = Arc::new(crate::application::instance::InstanceRegistry::new());
+        let rate_limiter = Arc::new(
+            crate::infrastructure::messaging::InMemoryRateLimiter::configured(
+                Arc::new(crate::infrastructure::messaging::RegistryRateLimits(
+                    registry.clone(),
+                )),
+                60,
+                1000,
+            ),
+        );
+
         Self {
             instances: Arc::new(RwLock::new(HashMap::new())),
             phone_to_id: Arc::new(RwLock::new(HashMap::new())),
-            registry: Arc::new(crate::application::instance::InstanceRegistry::new()),
+            registry,
             store: Arc::new(crate::infrastructure::persistence::SqliteInstanceStore(
                 db.clone(),
             )),
@@ -78,9 +89,7 @@ impl InstanceManager {
             observability: Arc::new(
                 crate::shared::observability::instance_metrics::InstanceMetricsRegistry::new(),
             ),
-            rate_limiter: Arc::new(
-                crate::infrastructure::messaging::InMemoryRateLimiter::default_for_instance(),
-            ),
+            rate_limiter,
         }
     }
 

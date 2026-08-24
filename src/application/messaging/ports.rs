@@ -23,3 +23,9 @@ pub trait RateLimitPort: Send + Sync {
     async fn check_and_record(&self, instance: InstanceId) -> DomainResult<()>;
     async fn get_status(&self, instance: InstanceId) -> MessageStatus;
 }
+
+/// Resolves the per-instance send limit (messages/minute)
+#[async_trait]
+pub trait RateLimitConfig: Send + Sync {
+    async fn max_per_minute(&self, instance: InstanceId) -> u32;
+}
