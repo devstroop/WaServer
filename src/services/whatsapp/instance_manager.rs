@@ -21,6 +21,15 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+/// Cheap dashboard snapshot — metadata + runtime status, no browser calls (#30)
+#[derive(Debug, Clone)]
+pub struct StatusSnapshot {
+    pub id: Uuid,
+    pub phone: Option<String>,
+    pub name: Option<String>,
+    pub status: crate::models::instance::InstanceStatus,
+}
+
 /// Manages multiple WhatsApp instances
 ///
 /// Facade over `application::instance::InstanceRegistry` (#5) — the registry owns
@@ -452,6 +461,28 @@ impl InstanceManager {
     /// Get account count
     pub async fn count(&self) -> usize {
         self.instances.read().await.len()
+    }
+
+    /// Cheap per-instance status snapshot for the web dashboard (#30).
+    /// Reads in-memory locks only — never touches the browser (unlike `list_instances`,
+    /// which performs auth checks per running instance).
+    pub async fn list_status_snapshots(&self) -> Vec<StatusSnapshot> {
+        let metas = self.registry.list().await;
+        let mut out = Vec::with_capacity(metas.len());
+        for m in metas {
+            let status = match self.instances.read().await.get(&m.id) {
+                Some(svc) => svc.status().await,
+                None => crate::models::instance::InstanceStatus::Sleeping,
+            };
+            out.push(StatusSnapshot {
+                id: m.id,
+                phone: m.phone_number,
+                name: m.instance_name,
+                status,
+            });
+        }
+        out.sort_by_key(|s| s.id);
+        out
     }
 
     /// Check if an instance exists (by UUID or phone)
