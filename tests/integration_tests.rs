@@ -7,8 +7,7 @@ const BASE_URL: &str = "http://localhost:3000";
 /// Secret key used by the running server.
 /// Override with: WAS_SECRET=<key> cargo test --test integration_tests -- --ignored
 fn secret() -> String {
-    std::env::var("WAS_SECRET")
-        .unwrap_or_else(|_| "change-this-secret-key-in-production".to_string())
+    std::env::var("WAS_SECRET").unwrap_or_default()
 }
 
 /// Integration tests for WAS v0.3.0 API.
