@@ -18,7 +18,7 @@ use crate::{
     models::user::{LoginRequest, LoginResponse, RegisterUserRequest, UserInfo, UserRole},
 };
 
-/// Generate a session token (for web UI auth)
+/// Generate a session token (API bearer token)
 fn generate_session_token() -> String {
     format!("session_{}", Uuid::new_v4().to_string().replace("-", ""))
 }
@@ -385,7 +385,7 @@ pub async fn logout(
         .into_response()
 }
 
-/// Revoke all web sessions for the authenticated user (logout-all, #42)
+/// Revoke all sessions for the authenticated user (logout-all, #42)
 #[utoipa::path(
     post,
     path = "/api/v1/auth/logout-all",
@@ -409,11 +409,11 @@ pub async fn logout_all(
             let token_hash = hash_token(token);
             if let Ok(Some((user, _))) = auth.db.get_user_by_access_token(&token_hash) {
                 let revoked = auth.db.delete_user_web_sessions(&user.id).unwrap_or(0);
-                tracing::info!(user_id = %user.id, revoked, "revoked all web sessions");
+                tracing::info!(user_id = %user.id, revoked, "revoked all sessions");
                 return (
                     StatusCode::OK,
                     Json(json!({
-                        "message": "All web sessions revoked",
+                        "message": "All sessions revoked",
                         "revoked": revoked
                     })),
                 )

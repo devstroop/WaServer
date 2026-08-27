@@ -60,7 +60,7 @@ impl AuthState {
         }
     }
 
-    /// Expiry timestamp for a fresh web session, formatted to compare exactly
+    /// Expiry timestamp for a fresh API session, formatted to compare exactly
     /// against SQLite `datetime('now')` ("YYYY-MM-DD HH:MM:SS", UTC).
     pub fn session_expiry(&self) -> String {
         use chrono::Duration;

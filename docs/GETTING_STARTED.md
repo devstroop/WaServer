@@ -57,7 +57,6 @@ docker-compose up -d
 Server starts at **http://localhost:3000**
 
 - **API**: http://localhost:3000
-- **Web UI**: http://localhost:3000/app
 - **Swagger UI**: http://localhost:3000/api-docs/
 - **Health**: http://localhost:3000/api/health
 
@@ -65,7 +64,7 @@ Server starts at **http://localhost:3000**
 
 Sending, linking (QR) and screenshots require **Chrome or Chromium** on the server host.
 The server detects it at startup and logs a warning when missing; `GET /api/health`
-reports `browser_available` and the web dashboard shows a banner.
+reports `browser_available`.
 
 ```bash
 # macOS
@@ -86,7 +85,7 @@ There is **no default API key**. Two ways to authenticate:
    export WAS_API_KEY="set-a-long-random-secret-here"
    ```
 2. **User access tokens** — register a user, log in (`POST /api/v1/auth/login`),
-   or mint tokens in the web UI under Users → Manage → Create token.
+   or mint tokens via the API (`POST /api/v1/users/:id/tokens`).
 
 If no `secret_key` is configured, the static-key path is disabled entirely and
 user tokens are the only way in.
