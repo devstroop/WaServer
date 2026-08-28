@@ -4,9 +4,10 @@
    Override WAS-specific tokens here if needed. */
 :root {
   --radius: 0.625rem;
-  /* WAS brand — maps to UIKit primary */
-  --dt-color-primary: #7c3aed;
-  --dt-color-primary-hover: #6d28d9;
+  /* shadcn neutral primary — was purple #7c3aed */
+  --dt-color-primary: hsl(240 5.9% 10%);
+  --dt-color-primary-hover: hsl(240 5.9% 15%);
+  --dt-color-primary-fg: hsl(0 0% 98%);
 }
 
 * {

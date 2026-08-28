@@ -69,7 +69,7 @@ export default function AdminUserTokens() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+          <Link to="/admin/users" className="text-sm text-primary hover:underline">
             ← Users
           </Link>
           <h1 className="text-xl font-semibold tracking-tight">User tokens</h1>
@@ -95,7 +95,7 @@ export default function AdminUserTokens() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+        <Link to="/admin/users" className="text-sm text-primary hover:underline">
           ← Users
         </Link>
         <h1 className="text-xl font-semibold tracking-tight">User tokens</h1>

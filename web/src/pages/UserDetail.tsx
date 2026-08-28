@@ -187,7 +187,7 @@ export default function UserDetail() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+          <Link to="/admin/users" className="text-sm text-primary hover:underline">
             ← Users
           </Link>
           <h1 className="text-xl font-semibold tracking-tight">User detail</h1>
@@ -209,7 +209,7 @@ export default function UserDetail() {
         <Alert tone="warning" title="Not found">
           User not found.
         </Alert>
-        <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+        <Link to="/admin/users" className="text-sm text-primary hover:underline">
           ← Back to users
         </Link>
       </div>
@@ -219,7 +219,7 @@ export default function UserDetail() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+        <Link to="/admin/users" className="text-sm text-primary hover:underline">
           ← Users
         </Link>
         <h1 className="text-xl font-semibold tracking-tight">User detail</h1>

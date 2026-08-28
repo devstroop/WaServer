@@ -80,7 +80,7 @@ export default function InstanceDetail() {
         <Alert tone="danger" title="Missing id">
           No instance id in route.
         </Alert>
-        <Link to={backTo} className="text-sm text-violet-600 hover:underline">
+        <Link to={backTo} className="text-sm text-primary hover:underline">
           ← Back to instances
         </Link>
       </div>

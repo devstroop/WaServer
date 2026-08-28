@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Field, Input, Password, email as emailValidator, minLength, pattern, required } from '@devstroop/react-uikit';
+import { Alert, Button, Card, Checkbox, Field, Input, Password, email as emailValidator, minLength, pattern, required } from '@devstroop/react-uikit';
 import { auth } from '../api/endpoints';
 
 export default function Register() {
@@ -12,6 +12,8 @@ export default function Register() {
   const [ok, setOk] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [agree, setAgree] = useState(false);
+  const [agreeError, setAgreeError] = useState<string | undefined>();
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,11 +46,17 @@ export default function Register() {
     }
     setFieldErrors({});
 
+    if (!agree) {
+      setAgreeError('You must agree to the Terms and Privacy Policy');
+      return;
+    }
+    setAgreeError(undefined);
+
     setLoading(true);
     try {
       await auth.register({ username: username.trim(), email: trimmedEmail || undefined, password });
-      setOk('Registered. First user becomes Admin. Now sign in.');
-      setTimeout(() => nav('/login'), 1200);
+      setOk('Registered. Now sign in.');
+      setTimeout(() => nav('/auth/login'), 1200);
     } catch (e: unknown) {
       let status: number | undefined;
       let message = e instanceof Error ? e.message : 'Register failed';
@@ -93,7 +101,6 @@ export default function Register() {
     <div className="mx-auto mt-16 max-w-sm">
       <Card header="Create account">
         <div className="space-y-4">
-          <Alert tone="info" variant="soft">First user becomes Admin — you will get administrator privileges.</Alert>
           {err && (
             <Alert tone="danger" variant="soft">
               {err}
@@ -145,13 +152,27 @@ export default function Register() {
                 autoComplete="new-password"
               />
             </Field>
-            <Button type="submit" variant="primary" fullWidth disabled={loading}>
+            <label className="flex items-start gap-2 text-xs text-zinc-600">
+              <Checkbox
+                checked={agree}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setAgree(e.target.checked);
+                  if (agreeError) setAgreeError(undefined);
+                }}
+              />
+              <span>
+                I agree to the <Link to="#" className="text-primary hover:underline">Terms</Link> and{' '}
+                <Link to="#" className="text-primary hover:underline">Privacy Policy</Link>
+              </span>
+            </label>
+            {agreeError && <p className="text-xs text-red-600">{agreeError}</p>}
+            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-2">
               {loading ? 'Creating…' : 'Create'}
             </Button>
           </form>
           <p className="text-center text-xs text-zinc-500">
             Have account?{' '}
-            <Link to="/login" className="text-violet-600">
+            <Link to="/auth/login" className="font-semibold text-primary">
               Sign in
             </Link>
           </p>

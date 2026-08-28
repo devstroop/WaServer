@@ -13,16 +13,16 @@ export default function Layout() {
       <header className="sticky top-0 z-10 border-b bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <Link to="/" className="font-semibold tracking-tight">
-            WAS <span className="text-violet-600">Admin</span>
+            WAS <span className="text-primary">Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to="/dashboard" className="hover:text-violet-600">
+            <Link to="/dashboard" className="hover:text-primary">
               Dashboard
             </Link>
-            <Link to="/dashboard/instances" className="hover:text-violet-600">
+            <Link to="/dashboard/instances" className="hover:text-primary">
               Instances
             </Link>
-            <a href="/api-docs/" target="_blank" className="hover:text-violet-600">
+            <a href="/api-docs/" target="_blank" className="hover:text-primary">
               API
             </a>
             <span className="text-zinc-500">{user?.username}</span>

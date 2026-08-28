@@ -189,7 +189,7 @@ export default function Dashboard() {
       <Card header={<span className="font-medium">My Instances</span>} footer={null}>
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm text-zinc-500">Instances assigned to your user — quick send access.</p>
-          <Link to="/app/instances" className="text-sm text-violet-600 hover:underline">
+          <Link to="/app/instances" className="text-sm text-primary hover:underline">
             Manage →
           </Link>
         </div>

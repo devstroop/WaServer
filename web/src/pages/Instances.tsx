@@ -299,7 +299,7 @@ export function InstanceList(props: InstanceListProps) {
             <span>
               Showing {rows.length} of {list.length} instances
             </span>
-            <Link to={isAdminRoute ? '/dashboard/instances' : '/admin/instances'} className="text-violet-600 hover:underline">
+            <Link to={isAdminRoute ? '/dashboard/instances' : '/admin/instances'} className="text-primary hover:underline">
               {isAdminRoute ? 'Go to My Instances' : 'Go to All Instances (admin)'}
             </Link>
           </div>

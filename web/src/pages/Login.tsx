@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Field, Input, Password } from '@devstroop/react-uikit';
+import { Alert, Button, Card, Checkbox, Field, Input, Password } from '@devstroop/react-uikit';
 import { auth } from '../api/endpoints';
 import { setToken } from '../api/client';
 
@@ -11,6 +11,7 @@ export default function Login() {
   const [err, setErr] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,9 +70,9 @@ export default function Login() {
 
   return (
     <div className="mx-auto mt-16 max-w-sm">
-      <Card header="Sign in — WAS">
+      <Card header="Sign in">
         <div className="space-y-4">
-          <p className="text-sm text-zinc-500">Backend: {import.meta.env.VITE_API_BASE || 'proxy → http://localhost:3000'}</p>
+          <p className="text-sm text-zinc-500">Enter your credentials to continue</p>
           {err && (
             <Alert tone="danger" variant="soft">
               {err}
@@ -104,13 +105,17 @@ export default function Login() {
                 autoComplete="current-password"
               />
             </Field>
-            <Button type="submit" variant="primary" fullWidth disabled={loading}>
+            <label className="flex items-center gap-2 text-xs text-zinc-600">
+              <Checkbox checked={remember} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRemember(e.target.checked)} />
+              Remember me
+            </label>
+            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-2">
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
           <p className="text-center text-xs text-zinc-500">
             Need account?{' '}
-            <Link to="/register" className="text-violet-600">
+            <Link to="/auth/register" className="font-semibold text-primary">
               Register
             </Link>
           </p>
