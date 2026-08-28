@@ -28,6 +28,7 @@ jobs:
         with:
           repository: devstroop/react-uikit
           path: react-uikit
+          ref: v0.29.1
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
