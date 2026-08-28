@@ -288,12 +288,17 @@ pub async fn update_user(
         Ok(Some(_)) => {}
     }
 
-    // Apply update
+    // Handle password: hash with bcrypt if provided, and revoke web sessions on change
+    let password_hash_owned: Option<String> = request.password.as_deref().map(hash_password);
+    let password_hash_opt = password_hash_owned.as_deref();
+    // Handle email: None = don't update, Some(Some(email)) = set, Some(None) not used here (email is Option<String>)
+    let email_opt: Option<Option<&str>> = request.email.as_ref().map(|e| Some(e.as_str()));
+
     if let Err(e) = db.update_user(
         &user_id,
         request.username.as_deref(),
-        None, // email not updated in this endpoint
-        None, // password_hash not updated in this endpoint
+        email_opt,
+        password_hash_opt,
         request.role,
         request.is_active,
     ) {
@@ -305,6 +310,14 @@ pub async fn update_user(
             })),
         )
             .into_response();
+    }
+
+    // Revoke web sessions on password change or deactivation (security #45)
+    if password_hash_opt.is_some() {
+        let _ = db.delete_user_web_sessions(&user_id);
+    }
+    if matches!(request.is_active, Some(false)) {
+        let _ = db.delete_user_web_sessions(&user_id);
     }
 
     // Return updated user
