@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* UIKit tokens are imported via '@devstroop/react-uikit/style.css' in main.tsx.
+   Override WAS-specific tokens here if needed. */
+:root {
+  --radius: 0.625rem;
+  /* WAS brand — maps to UIKit primary */
+  --dt-color-primary: #7c3aed;
+  --dt-color-primary-hover: #6d28d9;
+}
+
+* {
+  border-color: hsl(214.3 31.8% 91.4%);
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: hsl(0 0% 100%);
+  color: hsl(222.2 84% 4.9%);
+}
