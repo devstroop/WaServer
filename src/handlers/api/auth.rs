@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::{
-    middleware::auth::{hash_password, hash_token, verify_password, AuthState},
+    middleware::auth::{hash_password, hash_token, is_bcrypt_hash, verify_password, AuthState},
     models::user::{LoginRequest, LoginResponse, RegisterUserRequest, UserInfo, UserRole},
 };
 
@@ -215,6 +215,19 @@ pub async fn login(
                     })),
                 )
                     .into_response();
+            }
+
+            // Migration: legacy SHA256 hash → bcrypt (transparent on successful login)
+            if !is_bcrypt_hash(&user_record.password_hash) {
+                let new_hash = hash_password(&request.password);
+                if let Err(e) =
+                    auth.db
+                        .update_user(&user_record.id, None, None, Some(&new_hash), None, None)
+                {
+                    tracing::warn!(user_id=%user_record.id, error=%e, "Failed to migrate legacy password hash to bcrypt");
+                } else {
+                    tracing::info!(user_id=%user_record.id, "Migrated legacy SHA256 password hash to bcrypt");
+                }
             }
 
             // Generate session token and store it as an access token
