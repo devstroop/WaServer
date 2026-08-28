@@ -3,7 +3,7 @@
 //! Provides API authentication via:
 //! - Static secret key (superadmin access)
 //! - Access tokens (user API access)
-//! - Session tokens (web UI access - JWT based)
+//! - Session tokens (API access - JWT based)
 //!
 //! Uses `AuthState` which can be applied independently of route-specific state.
 
@@ -32,7 +32,7 @@ pub struct AuthState {
     pub secret_key: Option<String>,
     /// Database for user/token lookup
     pub db: Database,
-    /// Web-session lifetime in hours
+    /// Session lifetime in hours
     pub session_ttl_hours: u64,
     /// Brute-force throttle for auth endpoints (#44)
     pub throttle: std::sync::Arc<crate::application::auth::throttle::AuthRateLimiter>,

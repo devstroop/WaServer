@@ -1,0 +1,61 @@
+name: Web
+
+on:
+  push:
+    branches: [main, develop, feat/web*]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: Web (typecheck, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WaServer
+        uses: actions/checkout@v4
+        with:
+          path: WaServer
+
+      - name: Checkout react-uikit (for file:../../react-uikit)
+        uses: actions/checkout@v4
+        with:
+          repository: devstroop/react-uikit
+          path: react-uikit
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: WaServer/web/package-lock.json
+
+      - name: Install deps
+        working-directory: WaServer/web
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: WaServer/web
+        run: npx tsc -b
+
+      - name: Lint
+        working-directory: WaServer/web
+        run: npm run lint
+
+      - name: Build
+        working-directory: WaServer/web
+        run: npm run build
+
+      - name: Verify dist
+        working-directory: WaServer/web
+        run: |
+          test -f dist/index.html
+          ls -lh dist
+          ls -lh dist/assets

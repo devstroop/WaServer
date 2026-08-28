@@ -108,7 +108,7 @@ pub struct InstanceOwnerRecord {
 // API Request/Response Types
 // =============================================================================
 
-/// Request to register a new user (web UI).
+/// Request to register a new user (API).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
     /// Unique username
@@ -119,7 +119,7 @@ pub struct RegisterUserRequest {
     pub password: String,
 }
 
-/// Request to login (web UI).
+/// Request to login (API).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
     /// Username or email
@@ -132,7 +132,7 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub user: UserInfo,
-    /// Session token for web UI
+    /// Session token for API
     pub token: String,
     /// Token expiration time
     pub expires_at: String,
