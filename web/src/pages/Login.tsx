@@ -69,8 +69,14 @@ export default function Login() {
   };
 
   return (
-    <div className="mx-auto mt-16 max-w-sm">
-      <Card header="Sign in">
+    <div className="mx-auto mt-12 max-w-sm">
+      <div className="mb-5 text-center">
+        <Link to="/" className="text-xl font-bold tracking-tight">
+          WhatsApp Server
+        </Link>
+        <p className="mt-1 text-xs text-zinc-500">v0.1.0</p>
+      </div>
+      <Card header="Sign in" className="shadow-sm">
         <div className="space-y-4">
           <p className="text-sm text-zinc-500">Enter your credentials to continue</p>
           {err && (
@@ -109,7 +115,7 @@ export default function Login() {
               <Checkbox checked={remember} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRemember(e.target.checked)} />
               Remember me
             </label>
-            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-2">
+            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-1">
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>

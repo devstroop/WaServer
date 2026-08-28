@@ -25,7 +25,10 @@ export default function Register() {
     if (usernameError) nextErrors.username = usernameError;
 
     const trimmedEmail = email.trim();
-    if (trimmedEmail) {
+    const emailRequired = required('Email is required')(trimmedEmail);
+    if (emailRequired) {
+      nextErrors.email = emailRequired;
+    } else {
       const emailError =
         emailValidator('Invalid email')(trimmedEmail) ??
         pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email')(trimmedEmail);
@@ -98,8 +101,14 @@ export default function Register() {
   };
 
   return (
-    <div className="mx-auto mt-16 max-w-sm">
-      <Card header="Create account">
+    <div className="mx-auto mt-12 max-w-sm">
+      <div className="mb-5 text-center">
+        <Link to="/" className="text-xl font-bold tracking-tight">
+          WhatsApp Server
+        </Link>
+        <p className="mt-1 text-xs text-zinc-500">v0.1.0</p>
+      </div>
+      <Card header="Create account" className="shadow-sm">
         <div className="space-y-4">
           {err && (
             <Alert tone="danger" variant="soft">
@@ -125,11 +134,11 @@ export default function Register() {
                 autoComplete="username"
               />
             </Field>
-            <Field label="Email" htmlFor="register-email" hint="Optional" error={fieldErrors.email}>
+            <Field label="Email" htmlFor="register-email" required error={fieldErrors.email}>
               <Input
                 id="register-email"
                 type="email"
-                placeholder="Email (optional)"
+                placeholder="Email"
                 value={email}
                 onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
                   setEmail(ev.target.value);
@@ -161,12 +170,12 @@ export default function Register() {
                 }}
               />
               <span>
-                I agree to the <Link to="#" className="text-primary hover:underline">Terms</Link> and{' '}
-                <Link to="#" className="text-primary hover:underline">Privacy Policy</Link>
+                I agree to the <Link to="#" className="font-medium text-primary hover:underline">Terms</Link> and{' '}
+                <Link to="#" className="font-medium text-primary hover:underline">Privacy Policy</Link>
               </span>
             </label>
             {agreeError && <p className="text-xs text-red-600">{agreeError}</p>}
-            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-2">
+            <Button type="submit" variant="primary" fullWidth disabled={loading} className="mt-1">
               {loading ? 'Creating…' : 'Create'}
             </Button>
           </form>

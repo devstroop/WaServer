@@ -9,24 +9,24 @@ export default function Layout() {
     nav('/auth/login');
   };
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <header className="sticky top-0 z-10 border-b bg-white">
+    <div className="min-h-screen bg-[#F0F2F5] text-[#111B21]">
+      <header className="sticky top-0 z-10 border-b border-[#128C7E] bg-[#128C7E] text-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link to="/" className="font-semibold tracking-tight">
-            WAS <span className="text-primary">Admin</span>
+          <Link to="/" className="font-semibold tracking-tight text-white">
+            WAS <span className="text-[#DCF8C6]">Admin</span>
           </Link>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link to="/dashboard" className="hover:text-primary">
+          <nav className="flex items-center gap-4 text-sm text-white">
+            <Link to="/dashboard" className="hover:text-[#DCF8C6]">
               Dashboard
             </Link>
-            <Link to="/dashboard/instances" className="hover:text-primary">
+            <Link to="/dashboard/instances" className="hover:text-[#DCF8C6]">
               Instances
             </Link>
-            <a href="/api-docs/" target="_blank" className="hover:text-primary">
+            <a href="/api-docs/" target="_blank" className="hover:text-[#DCF8C6]">
               API
             </a>
-            <span className="text-zinc-500">{user?.username}</span>
-            <button onClick={onLogout} className="rounded border px-3 py-1 text-sm hover:bg-zinc-100">
+            <span className="text-white/80">{user?.username}</span>
+            <button onClick={onLogout} className="rounded border border-white/20 bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20">
               Sign out
             </button>
           </nav>
