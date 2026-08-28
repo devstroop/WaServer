@@ -14,6 +14,7 @@ import UsersList from './pages/UsersList';
 import UserDetail from './pages/UserDetail';
 import ApiKeys from './pages/ApiKeys';
 import AdminUserTokens from './pages/AdminUserTokens';
+import AdminUserAssignments from './pages/AdminUserAssignments';
 
 function NotImplemented() {
   return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
@@ -83,6 +84,8 @@ export default function App() {
               <Route path="/admin/users" element={<UsersList />} />
               <Route path="/admin/users/:id" element={<UserDetail />} />
               <Route path="/admin/users/:id/tokens" element={<AdminUserTokens />} />
+              <Route path="/admin/users/:id/instances" element={<AdminUserAssignments />} />
+              <Route path="/admin/users/:id/assignments" element={<AdminUserAssignments />} />
             </Route>
 
             {/* Fallback */}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Button, Card, DataGrid, EmptyState, Stat, useToast } from '@devstroop/react-uikit';
 import type { GridColumn } from '@devstroop/react-uikit';
-import { health, users } from '../api/endpoints';
+import { health, instances, users } from '../api/endpoints';
 import type { HealthResponse, InstanceInfo } from '../api/types';
 
 function statusTone(s: string): 'success' | 'warning' | 'neutral' | 'danger' | 'primary' {
@@ -69,9 +69,21 @@ export default function Dashboard() {
       try {
         const me = await users.me();
         if (cancelled) return;
-        const resp = await users.instances(me.id);
-        if (!cancelled) {
-          setList(resp.instances ?? []);
+        const resp: any = await users.instances(me.id);
+        if (cancelled) return;
+        const records = resp.instances ?? [];
+        // resp.instances is InstanceOwnerRecord[] (user_id, instance_id) — hydrate to InstanceInfo
+        if (records.length > 0 && records[0] && 'instance_id' in records[0]) {
+          const infos = await Promise.all(
+            records.map((r: { instance_id: string }) =>
+              instances.get(r.instance_id).catch(() => null),
+            ),
+          );
+          const filtered = infos.filter((x): x is InstanceInfo => x !== null);
+          if (!cancelled) setList(filtered);
+        } else {
+          // fallback: already InstanceInfo[]
+          if (!cancelled) setList(records as InstanceInfo[]);
         }
       } catch (e) {
         if (!cancelled) showError(e, 'Failed to load instances');
