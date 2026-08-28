@@ -71,7 +71,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_instance_phone ON instance(phone_number);
 
 /// User table schema for RBAC.
 /// Roles: 'admin', 'user'
-/// Users authenticate via password for web UI.
+/// Users authenticate via password (API).
 const USER_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS user (
     id            TEXT PRIMARY KEY,
