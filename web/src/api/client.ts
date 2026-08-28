@@ -5,6 +5,41 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export interface ApiError {
+  status: number;
+  message: string;
+  correlationId?: string;
+  retryAfter?: number;
+}
+
+export class ApiError extends Error implements ApiError {
+  status: number;
+  correlationId?: string;
+  retryAfter?: number;
+
+  constructor(opts: { status: number; message: string; correlationId?: string; retryAfter?: number }) {
+    super(opts.message);
+    this.name = 'ApiError';
+    this.status = opts.status;
+    this.message = opts.message;
+    this.correlationId = opts.correlationId;
+    this.retryAfter = opts.retryAfter;
+  }
+}
+
+type ErrorEnvelopeDto = {
+  error: string;
+  message: string;
+  correlation_id?: string | null;
+};
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  // Header is typically delta-seconds; ignore HTTP-date form for now
+  const n = Number(value.trim());
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -18,13 +53,40 @@ export async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise
   }
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
   if (!res.ok) {
-    const text = await res.text();
-    let message = text;
+    const retryAfter = parseRetryAfter(res.headers.get('retry-after') ?? res.headers.get('Retry-After'));
+    const headerCorrelationId =
+      res.headers.get('x-correlation-id') ?? res.headers.get('X-Correlation-Id') ?? undefined;
+
+    let message = `HTTP ${res.status}`;
+    let correlationId: string | undefined = headerCorrelationId ?? undefined;
+
     try {
-      const j = JSON.parse(text);
-      message = j.message || j.error || text;
-    } catch {}
-    throw new Error(message || `HTTP ${res.status}`);
+      const text = await res.text();
+      if (text) {
+        try {
+          const j = JSON.parse(text) as Partial<ErrorEnvelopeDto> & {
+            correlationId?: string | null;
+          };
+          const bodyCorrelation = j.correlation_id ?? j.correlationId ?? null;
+          if (bodyCorrelation) correlationId = bodyCorrelation;
+          // Prefer message, fallback to error code, then raw text
+          message = j.message || j.error || text || message;
+        } catch {
+          message = text || message;
+        }
+      }
+    } catch {
+      // ignore body read errors, keep default message
+    }
+
+    // Uniform handling for 401, 429, 5xx and all other error statuses: throw typed ApiError
+    // Includes status, message, correlation_id (from body or x-correlation-id header), and retry-after
+    throw new ApiError({
+      status: res.status,
+      message,
+      correlationId,
+      retryAfter,
+    });
   }
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('image')) {
@@ -45,3 +107,5 @@ export function clearToken() {
 export function getToken() {
   return localStorage.getItem('was_token');
 }
+
+// Future: add minimal unit test (vitest + msw) for ErrorEnvelopeDto parsing, 401/429/5xx uniform handling, correlation_id and retry-after propagation
