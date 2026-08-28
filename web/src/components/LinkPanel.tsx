@@ -129,7 +129,7 @@ export function LinkPanel({ instanceId, authorized, onStatusRefresh }: LinkPanel
           </Alert>
         )}
         <div className="flex flex-wrap items-start gap-6">
-          <div className="flex h-[200px] w-[200px] items-center justify-center rounded border bg-white">
+          <div className="flex h-[200px] w-[200px] items-center justify-center rounded border bg-zinc-900">
             {qrUrl ? (
               <img
                 src={qrUrl}
@@ -137,11 +137,11 @@ export function LinkPanel({ instanceId, authorized, onStatusRefresh }: LinkPanel
                 className="h-[200px] w-[200px] rounded"
               />
             ) : (
-              <span className="px-4 text-center text-sm text-zinc-500">Loading QR… poll 2s</span>
+              <span className="px-4 text-center text-sm text-zinc-400">Loading QR… poll 2s</span>
             )}
           </div>
           <div className="max-w-sm space-y-2">
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-300">
               Open WhatsApp on the phone → Settings → Linked devices → Link a device, then scan
               this code. This panel refreshes automatically.
             </p>

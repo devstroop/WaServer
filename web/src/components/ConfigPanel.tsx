@@ -187,7 +187,7 @@ export function ConfigPanel({ instanceId }: ConfigPanelProps) {
         )}
 
         {loading ? (
-          <div className="text-sm text-zinc-500">Loading config…</div>
+          <div className="text-sm text-zinc-400">Loading config…</div>
         ) : config ? (
           <form onSubmit={handleSave} className="space-y-4">
             <Field label="Instance name" htmlFor="cfg-name" hint="Friendly name">
@@ -255,10 +255,10 @@ export function ConfigPanel({ instanceId }: ConfigPanelProps) {
                 Reload
               </Button>
             </div>
-            <div className="text-xs text-zinc-500">GET /instances/:id/config then PUT with InstanceBrowserConfig</div>
+            <div className="text-xs text-zinc-400">GET /instances/:id/config then PUT with InstanceBrowserConfig</div>
           </form>
         ) : (
-          <div className="text-sm text-zinc-500">No config loaded.</div>
+          <div className="text-sm text-zinc-400">No config loaded.</div>
         )}
       </div>
     </Card>

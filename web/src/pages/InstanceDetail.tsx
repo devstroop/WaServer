@@ -80,7 +80,7 @@ export default function InstanceDetail() {
         <Alert tone="danger" title="Missing id">
           No instance id in route.
         </Alert>
-        <Link to={backTo} className="text-sm text-violet-600 hover:underline">
+        <Link to={backTo} className="text-sm text-primary hover:underline">
           ← Back to instances
         </Link>
       </div>
@@ -92,13 +92,13 @@ export default function InstanceDetail() {
       <div className="flex flex-wrap items-center gap-3">
         <Link
           to={backTo}
-          className="rounded border bg-white px-3 py-1.5 text-sm hover:bg-zinc-50"
+          className="rounded border bg-zinc-900 px-3 py-1.5 text-sm hover:bg-zinc-900"
         >
           ← Back
         </Link>
         <h1 className="text-xl font-semibold tracking-tight">
           {instance?.name ?? 'Instance'}{' '}
-          <span className="font-mono text-sm font-normal text-zinc-500">{id.slice(0, 8)}</span>
+          <span className="font-mono text-sm font-normal text-zinc-400">{id.slice(0, 8)}</span>
         </h1>
         {status && <Badge tone={statusTone(status.status)}>{status.status}</Badge>}
         {status && (
@@ -113,23 +113,23 @@ export default function InstanceDetail() {
 
       <Card header={<span className="font-medium">Details</span>}>
         {loadingInstance ? (
-          <div className="text-sm text-zinc-500">Loading…</div>
+          <div className="text-sm text-zinc-400">Loading…</div>
         ) : instance ? (
           <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
             <div>
-              <div className="text-xs text-zinc-500">ID</div>
+              <div className="text-xs text-zinc-400">ID</div>
               <div className="font-mono break-all">{instance.id}</div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Name</div>
+              <div className="text-xs text-zinc-400">Name</div>
               <div className="font-medium">{instance.name}</div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Phone</div>
+              <div className="text-xs text-zinc-400">Phone</div>
               <div>{status?.phone_number ?? instance.phone_number ?? '—'}</div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Status</div>
+              <div className="text-xs text-zinc-400">Status</div>
               <div className="mt-1">
                 <Badge tone={statusTone(status?.status ?? instance.status)}>
                   {status?.status ?? instance.status}
@@ -137,7 +137,7 @@ export default function InstanceDetail() {
               </div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Authorized</div>
+              <div className="text-xs text-zinc-400">Authorized</div>
               <div className="mt-1">
                 <Badge tone={authorized ? 'success' : 'neutral'} variant="soft">
                   {authorized ? 'yes' : 'no'}
@@ -145,12 +145,12 @@ export default function InstanceDetail() {
               </div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Updated</div>
+              <div className="text-xs text-zinc-400">Updated</div>
               <div>{instance.updated_at ? new Date(instance.updated_at).toLocaleString() : '—'}</div>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-zinc-500">No instance data.</div>
+          <div className="text-sm text-zinc-400">No instance data.</div>
         )}
         <div className="mt-3 flex gap-2">
           <Button variant="secondary" onClick={() => void fetchInstance()} size="sm">
@@ -169,14 +169,14 @@ export default function InstanceDetail() {
               <div className="flex flex-wrap gap-2">
                 <Badge tone={statusTone(status.status)}>{status.status}</Badge>
                 <Badge tone={authorized ? 'success' : 'neutral'}>{authorized ? 'authorized' : 'unauthorized'}</Badge>
-                {status.phone_number && <span className="text-zinc-600">{status.phone_number}</span>}
+                {status.phone_number && <span className="text-zinc-300">{status.phone_number}</span>}
               </div>
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs text-zinc-400">
                 Instance {status.instance_id.slice(0, 8)} · polls every 5s · authorized={String(authorized)}
               </div>
             </>
           ) : (
-            <div className="text-zinc-500">Loading status… poll 5s</div>
+            <div className="text-zinc-400">Loading status… poll 5s</div>
           )}
           {statusError && <Alert tone="warning">{statusError}</Alert>}
         </div>

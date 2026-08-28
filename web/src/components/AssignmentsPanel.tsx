@@ -184,7 +184,7 @@ export function AssignmentsPanel({ userId }: { userId: string }) {
           return (
             <div className="flex flex-col">
               <span className="font-medium">{name}</span>
-              <span className="font-mono text-xs text-zinc-500">{short} · {row.instance_id}</span>
+              <span className="font-mono text-xs text-zinc-400">{short} · {row.instance_id}</span>
             </div>
           );
         },
@@ -203,7 +203,7 @@ export function AssignmentsPanel({ userId }: { userId: string }) {
         property: 'created_at',
         title: 'Assigned',
         sortable: true,
-        render: (row: InstanceOwnerRecord) => <span className="text-xs text-zinc-600">{formatDate(row.created_at)}</span>,
+        render: (row: InstanceOwnerRecord) => <span className="text-xs text-zinc-300">{formatDate(row.created_at)}</span>,
       },
       {
         property: '__actions',
@@ -264,7 +264,7 @@ export function AssignmentsPanel({ userId }: { userId: string }) {
             </Alert>
           )}
 
-          <div className="flex flex-wrap items-end gap-3 rounded border bg-zinc-50 p-3">
+          <div className="flex flex-wrap items-end gap-3 rounded border bg-zinc-900 p-3">
             <Field label="Instance" htmlFor="assign-instance" hint={availableInstances.length === 0 ? 'All instances are assigned or none exist.' : `${availableInstances.length} available`}>
               <Select
                 id="assign-instance"
@@ -313,10 +313,10 @@ export function AssignmentsPanel({ userId }: { userId: string }) {
           />
 
           {!loading && assignments.length === 0 && !loadError && (
-            <div className="text-center text-sm text-zinc-500">No assignments yet — assign an instance above.</div>
+            <div className="text-center text-sm text-zinc-400">No assignments yet — assign an instance above.</div>
           )}
 
-          <div className="flex justify-between text-xs text-zinc-500">
+          <div className="flex justify-between text-xs text-zinc-400">
             <span>
               {assignments.length} assigned · {allInstances.length} total instances
             </span>

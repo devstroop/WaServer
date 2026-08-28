@@ -171,7 +171,7 @@ export function TokensPanel({ userId }: { userId: string }) {
             </Alert>
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-zinc-600">Manage access tokens for this user. Tokens are shown only once at creation.</div>
+            <div className="text-sm text-zinc-300">Manage access tokens for this user. Tokens are shown only once at creation.</div>
             <Button variant="primary" onClick={() => setCreateOpen(true)}>
               Create token
             </Button>
@@ -265,7 +265,7 @@ export function TokensPanel({ userId }: { userId: string }) {
             </div>
           </Field>
           {revealed?.token_info && (
-            <div className="rounded border bg-zinc-50 p-3 text-xs">
+            <div className="rounded border bg-zinc-900 p-3 text-xs">
               <div>
                 Name: <span className="font-medium">{revealed.token_info.name}</span>
               </div>

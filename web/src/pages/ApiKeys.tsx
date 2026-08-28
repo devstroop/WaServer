@@ -35,7 +35,7 @@ export default function ApiKeys() {
       <div className="space-y-4">
         <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
         <Card>
-          <div className="p-6 text-sm text-zinc-500">Loading…</div>
+          <div className="p-6 text-sm text-zinc-400">Loading…</div>
         </Card>
       </div>
     );
@@ -67,8 +67,8 @@ export default function ApiKeys() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{me.username}</span>
-        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">{me.role}</span>
+        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-200">{me.username}</span>
+        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-200">{me.role}</span>
       </div>
       <Alert tone="info" title="Self-managed tokens">
         Create and revoke your own access tokens. Tokens are shown only once at creation — copy and store securely.

@@ -149,9 +149,9 @@ export default function Register() {
               {loading ? 'Creating…' : 'Create'}
             </Button>
           </form>
-          <p className="text-center text-xs text-zinc-500">
+          <p className="text-center text-xs text-zinc-400">
             Have account?{' '}
-            <Link to="/login" className="text-violet-600">
+            <Link to="/login" className="text-primary">
               Sign in
             </Link>
           </p>

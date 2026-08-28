@@ -105,7 +105,7 @@ export function UsersList() {
         title: 'Created',
         sortable: true,
         type: 'date',
-        render: (row) => <span className="text-zinc-600">{formatDate(row.created_at)}</span>,
+        render: (row) => <span className="text-zinc-300">{formatDate(row.created_at)}</span>,
       },
     ],
     [],
@@ -198,7 +198,7 @@ export function UsersList() {
             <Alert tone="danger" title="Forbidden">
               Admin access required. Your account does not have administrator privileges.
             </Alert>
-            <p className="mt-3 text-sm text-zinc-500">Contact an administrator to request access.</p>
+            <p className="mt-3 text-sm text-zinc-400">Contact an administrator to request access.</p>
           </div>
         </Card>
       </div>
@@ -210,7 +210,7 @@ export function UsersList() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Users</h1>
-          <p className="text-sm text-zinc-500">Admin — manage accounts via GET /api/v1/users</p>
+          <p className="text-sm text-zinc-400">Admin — manage accounts via GET /api/v1/users</p>
         </div>
         <Button variant="primary" onClick={handleOpen}>
           Create user
@@ -248,9 +248,9 @@ export function UsersList() {
             ariaLabel="Users"
           />
           {!loading && list.length > 0 && rows.length === 0 && (
-            <div className="text-center text-sm text-zinc-500">No results match current filters.</div>
+            <div className="text-center text-sm text-zinc-400">No results match current filters.</div>
           )}
-          <div className="flex justify-between text-xs text-zinc-500">
+          <div className="flex justify-between text-xs text-zinc-400">
             <span>
               Showing {rows.length} of {list.length} users
             </span>

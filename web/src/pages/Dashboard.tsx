@@ -121,7 +121,7 @@ export default function Dashboard() {
       {
         property: 'phone_number',
         title: 'Phone',
-        render: (row) => <span className="text-zinc-600">{row.phone_number ?? '—'}</span>,
+        render: (row) => <span className="text-zinc-300">{row.phone_number ?? '—'}</span>,
       },
       {
         property: 'status',
@@ -161,7 +161,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-zinc-500">Campaign and API overview — scoped to your account.</p>
+        <p className="text-sm text-zinc-400">Campaign and API overview — scoped to your account.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -188,8 +188,8 @@ export default function Dashboard() {
 
       <Card header={<span className="font-medium">My Instances</span>} footer={null}>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm text-zinc-500">Instances assigned to your user — quick send access.</p>
-          <Link to="/app/instances" className="text-sm text-violet-600 hover:underline">
+          <p className="text-sm text-zinc-400">Instances assigned to your user — quick send access.</p>
+          <Link to="/app/instances" className="text-sm text-primary hover:underline">
             Manage →
           </Link>
         </div>

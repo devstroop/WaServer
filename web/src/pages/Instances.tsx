@@ -87,7 +87,7 @@ export function InstanceList(props: InstanceListProps) {
       {
         property: 'phone_number',
         title: 'Phone',
-        render: (row) => <span className="text-zinc-600">{row.phone_number ?? '—'}</span>,
+        render: (row) => <span className="text-zinc-300">{row.phone_number ?? '—'}</span>,
       },
       {
         property: 'status',
@@ -242,7 +242,7 @@ export function InstanceList(props: InstanceListProps) {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">{isAdminRoute ? 'All Instances' : 'My Instances'}</h1>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-zinc-400">
           {isAdminRoute ? 'Global view — all instances (admin). Polls every 5s.' : 'Scoped view — your instances via /users/me. Polls every 5s.'}
         </p>
       </div>
@@ -293,13 +293,13 @@ export function InstanceList(props: InstanceListProps) {
             ariaLabel={isAdminRoute ? 'All instances' : 'My instances'}
           />
           {!loading && list.length > 0 && rows.length === 0 && (
-            <div className="text-center text-sm text-zinc-500">No results match current filters.</div>
+            <div className="text-center text-sm text-zinc-400">No results match current filters.</div>
           )}
-          <div className="flex justify-between text-xs text-zinc-500">
+          <div className="flex justify-between text-xs text-zinc-400">
             <span>
               Showing {rows.length} of {list.length} instances
             </span>
-            <Link to={isAdminRoute ? '/dashboard/instances' : '/admin/instances'} className="text-violet-600 hover:underline">
+            <Link to={isAdminRoute ? '/dashboard/instances' : '/admin/instances'} className="text-primary hover:underline">
               {isAdminRoute ? 'Go to My Instances' : 'Go to All Instances (admin)'}
             </Link>
           </div>

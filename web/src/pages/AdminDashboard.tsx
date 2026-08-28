@@ -106,7 +106,7 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Admin Dashboard</h1>
-        <p className="text-sm text-zinc-500">Global control plane — health &amp; metrics overview.</p>
+        <p className="text-sm text-zinc-400">Global control plane — health &amp; metrics overview.</p>
       </div>
 
       {browserAvailable === false && (
@@ -146,8 +146,8 @@ export default function AdminDashboard() {
 
       <Card header={<span className="font-medium">Instance Metrics</span>}>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm text-zinc-500">
-            Per-instance observability from <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">GET /api/metrics</code>
+          <p className="text-sm text-zinc-400">
+            Per-instance observability from <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs">GET /api/metrics</code>
             {metrics ? ` — uptime ${formatUptime(metrics.uptime_seconds)}, memory ${(metrics.memory_usage_bytes / (1024 * 1024)).toFixed(1)} MB` : ''}
           </p>
           {metrics && (

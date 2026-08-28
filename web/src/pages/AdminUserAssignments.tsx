@@ -70,7 +70,7 @@ export default function AdminUserAssignments() {
       <div className="space-y-4">
         <h1 className="text-xl font-semibold tracking-tight">Instance assignments</h1>
         <Card>
-          <div className="p-6 text-sm text-zinc-500">Loading user…</div>
+          <div className="p-6 text-sm text-zinc-400">Loading user…</div>
         </Card>
       </div>
     );
@@ -80,7 +80,7 @@ export default function AdminUserAssignments() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+          <Link to="/admin/users" className="text-sm text-primary hover:underline">
             ← Users
           </Link>
           <h1 className="text-xl font-semibold tracking-tight">Instance assignments</h1>
@@ -106,37 +106,37 @@ export default function AdminUserAssignments() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/admin/users" className="text-sm text-violet-600 hover:underline">
+        <Link to="/admin/users" className="text-sm text-primary hover:underline">
           ← Users
         </Link>
         <h1 className="text-xl font-semibold tracking-tight">Instance assignments</h1>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{data.id.slice(0, 8)}</span>
+        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-200">{data.id.slice(0, 8)}</span>
       </div>
 
       <Card header="User">
         <div className="grid grid-cols-1 gap-2 p-4 text-sm md:grid-cols-3">
           <div>
-            <div className="text-xs text-zinc-500">Username</div>
+            <div className="text-xs text-zinc-400">Username</div>
             <div className="font-medium">{data.username}</div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">Email</div>
+            <div className="text-xs text-zinc-400">Email</div>
             <div>{data.email ?? '—'}</div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">Role</div>
+            <div className="text-xs text-zinc-400">Role</div>
             <div className="capitalize">{data.role}</div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">Created</div>
+            <div className="text-xs text-zinc-400">Created</div>
             <div>{formatDate(data.created_at)}</div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">Active</div>
+            <div className="text-xs text-zinc-400">Active</div>
             <div>{data.is_active ? 'Yes' : 'No'}</div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">ID</div>
+            <div className="text-xs text-zinc-400">ID</div>
             <div className="font-mono text-xs break-all">{data.id}</div>
           </div>
         </div>

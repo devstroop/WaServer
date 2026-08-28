@@ -71,7 +71,7 @@ export default function Login() {
     <div className="mx-auto mt-16 max-w-sm">
       <Card header="Sign in — WAS">
         <div className="space-y-4">
-          <p className="text-sm text-zinc-500">Backend: {import.meta.env.VITE_API_BASE || 'proxy → http://localhost:3000'}</p>
+          <p className="text-sm text-zinc-400">Backend: {import.meta.env.VITE_API_BASE || 'proxy → http://localhost:3000'}</p>
           {err && (
             <Alert tone="danger" variant="soft">
               {err}
@@ -108,9 +108,9 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
-          <p className="text-center text-xs text-zinc-500">
+          <p className="text-center text-xs text-zinc-400">
             Need account?{' '}
-            <Link to="/register" className="text-violet-600">
+            <Link to="/register" className="text-primary">
               Register
             </Link>
           </p>

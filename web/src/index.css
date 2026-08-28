@@ -1,20 +1,22 @@
 @import "tailwindcss";
 
-/* UIKit tokens are imported via '@devstroop/react-uikit/style.css' in main.tsx.
-   Override WAS-specific tokens here if needed. */
+/* UIKit tokens via '@devstroop/react-uikit/style.css' in main.tsx — shadcn dark */
 :root {
   --radius: 0.625rem;
-  /* WAS brand — maps to UIKit primary */
-  --dt-color-primary: #7c3aed;
-  --dt-color-primary-hover: #6d28d9;
+}
+
+[data-theme="dark"] {
+  --dt-color-primary: hsl(240 5.9% 10%);
+  --dt-color-primary-hover: hsl(240 5.9% 15%);
+  --dt-color-primary-fg: hsl(0 0% 98%);
 }
 
 * {
-  border-color: hsl(214.3 31.8% 91.4%);
+  border-color: hsl(240 3.7% 15.9%);
 }
 
 body {
   font-family: Inter, system-ui, -apple-system, sans-serif;
-  background: hsl(0 0% 100%);
-  color: hsl(222.2 84% 4.9%);
+  background: hsl(240 10% 3.9%);
+  color: hsl(0 0% 98%);
 }

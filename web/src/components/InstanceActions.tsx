@@ -164,7 +164,7 @@ export function InstanceActions({ instanceId, onDeleted }: InstanceActionsProps)
               Delete
             </Button>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Owner only — warmup pre-warms browser, screenshot opens a dialog, reset clears session, delete removes instance.
           </p>
         </div>
@@ -186,7 +186,7 @@ export function InstanceActions({ instanceId, onDeleted }: InstanceActionsProps)
           {screenshotUrl ? (
             <img src={screenshotUrl} alt="Instance screenshot" className="max-h-[70vh] max-w-full rounded border" />
           ) : (
-            <div className="text-sm text-zinc-500">No image</div>
+            <div className="text-sm text-zinc-400">No image</div>
           )}
         </div>
       </Dialog>
@@ -249,7 +249,7 @@ export function InstanceActions({ instanceId, onDeleted }: InstanceActionsProps)
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeleteConfirmText(e.target.value)}
             />
           </Field>
-          <div className="text-xs text-zinc-500">DELETE /instances/:id?delete_data={deleteData}</div>
+          <div className="text-xs text-zinc-400">DELETE /instances/:id?delete_data={deleteData}</div>
         </div>
       </Dialog>
     </>

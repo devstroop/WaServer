@@ -9,24 +9,24 @@ export default function Layout() {
     nav('/auth/login');
   };
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <header className="sticky top-0 z-10 border-b bg-white">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50">
+      <header className="sticky top-0 z-10 border-b bg-zinc-900">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <Link to="/" className="font-semibold tracking-tight">
-            WAS <span className="text-violet-600">Admin</span>
+            WAS <span className="text-primary">Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to="/dashboard" className="hover:text-violet-600">
+            <Link to="/dashboard" className="hover:text-primary">
               Dashboard
             </Link>
-            <Link to="/dashboard/instances" className="hover:text-violet-600">
+            <Link to="/dashboard/instances" className="hover:text-primary">
               Instances
             </Link>
-            <a href="/api-docs/" target="_blank" className="hover:text-violet-600">
+            <a href="/api-docs/" target="_blank" className="hover:text-primary">
               API
             </a>
-            <span className="text-zinc-500">{user?.username}</span>
-            <button onClick={onLogout} className="rounded border px-3 py-1 text-sm hover:bg-zinc-100">
+            <span className="text-zinc-400">{user?.username}</span>
+            <button onClick={onLogout} className="rounded border px-3 py-1 text-sm hover:bg-zinc-800">
               Sign out
             </button>
           </nav>

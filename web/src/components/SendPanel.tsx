@@ -138,7 +138,7 @@ export function SendPanel({ instanceId, permission }: SendPanelProps) {
               {file && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="truncate font-medium">{file.name}</span>
-                  <span className="text-zinc-500">{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                  <span className="text-zinc-400">{Math.max(1, Math.round(file.size / 1024))} KB</span>
                   <Button variant="ghost" size="sm" type="button" onClick={() => setFile(null)}>
                     Remove
                   </Button>
