@@ -5,14 +5,14 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export interface ApiError {
+export interface ApiErrorInfo {
   status: number;
   message: string;
   correlationId?: string;
   retryAfter?: number;
 }
 
-export class ApiError extends Error implements ApiError {
+export class ApiError extends Error implements ApiErrorInfo {
   status: number;
   correlationId?: string;
   retryAfter?: number;
@@ -31,6 +31,7 @@ type ErrorEnvelopeDto = {
   error: string;
   message: string;
   correlation_id?: string | null;
+  correlationId?: string | null;
 };
 
 function parseRetryAfter(value: string | null): number | undefined {
@@ -46,7 +47,6 @@ export async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise
     ...authHeaders(),
     ...(opts.headers || {}),
   };
-  // Don't set Content-Type for FormData
   if (opts.body instanceof FormData) {
     // @ts-expect-error delete content-type
     delete headers['Content-Type'];

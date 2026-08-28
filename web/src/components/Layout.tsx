@@ -6,7 +6,7 @@ export default function Layout() {
   const nav = useNavigate();
   const onLogout = async () => {
     await logout();
-    nav('/login');
+    nav('/auth/login');
   };
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -16,10 +16,10 @@ export default function Layout() {
             WAS <span className="text-violet-600">Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to="/app" className="hover:text-violet-600">
+            <Link to="/dashboard" className="hover:text-violet-600">
               Dashboard
             </Link>
-            <Link to="/app/instances" className="hover:text-violet-600">
+            <Link to="/dashboard/instances" className="hover:text-violet-600">
               Instances
             </Link>
             <a href="/api-docs/" target="_blank" className="hover:text-violet-600">

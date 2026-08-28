@@ -1,10 +1,10 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Skeleton } from '@devstroop/react-uikit';
-import { getToken } from '../api/client';
-import { useAuth } from '../hooks/useAuth';
-import type { JSX } from 'react';
+import { getToken } from '../../api/client';
+import { useAuth } from '../../hooks/useAuth';
+import type { ReactNode } from 'react';
 
-export default function ProtectedRoute({ children }: { children: JSX.Element }) {
+export function AuthGuard({ children }: { children: ReactNode }) {
   const { user, loading, isAuthenticated } = useAuth();
   const location = useLocation();
 
@@ -13,6 +13,7 @@ export default function ProtectedRoute({ children }: { children: JSX.Element }) 
       <div className="p-8 space-y-3" aria-busy="true" aria-label="Loading">
         <Skeleton variant="rect" width="100%" height={32} />
         <Skeleton variant="rect" width="100%" height={120} />
+        <Skeleton variant="text" width="60%" height={16} />
       </div>
     );
   }
@@ -23,5 +24,7 @@ export default function ProtectedRoute({ children }: { children: JSX.Element }) 
     return <Navigate to={`/auth/login?next=${next}`} replace />;
   }
 
-  return children;
+  return <>{children}</>;
 }
+
+export default AuthGuard;

@@ -1,57 +1,87 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from '@devstroop/react-uikit';
 import { AuthProvider } from './hooks/useAuth';
 import Layout from './components/Layout';
-import ProtectedRoute from './components/ProtectedRoute';
-import Dashboard from './pages/Dashboard';
+import { AuthGuard, PublicOnlyGuard, RoleGuard } from './components/guards';
 import Home from './pages/Home';
-import Instances from './pages/Instances';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import Instances from './pages/Instances';
 
 function NotImplemented() {
-  return <div>Not implemented</div>;
+  return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<Home />} />
+    <BrowserRouter>
+      <ToastProvider position="top-right">
+        <AuthProvider>
+          <Routes>
+            {/* Public */}
+            <Route path="/" element={<Home />} />
 
-          {/* Auth */}
-          <Route path="/auth/login" element={<Login />} />
-          <Route path="/auth/register" element={<Register />} />
+            {/* Auth – public only */}
+            <Route
+              path="/auth/login"
+              element={
+                <PublicOnlyGuard>
+                  <Login />
+                </PublicOnlyGuard>
+              }
+            />
+            <Route
+              path="/auth/register"
+              element={
+                <PublicOnlyGuard>
+                  <Register />
+                </PublicOnlyGuard>
+              }
+            />
+            {/* Legacy compat redirects */}
+            <Route path="/login" element={<Navigate to="/auth/login" replace />} />
+            <Route path="/register" element={<Navigate to="/auth/register" replace />} />
 
-          {/* Protected zones: user + admin (guards placeholder, shells deferred) */}
-          <Route
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            {/* User */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/dashboard/instances" element={<Instances />} />
-            <Route path="/dashboard/instances/:id" element={<NotImplemented />} />
+            {/* Protected user zone */}
+            <Route
+              element={
+                <AuthGuard>
+                  <Layout />
+                </AuthGuard>
+              }
+            >
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard/instances" element={<Instances />} />
+              <Route path="/dashboard/instances/:id" element={<NotImplemented />} />
+              <Route path="/settings" element={<NotImplemented />} />
+              {/* Legacy /app compat */}
+              <Route path="/app" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/app/instances" element={<Navigate to="/dashboard/instances" replace />} />
+            </Route>
 
-            {/* Admin */}
-            <Route path="/admin" element={<NotImplemented />} />
-            <Route path="/admin/dashboard" element={<NotImplemented />} />
-            <Route path="/admin/metrics" element={<NotImplemented />} />
-            <Route path="/admin/instances" element={<NotImplemented />} />
-            <Route path="/admin/instances/:id" element={<NotImplemented />} />
-            <Route path="/admin/users" element={<NotImplemented />} />
-            <Route path="/admin/users/:id" element={<NotImplemented />} />
-            <Route path="/settings" element={<NotImplemented />} />
-          </Route>
+            {/* Protected admin zone */}
+            <Route
+              element={
+                <RoleGuard>
+                  <Layout />
+                </RoleGuard>
+              }
+            >
+              <Route path="/admin" element={<NotImplemented />} />
+              <Route path="/admin/dashboard" element={<NotImplemented />} />
+              <Route path="/admin/metrics" element={<NotImplemented />} />
+              <Route path="/admin/instances" element={<NotImplemented />} />
+              <Route path="/admin/instances/:id" element={<NotImplemented />} />
+              <Route path="/admin/users" element={<NotImplemented />} />
+              <Route path="/admin/users/:id" element={<NotImplemented />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </ToastProvider>
+    </BrowserRouter>
   );
 }
