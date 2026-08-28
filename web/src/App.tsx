@@ -11,6 +11,7 @@ import Instances from './pages/Instances';
 import AdminDashboard from './pages/AdminDashboard';
 import InstanceDetail from './pages/InstanceDetail';
 import UsersList from './pages/UsersList';
+import UserDetail from './pages/UserDetail';
 
 function NotImplemented() {
   return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
@@ -77,7 +78,7 @@ export default function App() {
               <Route path="/admin/instances" element={<Instances admin />} />
               <Route path="/admin/instances/:id" element={<InstanceDetail />} />
               <Route path="/admin/users" element={<UsersList />} />
-              <Route path="/admin/users/:id" element={<NotImplemented />} />
+              <Route path="/admin/users/:id" element={<UserDetail />} />
             </Route>
 
             {/* Fallback */}
