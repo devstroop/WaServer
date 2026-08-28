@@ -85,3 +85,22 @@ export interface WhatsAppStatus {
   authorized: boolean;
   phone_number?: string | null;
 }
+
+export type InstancePermission = 'viewer' | 'operator' | 'owner';
+
+export interface InstanceOwnerRecord {
+  user_id: string;
+  instance_id: string;
+  permission: InstancePermission | string;
+  created_at: string | null;
+}
+
+export interface UserInstancesResponse {
+  instances: InstanceOwnerRecord[];
+}
+
+export interface AssignInstanceRequest {
+  user_id: string;
+  instance_id: string;
+  permission: InstancePermission | string;
+}

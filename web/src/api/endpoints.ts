@@ -12,6 +12,9 @@ import type {
   SendMessageResponse,
   WhatsAppStatus,
   InstanceInfo,
+  InstanceOwnerRecord,
+  UserInstancesResponse,
+  AssignInstanceRequest,
 } from './types';
 
 export const health = {
@@ -79,9 +82,9 @@ export const users = {
     }),
   deleteToken: (userId: string, tokenId: string) =>
     apiFetch<{ message: string }>(`/api/v1/users/${userId}/tokens/${tokenId}`, { method: 'DELETE' }),
-  instances: (userId: string) => apiFetch<{ instances: unknown[] }>(`/api/v1/users/${userId}/instances`),
-  assign: (body: { user_id: string; instance_id: string; permission?: string }) =>
-    apiFetch<unknown>('/api/v1/users/assign-instance', { method: 'POST', body: JSON.stringify(body) }),
+  instances: (userId: string) => apiFetch<UserInstancesResponse>(`/api/v1/users/${userId}/instances`),
+  assign: (body: AssignInstanceRequest) =>
+    apiFetch<InstanceOwnerRecord>('/api/v1/users/assign-instance', { method: 'POST', body: JSON.stringify(body) }),
   removeInstance: (userId: string, instanceId: string) =>
-    apiFetch<unknown>(`/api/v1/users/${userId}/instances/${instanceId}`, { method: 'DELETE' }),
+    apiFetch<{ message: string }>(`/api/v1/users/${userId}/instances/${instanceId}`, { method: 'DELETE' }),
 };
