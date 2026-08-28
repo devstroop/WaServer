@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Instances from './pages/Instances';
 import AdminDashboard from './pages/AdminDashboard';
+import InstanceDetail from './pages/InstanceDetail';
 
 function NotImplemented() {
   return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
@@ -54,7 +55,7 @@ export default function App() {
             >
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/instances" element={<Instances />} />
-              <Route path="/dashboard/instances/:id" element={<NotImplemented />} />
+              <Route path="/dashboard/instances/:id" element={<InstanceDetail />} />
               <Route path="/settings" element={<NotImplemented />} />
               {/* Legacy /app compat */}
               <Route path="/app" element={<Navigate to="/dashboard" replace />} />
@@ -73,7 +74,7 @@ export default function App() {
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/metrics" element={<NotImplemented />} />
               <Route path="/admin/instances" element={<Instances admin />} />
-              <Route path="/admin/instances/:id" element={<NotImplemented />} />
+              <Route path="/admin/instances/:id" element={<InstanceDetail />} />
               <Route path="/admin/users" element={<NotImplemented />} />
               <Route path="/admin/users/:id" element={<NotImplemented />} />
             </Route>
