@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Instances from './pages/Instances';
+import UsersList from './pages/UsersList';
 
 export default function App() {
   return (
@@ -23,8 +24,13 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="app" element={<Dashboard />} />
+              <Route path="app" element={<Dashboard />} />
             <Route path="app/instances" element={<Instances />} />
+            <Route path="admin/users" element={<UsersList />} />
+            <Route
+              path="admin/users/:id"
+              element={<div className="p-8 text-center text-zinc-500">Not implemented</div>}
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
