@@ -1,6 +1,7 @@
 import { apiFetch } from './client';
 import type {
   HealthResponse,
+  MetricsResponse,
   InstanceListResponse,
   CreateInstanceRequest,
   CreateInstanceResponse,
@@ -18,7 +19,7 @@ export const health = {
   get: () => apiFetch<HealthResponse>('/api/health'),
   ready: () => apiFetch<{ status: string }>('/api/ready'),
   live: () => apiFetch<{ status: string }>('/api/live'),
-  metrics: () => apiFetch<unknown>('/api/metrics'),
+  metrics: () => apiFetch<MetricsResponse>('/api/metrics'),
 };
 
 export const auth = {

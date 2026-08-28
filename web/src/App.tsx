@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Instances from './pages/Instances';
+import AdminDashboard from './pages/AdminDashboard';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           >
             <Route path="app" element={<Dashboard />} />
             <Route path="app/instances" element={<Instances />} />
+            <Route path="admin/dashboard" element={<AdminDashboard />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
