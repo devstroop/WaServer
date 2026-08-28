@@ -220,9 +220,9 @@ pub async fn login(
             // Migration: legacy SHA256 hash → bcrypt (transparent on successful login)
             if !is_bcrypt_hash(&user_record.password_hash) {
                 let new_hash = hash_password(&request.password);
-                if let Err(e) = auth
-                    .db
-                    .update_user(&user_record.id, None, None, Some(&new_hash), None, None)
+                if let Err(e) =
+                    auth.db
+                        .update_user(&user_record.id, None, None, Some(&new_hash), None, None)
                 {
                     tracing::warn!(user_id=%user_record.id, error=%e, "Failed to migrate legacy password hash to bcrypt");
                 } else {
