@@ -88,10 +88,6 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
 utoipa-swagger-ui = { version = "7.0", features = ["axum"] }
 
-# Web UI — server-rendered templates + embedded static assets (#28)
-askama = "0.12"
-rust-embed = "8"
-
 [dev-dependencies]
 tower-test = "0.4"
 tokio-test = "0.4"
