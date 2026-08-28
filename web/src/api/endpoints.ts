@@ -73,7 +73,7 @@ export const users = {
   del: (id: string) => apiFetch<{ message: string }>(`/api/v1/users/${id}`, { method: 'DELETE' }),
   me: () => apiFetch<UserInfo>('/api/v1/users/me'),
   tokens: (userId: string) => apiFetch<{ tokens: AccessTokenInfo[] }>(`/api/v1/users/${userId}/tokens`),
-  createToken: (userId: string, body: { name: string }) =>
+  createToken: (userId: string, body: { name: string; expires_in_days?: number | null }) =>
     apiFetch<{ token_info: AccessTokenInfo; access_token: string }>(`/api/v1/users/${userId}/tokens`, {
       method: 'POST',
       body: JSON.stringify(body),

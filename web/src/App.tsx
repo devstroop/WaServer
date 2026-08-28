@@ -12,6 +12,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import InstanceDetail from './pages/InstanceDetail';
 import UsersList from './pages/UsersList';
 import UserDetail from './pages/UserDetail';
+import ApiKeys from './pages/ApiKeys';
+import AdminUserTokens from './pages/AdminUserTokens';
 
 function NotImplemented() {
   return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
@@ -58,7 +60,8 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/instances" element={<Instances />} />
               <Route path="/dashboard/instances/:id" element={<InstanceDetail />} />
-              <Route path="/settings" element={<NotImplemented />} />
+              <Route path="/settings" element={<ApiKeys />} />
+              <Route path="/settings/api-keys" element={<ApiKeys />} />
               {/* Legacy /app compat */}
               <Route path="/app" element={<Navigate to="/dashboard" replace />} />
               <Route path="/app/instances" element={<Navigate to="/dashboard/instances" replace />} />
@@ -79,6 +82,7 @@ export default function App() {
               <Route path="/admin/instances/:id" element={<InstanceDetail />} />
               <Route path="/admin/users" element={<UsersList />} />
               <Route path="/admin/users/:id" element={<UserDetail />} />
+              <Route path="/admin/users/:id/tokens" element={<AdminUserTokens />} />
             </Route>
 
             {/* Fallback */}
