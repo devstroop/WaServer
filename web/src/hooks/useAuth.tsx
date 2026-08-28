@@ -9,7 +9,7 @@ type AuthState = {
   loading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<UserInfo>;
   register: (body: RegisterRequest) => Promise<UserInfo>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -127,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await auth.login({ username, password });
     setToken(res.token);
     setUser(res.user);
+    return res.user;
   }, []);
 
   const register = useCallback(async (body: RegisterRequest): Promise<UserInfo> => {

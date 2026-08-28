@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Checkbox, Field, Input, Password } from '@devstroop/react-uikit';
-import { auth } from '../api/endpoints';
-import { setToken } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Login() {
   const nav = useNavigate();
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -28,9 +28,10 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const res = await auth.login({ username: username.trim(), password });
-      setToken(res.token);
-      nav('/');
+      const user = await login(username.trim(), password);
+      const role = (user.role ?? '').toLowerCase();
+      if (role === 'admin') nav('/admin/dashboard');
+      else nav('/dashboard');
     } catch (e: unknown) {
       let status: number | undefined;
       let retryAfter: number | undefined;

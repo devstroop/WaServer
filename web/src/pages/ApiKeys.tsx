@@ -32,8 +32,11 @@ export default function ApiKeys() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+          <p className="mt-1 text-sm text-zinc-500">Loading your API keys…</p>
+        </div>
         <Card>
           <div className="p-6 text-sm text-zinc-500">Loading…</div>
         </Card>
@@ -43,8 +46,11 @@ export default function ApiKeys() {
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+          <p className="mt-1 text-sm text-zinc-500">Self-managed tokens</p>
+        </div>
         <Alert tone="danger" title="Failed to load profile">
           {error}
         </Alert>
@@ -54,8 +60,11 @@ export default function ApiKeys() {
 
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
+          <p className="mt-1 text-sm text-zinc-500">Self-managed tokens</p>
+        </div>
         <Alert tone="warning" title="Not found">
           Could not determine current user.
         </Alert>
@@ -64,11 +73,14 @@ export default function ApiKeys() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <div>
         <h1 className="text-xl font-semibold tracking-tight">API Keys</h1>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{me.username}</span>
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{me.role}</span>
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-zinc-500">
+          <span>Self-managed tokens for</span>
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">{me.username}</span>
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{me.role}</span>
+        </p>
       </div>
       <Alert tone="info" title="Self-managed tokens">
         Create and revoke your own access tokens. Tokens are shown only once at creation — copy and store securely.

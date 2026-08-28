@@ -22,3 +22,16 @@ body {
   background: #F0F2F5;
   color: #111B21;
 }
+
+/* Layout geometry fix — ensure shared container uses full viewport width */
+[class*="layout"] {
+  width: 100%;
+}
+[class*="layout"] > div[class*="row"] {
+  width: 100%;
+}
+[class*="layout"] > div[class*="row"] > main {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}

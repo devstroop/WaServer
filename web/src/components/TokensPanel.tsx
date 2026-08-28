@@ -164,15 +164,15 @@ export function TokensPanel({ userId }: { userId: string }) {
   return (
     <>
       <Card header="Access tokens">
-        <div className="space-y-3 p-4">
+        <div className="space-y-4">
           {loadError && (
             <Alert tone="danger" title="Failed to load tokens">
               {loadError}
             </Alert>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-zinc-600">Manage access tokens for this user. Tokens are shown only once at creation.</div>
-            <Button variant="primary" onClick={() => setCreateOpen(true)}>
+            <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
               Create token
             </Button>
           </div>

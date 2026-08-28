@@ -1,8 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ToastProvider } from '@devstroop/react-uikit';
 import { AuthProvider } from './hooks/useAuth';
-import Layout from './components/Layout';
 import { AuthGuard, PublicOnlyGuard, RoleGuard } from './components/guards';
+import PublicLayout from './layouts/PublicLayout';
+import AuthLayout from './layouts/AuthLayout';
+import UserLayout from './layouts/UserLayout';
+import AdminLayout from './layouts/AdminLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -26,35 +29,39 @@ export default function App() {
       <ToastProvider position="top-right">
         <AuthProvider>
           <Routes>
-            {/* Public */}
-            <Route path="/" element={<Home />} />
+            {/* Public — PublicLayout */}
+            <Route element={<PublicLayout />}>
+              <Route path="/" element={<Home />} />
+            </Route>
 
-            {/* Auth – public only */}
-            <Route
-              path="/auth/login"
-              element={
-                <PublicOnlyGuard>
-                  <Login />
-                </PublicOnlyGuard>
-              }
-            />
-            <Route
-              path="/auth/register"
-              element={
-                <PublicOnlyGuard>
-                  <Register />
-                </PublicOnlyGuard>
-              }
-            />
+            {/* Auth — AuthLayout + PublicOnlyGuard */}
+            <Route element={<AuthLayout />}>
+              <Route
+                path="/auth/login"
+                element={
+                  <PublicOnlyGuard>
+                    <Login />
+                  </PublicOnlyGuard>
+                }
+              />
+              <Route
+                path="/auth/register"
+                element={
+                  <PublicOnlyGuard>
+                    <Register />
+                  </PublicOnlyGuard>
+                }
+              />
+            </Route>
             {/* Legacy compat redirects */}
             <Route path="/login" element={<Navigate to="/auth/login" replace />} />
             <Route path="/register" element={<Navigate to="/auth/register" replace />} />
 
-            {/* Protected user zone */}
+            {/* Protected user zone — UserLayout */}
             <Route
               element={
                 <AuthGuard>
-                  <Layout />
+                  <UserLayout />
                 </AuthGuard>
               }
             >
@@ -68,11 +75,11 @@ export default function App() {
               <Route path="/app/instances" element={<Navigate to="/dashboard/instances" replace />} />
             </Route>
 
-            {/* Protected admin zone */}
+            {/* Protected admin zone — AdminLayout */}
             <Route
               element={
                 <RoleGuard>
-                  <Layout />
+                  <AdminLayout />
                 </RoleGuard>
               }
             >
