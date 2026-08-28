@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Instances from './pages/Instances';
+import AdminDashboard from './pages/AdminDashboard';
 
 function NotImplemented() {
   return <div className="p-8 text-center text-zinc-500">Not implemented</div>;
@@ -69,7 +70,7 @@ export default function App() {
               }
             >
               <Route path="/admin" element={<NotImplemented />} />
-              <Route path="/admin/dashboard" element={<NotImplemented />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/metrics" element={<NotImplemented />} />
               <Route path="/admin/instances" element={<NotImplemented />} />
               <Route path="/admin/instances/:id" element={<NotImplemented />} />

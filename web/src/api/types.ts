@@ -9,6 +9,23 @@ export interface HealthResponse {
   browser_available?: boolean;
 }
 
+export interface InstanceMetrics {
+  id: string;
+  status: string;
+  authorized: boolean;
+  total_messages_sent: number;
+  error_count: number;
+  warmups?: number | null;
+}
+
+export interface MetricsResponse {
+  timestamp: number;
+  uptime_seconds: number;
+  memory_usage_bytes: number;
+  instances_count: number;
+  instances: InstanceMetrics[];
+}
+
 export interface InstanceInfo {
   id: string;
   name: string;
