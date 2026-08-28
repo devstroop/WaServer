@@ -94,15 +94,7 @@ pub async fn register(
 
     let user_id = Uuid::new_v4().to_string();
     let password_hash = hash_password(&request.password);
-
-    // Bootstrap: the FIRST registered user becomes admin so a fresh install
-    // has an administrator even with the static secret key disabled (#41)
-    let first_user = auth.db.list_users().map(|u| u.is_empty()).unwrap_or(false);
-    let role = if first_user {
-        UserRole::Admin
-    } else {
-        UserRole::User
-    };
+    let role = UserRole::User;
 
     match auth.db.create_user(
         &user_id,
@@ -115,7 +107,6 @@ pub async fn register(
             tracing::info!(
                 user_id = %user_id,
                 username = %request.username,
-                is_admin = first_user,
                 "New user registered"
             );
             (StatusCode::CREATED, Json(UserInfo::from(user_record))).into_response()

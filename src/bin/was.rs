@@ -57,6 +57,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Failed to open database: {}", e);
         std::process::exit(1);
     });
+
+    // Seed default admin (fresh env): admin / admin — no hidden first-user-promotion
+    {
+        use was::{middleware::auth::hash_password, models::user::UserRole};
+        let users_empty = db.list_users().map(|u| u.is_empty()).unwrap_or(false);
+        if users_empty {
+            let admin_id = uuid::Uuid::new_v4().to_string();
+            let hash = hash_password("admin");
+            match db.create_user(&admin_id, "admin", None, &hash, UserRole::Admin) {
+                Ok(_) => info!("Seeded default admin user (admin/admin) — change password after first login"),
+                Err(e) => tracing::warn!(error = %e, "Failed to seed default admin user"),
+            }
+        }
+    }
+
     let auth_db = db.clone();
     let instance_manager = Arc::new(InstanceManager::new(config.clone(), db));
     match instance_manager.discover_instances().await {
