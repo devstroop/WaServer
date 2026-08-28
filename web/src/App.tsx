@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Instances from './pages/Instances';
+import InstanceDetail from './pages/InstanceDetail';
 
 export default function App() {
   return (
@@ -25,6 +26,13 @@ export default function App() {
           >
             <Route path="app" element={<Dashboard />} />
             <Route path="app/instances" element={<Instances />} />
+            <Route path="app/instances/:id" element={<InstanceDetail />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="dashboard/instances" element={<Instances />} />
+            <Route path="dashboard/instances/:id" element={<InstanceDetail />} />
+            <Route path="admin" element={<Dashboard />} />
+            <Route path="admin/instances" element={<Instances />} />
+            <Route path="admin/instances/:id" element={<InstanceDetail />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
