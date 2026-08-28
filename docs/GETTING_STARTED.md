@@ -152,6 +152,61 @@ curl -X DELETE http://localhost:3000/api/v1/instances/{instance_id} \
   -H "Authorization: Bearer $WAS_API_KEY"
 ```
 
+## Web Frontend (React Admin)
+
+The `web/` directory contains the Vite + React 19 + TypeScript + Tailwind admin.
+
+### Dev
+
+```bash
+cd web
+npm install
+npm run dev # http://localhost:5173, proxy /api → http://localhost:3000
+```
+
+`vite.config.ts` proxies `/api` and `/api-docs` to `http://localhost:3000` for local development.
+
+### Env — `VITE_API_BASE`
+
+- Default `""` (empty) → relative `fetch("/api/...")` via proxy.
+- Override at build time: `VITE_API_BASE=https://api.example.com npm run build` or set in `web/.env` / `web/.env.production`.
+- Handled in `web/src/api/client.ts`: `const BASE = import.meta.env.VITE_API_BASE || ''` → `fetch(BASE + path)`. No trailing slash required. See `web/.env.example`.
+
+### Routes
+
+| Path | Component | Access | Description |
+|------|-----------|--------|-------------|
+| `/` | `Home` | public | Landing page, links to login/register, API docs |
+| `/login` | `Login` | public | `POST /api/v1/auth/login` → stores `was_token` in `localStorage` |
+| `/register` | `Register` | public | `POST /api/v1/auth/register` (first user becomes admin) |
+| `/app` | `Dashboard` | protected | Health + instances overview, polls `GET /api/health` + `GET /api/v1/instances` every 5s |
+| `/app/instances` | `Instances` | protected | List + create instances (`GET/POST /api/v1/instances`) |
+| `*` | redirect `→ /` | public | `BrowserRouter` catch-all → `Home` |
+
+Protected routes use `ProtectedRoute` + `useAuth()` (`GET /api/v1/auth/validate`, `localStorage` `was_token`) and `Layout` shell (see `web/src/App.tsx`).
+
+### Build & Preview
+
+```bash
+cd web
+npm run build   # tsc -b && vite build → dist/
+npm run preview # vite preview dist/ on http://localhost:4173
+```
+
+- Output: `web/dist/` (gitignored, content-hashed `assets/index-*.js/css`, deterministic). Run `rm -rf dist` before rebuild for clean.
+- Typecheck: `npx tsc -b` (uses `tsconfig.app.json` + `tsconfig.node.json`, `noEmit`).
+- Lint: `npm run lint` → `oxlint` (config `web/.oxlintrc.json`).
+- Preview: `vite preview` serves `dist/` at `http://localhost:4173` with SPA history fallback to `index.html`.
+- **SPA fallback** (required for `BrowserRouter`): static hosts must rewrite unknown paths to `index.html`, otherwise deep links (`/app`, `/login`) return 404.
+  - Nginx: `try_files $uri $uri/ /index.html;`
+  - Caddy: `try_files {path} /index.html`
+  - `npx serve -s dist` (`-s` = SPA mode)
+  - Vercel: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
+  - Netlify: `_redirects` → `/* /index.html 200`
+- CI: `.github/workflows/web.yml` runs `typecheck → lint → build` on changes to `web/**`.
+
+See `web/README.md` for full web docs.
+
 ## Troubleshooting
 
 | Issue | Solution |

@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* UIKit tokens via '@devstroop/react-uikit/style.css' — WhatsApp swatch */
+:root {
+  --radius: 0.625rem;
+  --dt-color-primary: #25D366;
+  --dt-color-primary-hover: #128C7E;
+  --dt-color-primary-fg: #ffffff;
+  --dt-color-bg: #F0F2F5;
+  --dt-color-surface: #ffffff;
+  --dt-color-border: #E9EDEF;
+  --dt-color-text: #111B21;
+  --dt-color-text-muted: #667781;
+}
+
+* {
+  border-color: #E9EDEF;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: #F0F2F5;
+  color: #111B21;
+}
+
+/* Layout geometry fix — ensure shared container uses full viewport width */
+[class*="layout"] {
+  width: 100%;
+}
+[class*="layout"] > div[class*="row"] {
+  width: 100%;
+}
+[class*="layout"] > div[class*="row"] > main {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}

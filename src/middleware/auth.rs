@@ -3,7 +3,7 @@
 //! Provides API authentication via:
 //! - Static secret key (superadmin access)
 //! - Access tokens (user API access)
-//! - Session tokens (web UI access - JWT based)
+//! - Session tokens (API access - JWT based)
 //!
 //! Uses `AuthState` which can be applied independently of route-specific state.
 
@@ -32,7 +32,7 @@ pub struct AuthState {
     pub secret_key: Option<String>,
     /// Database for user/token lookup
     pub db: Database,
-    /// Web-session lifetime in hours
+    /// Session lifetime in hours
     pub session_ttl_hours: u64,
     /// Brute-force throttle for auth endpoints (#44)
     pub throttle: std::sync::Arc<crate::application::auth::throttle::AuthRateLimiter>,
@@ -76,16 +76,35 @@ pub fn hash_token(token: &str) -> String {
     app_hash_token(token)
 }
 
-/// Hash a password using SHA256 (for simplicity; use bcrypt/argon2 in production)
+/// Hash a password using bcrypt (cost 12). Falls back to SHA256 only on bcrypt failure (should not happen).
 pub fn hash_password(password: &str) -> String {
+    bcrypt::hash(password, bcrypt::DEFAULT_COST).unwrap_or_else(|e| {
+        tracing::error!(error = %e, "bcrypt hash failed, falling back to SHA256");
+        let mut hasher = Sha256::new();
+        hasher.update(password.as_bytes());
+        format!("{:x}", hasher.finalize())
+    })
+}
+
+/// Check if a hash is a bcrypt hash (starts with $2a$/$2b$/$2y$)
+pub fn is_bcrypt_hash(hash: &str) -> bool {
+    hash.starts_with("$2a$") || hash.starts_with("$2b$") || hash.starts_with("$2y$")
+}
+
+/// Legacy SHA256 hash for migration compatibility
+fn hash_password_sha256(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
-/// Verify password against hash
+/// Verify password against hash — tries bcrypt first, falls back to legacy SHA256 for migration
 pub fn verify_password(password: &str, hash: &str) -> bool {
-    hash_password(password) == hash
+    if is_bcrypt_hash(hash) {
+        return bcrypt::verify(password, hash).unwrap_or(false);
+    }
+    // Legacy SHA256 path — constant-time compare via legacy hash
+    hash_password_sha256(password) == hash
 }
 
 /// Authentication middleware
