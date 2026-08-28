@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-28
+
+React admin (UIKit) + auth hardening release: decoupled Vite SPA replaces htmx, complete RBAC, and bcrypt migration.
+
+### Added
+- **React admin `web/`** (`feat/web` #75–#92): Vite + React 19 + React Router 7 + `@devstroop/react-uikit` `v0.29.1` — decoupled SPA (`file:../../react-uikit` local, `v0.29.1` pinned in CI via `checkout` `ref: v0.29.1`), zones `/` public, `/auth/*`, `/dashboard/*` user (campaign/API-centric), `/admin/*` data/control, guards `AuthGuard`/`RoleGuard`/`PublicOnlyGuard` with `is_active` handling, `Toast` + `ErrorEnvelope` (`correlation_id`/`retry-after`)
+  - User dashboard `/dashboard` (health `Stat` + scoped `GET /users/me`→`GET /users/:id/instances` hydrated)
+  - Admin dashboard `/admin/dashboard` (health + `GET /metrics` `InstanceMetrics`, `browser_available` warning)
+  - Instance list `/dashboard/instances` + `/admin/instances` (`DataGrid`+`DataFilter`, `E164`, `POST /instances`, RBAC `admin` prop)
+  - Instance detail `/dashboard/instances/:id` + `/admin/instances/:id` (`LinkPanel` QR 2s `GET /link/qr` + `POST /link/phone`/`DELETE /unlink`, `SendPanel` `POST /send` `FormData`, `InstanceActions` warmup/screenshot/reset/delete, `ConfigPanel` `GET/PUT /config`, RBAC `Viewer|Operator|Owner`)
+  - Users `GET /users` + `POST /users` (`UsersList` `DataGrid`), `GET/PATCH /users/:id` + `DELETE` (`UserDetail` role/`is_active`/password)
+  - Tokens `GET/POST/DELETE /users/:id/tokens` (`TokensPanel` one-time `access_token` `Dialog`, `AdminUserTokens` + `ApiKeys` at `/settings/api-keys`)
+  - Assignments `GET /users/:id/instances`, `POST /assign-instance` `Selectbar` `Viewer|Operator|Owner`, `DELETE` (`AssignmentsPanel` at `/admin/users/:id/instances`)
+- **Build & CI** (`#92`): `web/package.json` `0.6.0`, `vite build`→`dist/`, `preview`, `VITE_API_BASE`, `web/README`/`docs/GETTING_STARTED` route maps, `.github/workflows/web.yml` (`typecheck`/`lint`/`build` + `checkout react-uikit` for `file:`)
+
+### Changed
+- `web/package.json` `file:../../react-uikit` kept for local dev; CI now `checkout WaServer → WaServer/` + `checkout react-uikit → react-uikit/` (`file:` resolves via git) — satisfies `prod/ci must use git` — `react-uikit` `v0.29.1` pinned via `ref: v0.29.1`
+
+### Security
+- **bcrypt migration** (`fix/auth-bcrypt` #74 #94): `middleware/auth::hash_password` `SHA256`→`bcrypt` `DEFAULT_COST 12` + `is_bcrypt_hash` + legacy `SHA256` fallback in `verify_password`; `handlers/api/auth::login` transparent re-hash to bcrypt on legacy success + `db.update_user`; `handlers/api/users::update_user` now handles `email`/`password` (bcrypt) and revokes `delete_user_web_sessions` on password change or `is_active=false` — `cargo test` 117 pass
+
+### Fixed
+- `Utils` parity test `lib/components/Utilities/Utilities.test.tsx` now skips `frameworks/htmx` when absent (84/84) — `react-uikit` `v0.29.1` (`372b0ad`)
+
 ## [0.5.1] - 2026-08-24
 
 ### Fixed
