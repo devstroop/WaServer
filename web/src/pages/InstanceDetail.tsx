@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Card } from '@devstroop/react-uikit';
 import { instances } from '../api/endpoints';
 import type { InstanceInfo, WhatsAppStatus } from '../api/types';
 import { LinkPanel } from '../components/LinkPanel';
+import { SendPanel } from '../components/SendPanel';
 
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 
@@ -182,6 +183,7 @@ export default function InstanceDetail() {
       </Card>
 
       <LinkPanel instanceId={id} authorized={!!authorized} onStatusRefresh={fetchStatus} />
+      <SendPanel instanceId={id} />
     </div>
   );
 }
