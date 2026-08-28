@@ -1,21 +1,30 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
+import Instances from './pages/Instances';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Instances from './pages/Instances';
+
+function NotImplemented() {
+  return <div>Not implemented</div>;
+}
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public */}
           <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+
+          {/* Auth */}
+          <Route path="/auth/login" element={<Login />} />
+          <Route path="/auth/register" element={<Register />} />
+
+          {/* Protected zones: user + admin (guards placeholder, shells deferred) */}
           <Route
             element={
               <ProtectedRoute>
@@ -23,9 +32,23 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="app" element={<Dashboard />} />
-            <Route path="app/instances" element={<Instances />} />
+            {/* User */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard/instances" element={<Instances />} />
+            <Route path="/dashboard/instances/:id" element={<NotImplemented />} />
+
+            {/* Admin */}
+            <Route path="/admin" element={<NotImplemented />} />
+            <Route path="/admin/dashboard" element={<NotImplemented />} />
+            <Route path="/admin/metrics" element={<NotImplemented />} />
+            <Route path="/admin/instances" element={<NotImplemented />} />
+            <Route path="/admin/instances/:id" element={<NotImplemented />} />
+            <Route path="/admin/users" element={<NotImplemented />} />
+            <Route path="/admin/users/:id" element={<NotImplemented />} />
+            <Route path="/settings" element={<NotImplemented />} />
           </Route>
+
+          {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
