@@ -72,7 +72,7 @@ export default function App() {
               <Route path="/admin" element={<NotImplemented />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/metrics" element={<NotImplemented />} />
-              <Route path="/admin/instances" element={<NotImplemented />} />
+              <Route path="/admin/instances" element={<Instances admin />} />
               <Route path="/admin/instances/:id" element={<NotImplemented />} />
               <Route path="/admin/users" element={<NotImplemented />} />
               <Route path="/admin/users/:id" element={<NotImplemented />} />
