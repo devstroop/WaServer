@@ -1,16 +1,10 @@
-<div align="center">
+# WAS - WhatsApp Server
 
-# WaServer - WhatsApp Server
-
-**Minimal WhatsApp Web automation server built in Rust (sending only)**
+WhatsApp Web automation server built in Rust
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
-
-[Features](#features) • [Quick Start](#quick-start) • [API](#api-reference) • [Configuration](#configuration)
-
-</div>
 
 ---
 
